@@ -2,9 +2,9 @@
   "expo": {
     "name": "TechnoSys Mobile",
     "slug": "technosys-mobile",
-    "version": "1.0.0",
+    "version": "0.5.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/technosys_mobile.jpg",
     "scheme": "hrismobile",
     "userInterfaceStyle": "automatic",
     "ios": {

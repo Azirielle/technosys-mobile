@@ -1313,7 +1313,7 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
     } else if (diffDays < 7) {
       return language === 'fil' ? `${diffDays}a nakalipas` : `${diffDays}d ago`;
     } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString([], { month: 'long', day: 'numeric' });
     }
   };
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Linking } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { getDistance } from 'geolib';
 import { Feather } from '@expo/vector-icons';
@@ -111,6 +111,13 @@ export default function GeofenceMobileMap({
           Distance: {displayDistance} (Geofence: {radius}m)
         </Text>
       </View>
+      <TouchableOpacity 
+        style={styles.mapButton} 
+        onPress={() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${branchLat},${branchLng}`)}
+      >
+        <Feather name="map" size={16} color="#fff" style={{ marginRight: 6 }} />
+        <Text style={styles.mapButtonText}>Navigate via Google Maps</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -126,6 +133,8 @@ const styles = StyleSheet.create({
     marginVertical: 12,
     backgroundColor: '#f8fafc'
   },
+  mapButton: { position: 'absolute', bottom: 16, right: 16, backgroundColor: '#6366f1', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 3 },
+  mapButtonText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
   map: {
     width: '100%',
     height: 195, 
@@ -164,6 +173,8 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
+  mapButton: { position: 'absolute', bottom: 16, right: 16, backgroundColor: '#6366f1', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 3 },
+  mapButtonText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
   footerLabel: {
     position: 'absolute',
     bottom: 0,
