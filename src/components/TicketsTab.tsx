@@ -516,6 +516,16 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit
+        if (asset.size && asset.size > MAX_FILE_SIZE) {
+          Alert.alert(
+            language === 'fil' ? 'Masyadong Malaki ang File' : 'File Size Limit Exceeded',
+            language === 'fil'
+              ? 'Hindi ma-upload ang file. Ang maximum file size limit ay 10 MB.'
+              : 'File upload blocked: Maximum allowed file size limit is 10 MB.'
+          );
+          return;
+        }
         setTicketAttachment({
           uri: asset.uri,
           name: asset.name,
@@ -882,6 +892,16 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
   };
 
   const handleAttachFile = async () => {
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const showSizeError = () => {
+      Alert.alert(
+        language === 'fil' ? 'Masyadong Malaki ang File' : 'File Size Limit Exceeded',
+        language === 'fil'
+          ? 'Ang maximum file size limit ay 10 MB.'
+          : 'Maximum allowed file size is 10 MB.'
+      );
+    };
+
     if (Platform.OS === 'web') {
       try {
         const result = await DocumentPicker.getDocumentAsync({
@@ -890,6 +910,10 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
         });
         if (!result.canceled && result.assets && result.assets.length > 0) {
           const asset = result.assets[0];
+          if (asset.size && asset.size > MAX_FILE_SIZE) {
+            showSizeError();
+            return;
+          }
           setChatAttachment({
             uri: asset.uri,
             name: asset.name,
@@ -904,7 +928,7 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
 
     try {
       Alert.alert(
-        'Attach File',
+        'Attach File (Max 10 MB)',
         'Choose attachment type',
         [
           {
@@ -918,6 +942,10 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
               });
               if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+                  showSizeError();
+                  return;
+                }
                 setChatAttachment({
                   uri: asset.uri,
                   name: asset.fileName || `chat-attachment-${Date.now()}.jpg`,
@@ -935,6 +963,10 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
               });
               if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (asset.size && asset.size > MAX_FILE_SIZE) {
+                  showSizeError();
+                  return;
+                }
                 setChatAttachment({
                   uri: asset.uri,
                   name: asset.name,
