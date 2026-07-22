@@ -173,8 +173,6 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  mapButton: { position: 'absolute', bottom: 16, right: 16, backgroundColor: '#6366f1', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 3 },
-  mapButtonText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
   footerLabel: {
     position: 'absolute',
     bottom: 0,

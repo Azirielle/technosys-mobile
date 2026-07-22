@@ -3570,7 +3570,13 @@ function MainAppContent() {
 
 
           {activeTab === 'schedules' && (
-            <SchedulesTab userId={session.user.id} language={language} isOnline={isOnline} />
+            <SchedulesTab 
+              schedules={schedules || []} 
+              isDarkMode={isDarkMode} 
+              language={language} 
+              openDirections={openDirections} 
+              formatTime={formatTime} 
+            />
           )}
 
           {activeTab === 'tickets' && (
