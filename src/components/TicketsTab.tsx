@@ -172,6 +172,7 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
   const [leavesList, setLeavesList] = useState<any[]>([]);
   const [leavesLoading, setLeavesLoading] = useState(false);
   const [leavesRefreshing, setLeavesRefreshing] = useState(false);
+  const [selectedLeaveModal, setSelectedLeaveModal] = useState<any | null>(null);
   
   // Create leave request form states
   const [startDate, setStartDate] = useState('');
@@ -515,6 +516,16 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit
+        if (asset.size && asset.size > MAX_FILE_SIZE) {
+          Alert.alert(
+            language === 'fil' ? 'Masyadong Malaki ang File' : 'File Size Limit Exceeded',
+            language === 'fil'
+              ? 'Hindi ma-upload ang file. Ang maximum file size limit ay 10 MB.'
+              : 'File upload blocked: Maximum allowed file size limit is 10 MB.'
+          );
+          return;
+        }
         setTicketAttachment({
           uri: asset.uri,
           name: asset.name,
@@ -881,6 +892,16 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
   };
 
   const handleAttachFile = async () => {
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const showSizeError = () => {
+      Alert.alert(
+        language === 'fil' ? 'Masyadong Malaki ang File' : 'File Size Limit Exceeded',
+        language === 'fil'
+          ? 'Ang maximum file size limit ay 10 MB.'
+          : 'Maximum allowed file size is 10 MB.'
+      );
+    };
+
     if (Platform.OS === 'web') {
       try {
         const result = await DocumentPicker.getDocumentAsync({
@@ -889,6 +910,10 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
         });
         if (!result.canceled && result.assets && result.assets.length > 0) {
           const asset = result.assets[0];
+          if (asset.size && asset.size > MAX_FILE_SIZE) {
+            showSizeError();
+            return;
+          }
           setChatAttachment({
             uri: asset.uri,
             name: asset.name,
@@ -903,7 +928,7 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
 
     try {
       Alert.alert(
-        'Attach File',
+        'Attach File (Max 10 MB)',
         'Choose attachment type',
         [
           {
@@ -917,6 +942,10 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
               });
               if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+                  showSizeError();
+                  return;
+                }
                 setChatAttachment({
                   uri: asset.uri,
                   name: asset.fileName || `chat-attachment-${Date.now()}.jpg`,
@@ -934,6 +963,10 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
               });
               if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (asset.size && asset.size > MAX_FILE_SIZE) {
+                  showSizeError();
+                  return;
+                }
                 setChatAttachment({
                   uri: asset.uri,
                   name: asset.name,
@@ -1548,8 +1581,10 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
                   const duration = calculateLeaveDuration(item.start_date, item.end_date);
                   
                   return (
-                    <View 
+                    <TouchableOpacity 
                       key={item.id} 
+                      onPress={() => setSelectedLeaveModal(item)}
+                      activeOpacity={0.8}
                       style={[
                         styles.ticketCard,
                         { borderLeftWidth: 4, borderLeftColor: COLORS.blue }
@@ -1594,7 +1629,7 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
                           <Feather name="clock" size={10} /> {formatRelativeTime(item.created_at)}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </ScrollView>
@@ -2203,6 +2238,168 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
         selectedValue={selectingDateType === 'start' ? startDate : endDate}
         language={language}
       />
+
+      {selectedLeaveModal && (() => {
+        const item = selectedLeaveModal;
+        const typeDetails = getLeaveTypeDetails(item.leave_type);
+        const statusDetails = getLeaveStatusDetails(item.status);
+        const duration = calculateLeaveDuration(item.start_date, item.end_date);
+
+        return (
+          <Modal
+            animationType="fade"
+            transparent={true}
+            visible={!!selectedLeaveModal}
+            onRequestClose={() => setSelectedLeaveModal(null)}
+          >
+            <TouchableOpacity 
+              style={{ 
+                flex: 1, 
+                backgroundColor: 'rgba(15, 23, 42, 0.65)', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                padding: 20 
+              }} 
+              activeOpacity={1} 
+              onPress={() => setSelectedLeaveModal(null)}
+            >
+              <TouchableOpacity 
+                activeOpacity={1} 
+                onPress={(e) => e.stopPropagation()} 
+                style={{ 
+                  width: '100%', 
+                  maxWidth: 420, 
+                  maxHeight: '80%', 
+                  backgroundColor: COLORS.card, 
+                  borderRadius: 24, 
+                  borderWidth: 1, 
+                  borderColor: COLORS.border, 
+                  shadowColor: '#000', 
+                  shadowOffset: { width: 0, height: 10 }, 
+                  shadowOpacity: 0.25, 
+                  shadowRadius: 20, 
+                  elevation: 12, 
+                  overflow: 'hidden' 
+                }}
+              >
+                {/* Modal Header */}
+                <View style={{ 
+                  flexDirection: 'row', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  paddingHorizontal: 20, 
+                  paddingVertical: 16, 
+                  borderBottomWidth: 1, 
+                  borderBottomColor: COLORS.border,
+                  backgroundColor: COLORS.card
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: typeDetails.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <Feather name="calendar" size={16} color={typeDetails.color} />
+                    </View>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: COLORS.textMain }}>
+                      {language === 'fil' ? 'Detalye ng Leave' : 'Leave Details'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setSelectedLeaveModal(null)} style={{ padding: 6, borderRadius: 12, backgroundColor: COLORS.border }}>
+                    <Feather name="x" size={18} color={COLORS.textMain} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Modal Body */}
+                <ScrollView contentContainerStyle={{ padding: 20 }}>
+                  {/* Badges Row */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <View style={[styles.catBadge, { backgroundColor: typeDetails.bg, paddingHorizontal: 12, paddingVertical: 6 }]}>
+                      <Feather name="calendar" size={12} color={typeDetails.color} style={{ marginRight: 6 }} />
+                      <Text style={[styles.catBadgeText, { color: typeDetails.color, fontSize: 12 }]}>
+                        {typeDetails.label}
+                      </Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: statusDetails.bg, paddingHorizontal: 12, paddingVertical: 6 }]}>
+                      <Text style={[styles.statusBadgeText, { color: statusDetails.color, fontSize: 11 }]}>
+                        {statusDetails.label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Dates & Duration Card */}
+                  <View style={{ backgroundColor: COLORS.background, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, marginBottom: 16 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                      {language === 'fil' ? 'PETSA NG LEAVE' : 'LEAVE DATES'}
+                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.textMain, marginBottom: 6 }}>
+                      🗓️ {item.start_date} to {item.end_date}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: COLORS.primary, fontWeight: '700' }}>
+                      ⏱️ {t('leaveDurationLabel', { duration, days: duration === 1 ? t('daySingular') : t('dayPlural') })}
+                    </Text>
+                  </View>
+
+                  {/* Reason Card */}
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                      {language === 'fil' ? 'DAHILAN / PALIWANAG' : 'REASON & NOTES'}
+                    </Text>
+                    <View style={{ backgroundColor: COLORS.background, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border }}>
+                      <Text style={{ color: COLORS.textMain, fontSize: 14, lineHeight: 22 }}>
+                        “{item.reason || (language === 'fil' ? 'Walang inilagay na dahilan.' : 'No reason provided.')}”
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Attachment if present */}
+                  {item.attachment_url && (
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                        {language === 'fil' ? 'ATTACHMENT / DOKUMENTO' : 'ATTACHMENT'}
+                      </Text>
+                      <TouchableOpacity 
+                        onPress={() => Linking.openURL(item.attachment_url)}
+                        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border }}
+                      >
+                        <Feather name="paperclip" size={16} color={COLORS.primary} style={{ marginRight: 8 }} />
+                        <Text style={{ fontSize: 13, color: COLORS.primary, fontWeight: 'bold', flex: 1 }}>
+                          {language === 'fil' ? 'Tingnan / I-download ang Dokumento' : 'View Attachment Document'}
+                        </Text>
+                        <Feather name="external-link" size={14} color={COLORS.primary} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Date filed footer */}
+                  {item.created_at && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                      <Feather name="clock" size={12} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+                      <Text style={{ fontSize: 12, color: COLORS.textMuted }}>
+                        {language === 'fil' ? 'Inihain noong: ' : 'Filed on: '}
+                        {new Date(item.created_at).toLocaleDateString(language === 'fil' ? 'fil-PH' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
+
+                {/* Modal Footer */}
+                <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.card }}>
+                  <TouchableOpacity 
+                    onPress={() => setSelectedLeaveModal(null)} 
+                    style={{ 
+                      backgroundColor: COLORS.primary, 
+                      paddingVertical: 12, 
+                      borderRadius: 14, 
+                      alignItems: 'center' 
+                    }}
+                  >
+                    <Text style={{ color: COLORS.background, fontSize: 14, fontWeight: '700' }}>
+                      {language === 'fil' ? 'Isara' : 'Close'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
+        );
+      })()}
     </KeyboardAvoidingView>
   );
 }

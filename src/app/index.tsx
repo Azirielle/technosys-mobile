@@ -1909,6 +1909,16 @@ function MainAppContent() {
   };
 
   const handleSelectLeaveAttachment = async () => {
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const showSizeError = () => {
+      Alert.alert(
+        language === 'fil' ? 'Masyadong Malaki ang File' : 'File Size Limit Exceeded',
+        language === 'fil'
+          ? 'Ang maximum file size limit ay 10 MB. Mangyaring pumili ng mas maliit na file.'
+          : 'Maximum allowed file size is 10 MB. Please select a smaller file.'
+      );
+    };
+
     if (Platform.OS === 'web') {
       try {
         const result = await DocumentPicker.getDocumentAsync({
@@ -1917,6 +1927,10 @@ function MainAppContent() {
         });
         if (!result.canceled && result.assets && result.assets.length > 0) {
           const asset = result.assets[0];
+          if (asset.size && asset.size > MAX_FILE_SIZE) {
+            showSizeError();
+            return;
+          }
           setLeaveAttachment({
             uri: asset.uri,
             name: asset.name,
@@ -1931,7 +1945,7 @@ function MainAppContent() {
 
     try {
       Alert.alert(
-        'Attach Document',
+        'Attach Document (Max 10 MB)',
         'Choose attachment type',
         [
           {
@@ -1945,6 +1959,10 @@ function MainAppContent() {
               });
               if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+                  showSizeError();
+                  return;
+                }
                 setLeaveAttachment({
                   uri: asset.uri,
                   name: asset.fileName || `leave-attachment-${Date.now()}.jpg`,
@@ -1962,6 +1980,10 @@ function MainAppContent() {
               });
               if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (asset.size && asset.size > MAX_FILE_SIZE) {
+                  showSizeError();
+                  return;
+                }
                 setLeaveAttachment({
                   uri: asset.uri,
                   name: asset.name,
@@ -2101,6 +2123,16 @@ function MainAppContent() {
   };
 
   const handleSelectDisputeAttachment = async () => {
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const showSizeError = () => {
+      Alert.alert(
+        language === 'fil' ? 'Masyadong Malaki ang File' : 'File Size Limit Exceeded',
+        language === 'fil'
+          ? 'Ang maximum file size limit ay 10 MB. Mangyaring pumili ng mas maliit na file.'
+          : 'Maximum allowed file size is 10 MB. Please select a smaller file.'
+      );
+    };
+
     if (Platform.OS === 'web') {
       try {
         const result = await DocumentPicker.getDocumentAsync({
@@ -2109,6 +2141,10 @@ function MainAppContent() {
         });
         if (!result.canceled && result.assets && result.assets.length > 0) {
           const asset = result.assets[0];
+          if (asset.size && asset.size > MAX_FILE_SIZE) {
+            showSizeError();
+            return;
+          }
           setDisputeAttachment({
             uri: asset.uri,
             name: asset.name,
@@ -2123,7 +2159,7 @@ function MainAppContent() {
 
     try {
       Alert.alert(
-        'Attach Supporting Document',
+        'Attach Supporting Document (Max 10 MB)',
         'Choose attachment type',
         [
           {
@@ -2137,6 +2173,10 @@ function MainAppContent() {
               });
               if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+                  showSizeError();
+                  return;
+                }
                 setDisputeAttachment({
                   uri: asset.uri,
                   name: asset.fileName || `dispute-attachment-${Date.now()}.jpg`,
@@ -2154,6 +2194,10 @@ function MainAppContent() {
               });
               if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (asset.size && asset.size > MAX_FILE_SIZE) {
+                  showSizeError();
+                  return;
+                }
                 setDisputeAttachment({
                   uri: asset.uri,
                   name: asset.name,
@@ -3570,7 +3614,13 @@ function MainAppContent() {
 
 
           {activeTab === 'schedules' && (
-            <SchedulesTab userId={session.user.id} language={language} isOnline={isOnline} />
+            <SchedulesTab 
+              schedules={schedules || []} 
+              isDarkMode={isDarkMode} 
+              language={language} 
+              openDirections={openDirections} 
+              formatTime={formatTime} 
+            />
           )}
 
           {activeTab === 'tickets' && (
