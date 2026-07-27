@@ -104,7 +104,7 @@ export function useGeofence() {
       }
 
       if (isMocked) {
-        const errorMsg = 'Spoofing detected: Mock location provider active.';
+        const errorMsg = 'FAKE GPS DETECTED: You cannot use mock locations or VPNs to clock in.';
         setResult(prev => ({ ...prev, status: 'error', error: errorMsg, errorKey: 'mockLocationDetected' }));
         return { status: 'error', error: errorMsg, errorKey: 'mockLocationDetected' } as const;
       }

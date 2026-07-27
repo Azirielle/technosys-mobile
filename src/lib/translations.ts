@@ -640,6 +640,9 @@ export const TRANSLATIONS = {
     scanBiometricTerminalInstructions: "会社の指紋リーダー機に指を置いて、本人確認を完了してください。",
     biometricScanMatched: "指紋スキャンが一致しました！",
     biometricScanTimeout: "指紋スキャンの確認がタイムアウトしました。再試行してください。",
-    locationTimeout: "位置情報の取得がタイムアウトしました。GPSを有効にして再度お試しください。"
+    locationTimeout: "位置情報の取得がタイムアウトしました。GPSを有効にして再度お試しください。",
+    tutorialDashboardWelcome: "Maligayang pagdating sa iyong Dashboard! Narito ang iyong pang-araw-araw na buod.",
+    tutorialTimeCard: "Gamitin ang modyul na ito para mag-clock in sa iyong shift at i-log ang iyong lokasyon.",
+    tutorialCreateTicket: "Kailangan ng tulong? I-tap dito para gumawa ng IT ticket, humiling ng mga asset, o mag-file ng leave."
   }
 };
