@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "938100103719",
+    "project_id": "technosys-mobile-84df0",
+    "storage_bucket": "technosys-mobile-84df0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:938100103719:android:a39dad9f88c7eed48c0c02",
+        "android_client_info": {
+          "package_name": "com.technosys.hrismobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRySJMBqmKYR-pHMh3feiMM-Vn54wEJJ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

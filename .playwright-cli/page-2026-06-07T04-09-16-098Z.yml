@@ -1,0 +1,14 @@
+- generic [ref=e8]:
+  - generic [ref=e10]:
+    - generic [ref=e14]: EMPLOYEE PORTAL
+    - generic [ref=e15]:
+      - generic [ref=e16]: Email Address
+      - textbox "employee@technocycle.com" [ref=e17]
+      - generic [ref=e18]: Password
+      - textbox "••••••••" [ref=e19]
+      - generic [ref=e21] [cursor=pointer]: Secure Login
+  - generic [ref=e26]:
+    - generic [ref=e27]: TECHNOSYS
+    - generic [ref=e28]: Secure Field System
+    - progressbar [ref=e30]:
+      - img [ref=e32]

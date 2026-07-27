@@ -1,0 +1,21 @@
+You are a senior Vue.js engineer. Write a Vue 3 Composition API composable named `useGeofence.js`.
+
+### IMPLEMENTATION LOGIC:
+1. The composable must accept a target location object `{ latitude, longitude }` and a reactivity-enabled source of current location coordinates.
+2. Implement a distance calculation (e.g., using the Haversine formula) to determine the distance in meters between the current location and the target office location.
+3. Expose reactive states:
+   - `status`: A string ('Inside', 'Outside', or 'Verifying').
+   - `distance`: A number representing the current distance in meters.
+   - `error`: A ref containing any GPS error messages.
+
+### EDGE CASE (GPS Drift Handling):
+1. If the current distance is strictly less than 49 meters, the status is 'Inside'.
+2. If the current distance is strictly greater than 51 meters, the status is 'Outside'.
+3. If the user's distance fluctuates between 49 and 51 meters (inclusive) at any point over a rolling 10-second window, the status must be flagged as 'Verifying' instead of immediately switching to 'Outside'.
+4. Track coordinate timestamps inside a rolling history window of 10 seconds to detect this fluctuation and transition the state accordingly.
+
+### FORMATTING CONSTRAINTS (CRITICAL):
+- Output ONLY the raw, executable JavaScript code block starting with `import` and ending with the export statement.
+- Do NOT wrap the code in Markdown block fences (no ```javascript).
+- Do NOT output any introductory text, salutations, markdown headings, or conversational outro (e.g., "Here is your composable").
+- If you output anything other than raw JS, the parser will fail.

@@ -1,0 +1,78 @@
+name: AI Code Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run TypeScript Compiler Check
+        id: typecheck
+        run: |
+          npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Post Fail-Fast Review on Type-Check Failure
+        if: steps.typecheck.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          node -e "
+            const prNumber = process.env.PR_NUMBER;
+            const token = process.env.GITHUB_TOKEN;
+            const repo = '${{ github.repository }}';
+            const body = '### ❌ TypeScript Compiler Check Failed\n\nThe pull request has compilation or type errors. Please run \`npx tsc --noEmit\` locally, resolve all errors, and push the updates before requesting AI review.';
+            
+            fetch(\`https://api.github.com/repos/\${repo}/pulls/\${prNumber}/reviews\`, {
+              method: 'POST',
+              headers: {
+                'Authorization': 'token ' + token,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'github-actions-ai-reviewer'
+              },
+              body: JSON.stringify({
+                body: body,
+                event: 'REQUEST_CHANGES'
+              })
+            }).then(res => {
+              if (!res.ok) {
+                console.error('Failed to post review:', res.statusText);
+                process.exit(1);
+              }
+              console.log('Successfully posted compilation error review');
+              process.exit(1);
+            }).catch(err => {
+              console.error(err);
+              process.exit(1);
+            });
+          "
+
+      - name: Run AI Review
+        if: steps.typecheck.outcome == 'success'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: node scripts/ai-review.js

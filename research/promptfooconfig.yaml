@@ -1,0 +1,15 @@
+prompts:
+  - file://prompt.txt
+
+providers:
+  - google:gemini-2.5-flash
+
+tests:
+  - vars: {}
+    assert:
+      - type: javascript
+        value: "output.startsWith('import') && !output.includes('```')"
+      - type: icontains
+        value: "Verifying"
+      - type: not-icontains
+        value: "Here is your"
