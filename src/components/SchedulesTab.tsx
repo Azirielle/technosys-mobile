@@ -22,14 +22,16 @@ const COLORS = {
 const { width } = Dimensions.get('window');
 
 interface SchedulesTabProps {
-  schedules: any[];
-  isDarkMode: boolean;
-  language: string;
-  openDirections: (location: string) => void;
-  formatTime: (timeStr: string) => string;
+  schedules?: any[];
+  isDarkMode?: boolean;
+  language?: string;
+  openDirections?: (location: string) => void;
+  formatTime?: (timeStr: string) => string;
+  userId?: string;
+  isOnline?: boolean;
 }
 
-export default function SchedulesTab({ schedules, isDarkMode, language, openDirections, formatTime }: SchedulesTabProps) {
+export default function SchedulesTab({ schedules = [], isDarkMode = false, language = 'en', openDirections = () => {}, formatTime = (t: string) => t, userId, isOnline }: SchedulesTabProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const getDaysInMonth = (year: number, month: number) => {

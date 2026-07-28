@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Device from 'expo-device';
+import * as ExpoCrypto from 'expo-crypto';
 import { supabase } from './supabase';
 
 const QUEUE_KEY = 'OFFLINE_TRANSACTION_QUEUE';
@@ -67,52 +69,91 @@ export const syncQueue = {
 
         if (item.type === 'time_in' || item.type === 'time_out') {
           let isSuspicious = false;
+          let calculatedTimeIn = item.payload.app_time_in;
+          let calculatedTimeOut = item.payload.app_time_out;
+          let calculatedHours = item.payload.total_hours;
+
           try {
-            const { data: sTime, error: sErr } = await supabase.rpc('get_server_time');
-            if (!sErr && sTime) {
-              const serverTimeDate = new Date(sTime);
-              const currentDeviceDate = new Date();
-              
-              // 1. Current system clock drift
-              const clockDriftMs = Math.abs(currentDeviceDate.getTime() - serverTimeDate.getTime());
-              if (clockDriftMs > 15 * 60 * 1000) {
-                isSuspicious = true;
-              }
-              
-              // 2. Future clock tampering check
-              const logTimeIn = item.payload.app_time_in ? new Date(item.payload.app_time_in) : null;
-              if (logTimeIn && logTimeIn.getTime() > serverTimeDate.getTime() + 15 * 60 * 1000) {
-                isSuspicious = true;
-              }
-              
-              // 3. Saved time tampering at creation
-              if (item.payload.time_drift_at_creation && item.payload.time_drift_at_creation > 15 * 60 * 1000) {
-                isSuspicious = true;
+            // Verify Signature
+            if (item.payload.uptime_at_creation && item.payload.signature) {
+              const expectedSignature = await ExpoCrypto.digestStringAsync(
+                ExpoCrypto.CryptoDigestAlgorithm.SHA256,
+                `${item.payload.technician_id}:${item.payload.uptime_at_creation}:TECHNO_SECRET_SALT`
+              );
+              if (expectedSignature !== item.payload.signature) {
+                console.error('Tampered payload signature detected! Discarding.');
+                const tamperedError = new Error('Tampered payload signature');
+                (tamperedError as any).status = 400;
+                throw tamperedError;
               }
             }
-          } catch (err) {
+            
+            const currentUptime = await Device.getUptimeAsync();
+            const { data: sTime, error: sErr } = await supabase.rpc('get_server_time');
+            
+            if (!sErr && sTime) {
+              const serverTimeDate = new Date(sTime);
+              
+              if (item.payload.uptime_at_creation) {
+                if (currentUptime >= item.payload.uptime_at_creation) {
+                  // Condition 1 (No Reboot): Calculate True Time in UTC ms
+                  const offsetMs = currentUptime - item.payload.uptime_at_creation;
+                  const trueTimeMs = serverTimeDate.getTime() - offsetMs;
+                  
+                  if (item.type === 'time_in') {
+                    calculatedTimeIn = new Date(trueTimeMs).toISOString();
+                  } else {
+                    calculatedTimeOut = new Date(trueTimeMs).toISOString();
+                  }
+                  isSuspicious = false; // Cryptographically sound
+                } else {
+                  // Condition 2 (Rebooted): Uptime reset
+                  isSuspicious = true;
+                  if (item.type === 'time_out') {
+                    calculatedHours = 0; // Force manual HR intervention
+                  }
+                }
+              } else {
+                // Legacy records or tampered missing fields
+                isSuspicious = true;
+                if (item.type === 'time_out') {
+                  calculatedHours = 0;
+                }
+              }
+            } else {
+              // Failed to get server time, use local time but flag
+              isSuspicious = true;
+            }
+          } catch (err: any) {
             console.warn("Failed to perform clock tampering check:", err);
+            isSuspicious = true;
+            if (item.type === 'time_out') {
+              calculatedHours = 0;
+            }
+            if (err.message === 'Tampered payload signature') {
+               throw err;
+            }
           }
 
           if (item.type === 'time_in') {
             const { error: err } = await supabase.from('time_logs').insert({
               technician_id: item.payload.technician_id,
-              app_time_in: item.payload.app_time_in,
+              app_time_in: calculatedTimeIn,
               latitude: item.payload.latitude,
               longitude: item.payload.longitude,
               geofence_status: item.payload.geofence_status,
               is_mocked: item.payload.is_mocked,
               gps_accuracy: item.payload.gps_accuracy,
-              app_time_out: item.payload.app_time_out || null,
-              total_hours: item.payload.total_hours || null,
+              app_time_out: calculatedTimeOut || null,
+              total_hours: calculatedHours || null,
               is_suspicious: isSuspicious
             });
             error = err;
           } else {
             const { error: err } = await supabase.from('time_logs')
               .update({
-                app_time_out: item.payload.app_time_out,
-                total_hours: item.payload.total_hours,
+                app_time_out: calculatedTimeOut,
+                total_hours: calculatedHours,
                 is_suspicious: isSuspicious
               })
               .eq('id', item.payload.log_id);

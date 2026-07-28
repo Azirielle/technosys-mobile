@@ -1,4 +1,5 @@
 import { Slot, useRouter } from 'expo-router';
+import { CopilotProvider } from 'react-native-copilot';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { BackHandler, Alert } from 'react-native';
@@ -32,7 +33,9 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="light" />
-      <Slot />
+      <CopilotProvider tooltipStyle={{ backgroundColor: '#ffffff', borderRadius: 16 }} stepNumberComponent={() => null}>
+        <Slot />
+      </CopilotProvider>
     </>
   );
 }

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, StatusBar, TextInput, Alert, ActivityIndicator, Image, Animated, Platform, ViewStyle, TextStyle, Linking, useWindowDimensions, Modal, Keyboard, BackHandler, Switch } from 'react-native';
-import { supabase } from '../lib/supabase';
+import * as ExpoCrypto from 'expo-crypto';
+import * as Device from 'expo-device';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import { useTabTutorial } from '../hooks/useTabTutorial';
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from 'react-native-copilot';
 
 const CopilotView = walkthroughable(View);
@@ -165,7 +167,6 @@ import { Locale, TRANSLATIONS } from '../lib/translations';
 import * as SecureStore from 'expo-secure-store';
 // Local phone biometrics disabled per strict policy (wall terminal validation only)
 import * as Location from 'expo-location';
-import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -570,6 +571,7 @@ function ActiveShiftTimer({ startTime }: ActiveShiftTimerProps) {
 }
 
 export default function App() {
+  useTabTutorial('HOME');
   return (
     <CopilotProvider stopOnOutsideClick androidStatusBarVisible>
       <MainAppContent />
@@ -1124,8 +1126,8 @@ function MainAppContent() {
             language === 'fil' ? 'Mabilis na Tour' : 'Quick Tour',
             language === 'fil' ? 'Gusto mo bang kumuha ng mabilis na tour sa app?' : 'Would you like a quick tour of the app features?',
             [
-              { text: language === 'fil' ? 'Simulan' : 'Start Tour', onPress: () => startCopilot() },
-              { text: language === 'fil' ? 'Laktawan' : 'Skip', style: 'cancel' },
+              { text: language === 'fil' ? 'Simulan' : 'Start Tour', onPress: () => { AsyncStorage.setItem('COPILOT_NEVER_SHOW', 'true'); setTimeout(() => startCopilot(), 500); } },
+              { text: language === 'fil' ? 'Laktawan' : 'Skip', style: 'cancel', onPress: () => AsyncStorage.setItem('COPILOT_NEVER_SHOW', 'true') },
               { text: language === 'fil' ? 'Huwag nang ipaalala' : 'Never remind me again', style: 'destructive', onPress: () => AsyncStorage.setItem('COPILOT_NEVER_SHOW', 'true') }
             ]
           );
@@ -2389,6 +2391,7 @@ function MainAppContent() {
     setTimeInLoading(true);
 
     try {
+      const actionUptime = await Device.getUptimeAsync();
       const isSuspicious = (locationResult.timeDrift && locationResult.timeDrift > 15 * 60 * 1000) || false;
       const timeInPayload = {
         technician_id: session.user.id,
@@ -2409,9 +2412,15 @@ function MainAppContent() {
         const isNetworkError = errMessage.includes('fetch') || errMessage.includes('Network') || errMessage.includes('timeout') || status === 0 || status >= 500;
         
         if (isNetworkError) {
+          const signature = await ExpoCrypto.digestStringAsync(
+            ExpoCrypto.CryptoDigestAlgorithm.SHA256,
+            `${session.user.id}:${actionUptime}:TECHNO_SECRET_SALT`
+          );
           const queuePayload = {
             ...timeInPayload,
-            time_drift_at_creation: locationResult.timeDrift || null
+            time_drift_at_creation: locationResult.timeDrift || null,
+            uptime_at_creation: actionUptime,
+            signature: signature
           };
           await syncQueue.addToQueue('time_in', queuePayload);
           const mockLog = {
@@ -2445,6 +2454,7 @@ function MainAppContent() {
     setTimeOutLoading(true);
 
     try {
+      const actionUptime = await Device.getUptimeAsync();
       const timeOutTime = new Date().toISOString();
       const timeInMs = new Date(activeTimeLog.app_time_in).getTime();
       const timeOutMs = new Date(timeOutTime).getTime();
@@ -2463,12 +2473,19 @@ function MainAppContent() {
           queue[timeInItemIndex].payload.is_suspicious = queue[timeInItemIndex].payload.is_suspicious || isSuspicious;
           await AsyncStorage.setItem('OFFLINE_TRANSACTION_QUEUE', JSON.stringify(queue));
         } else {
+          const signature = await ExpoCrypto.digestStringAsync(
+            ExpoCrypto.CryptoDigestAlgorithm.SHA256,
+            `${session.user.id}:${actionUptime}:TECHNO_SECRET_SALT`
+          );
           await syncQueue.addToQueue('time_out', {
             log_id: activeTimeLog.id,
+            technician_id: session.user.id,
             app_time_out: timeOutTime,
             total_hours: diffHours,
             is_suspicious: isSuspicious,
-            time_drift_at_creation: locationResult?.timeDrift || null
+            time_drift_at_creation: locationResult?.timeDrift || null,
+            uptime_at_creation: actionUptime,
+            signature: signature
           });
         }
         
@@ -2590,95 +2607,41 @@ function MainAppContent() {
         return;
       }
 
-      // 3. Fallback to existing bypass checking for direct dispatches
-      const activeSched = getActiveDirectOrTravelSchedule();
-      if (activeSched) {
-        // Bypass geofence check and biometric fingerprint scan
-        const currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
-        const locationResult = {
-          status: 'inside',
-          latitude: currentLoc?.coords.latitude || 14.5995,
-          longitude: currentLoc?.coords.longitude || 120.9842,
-          isMocked: false,
-          gpsAccuracy: currentLoc?.coords.accuracy || 10,
-          timeDrift: 0
-        };
-        
-        // Execute DTR log using the scheduled start time authoritatively (or current time for out-of-town)
-        const timeInPayload = {
-          technician_id: session.user.id,
-          app_time_in: activeSched.attendance_mode === 'out_of_town'
-            ? new Date().toISOString()
-            : activeSched.start_time,
-          latitude: locationResult.latitude,
-          longitude: locationResult.longitude,
-          geofence_status: 'inside',
-          is_mocked: false,
-          gps_accuracy: locationResult.gpsAccuracy || null,
-          is_suspicious: false
-        };
-
-        const { error } = await supabase.from('time_logs').insert(timeInPayload);
-
-        if (error) {
-          const errMessage = error.message || '';
-          const status = (error as any).status;
-          const isNetworkError = errMessage.includes('fetch') || errMessage.includes('Network') || errMessage.includes('timeout') || status === 0 || status >= 500;
-          
-          if (isNetworkError) {
-            await syncQueue.addToQueue('time_in', {
-              ...timeInPayload,
-              time_drift_at_creation: 0
-            });
-            const mockLog = {
-              id: 'offline-pending-' + Date.now(),
-              technician_id: session.user.id,
-              app_time_in: timeInPayload.app_time_in,
-              latitude: timeInPayload.latitude,
-              longitude: timeInPayload.longitude,
-              geofence_status: 'inside',
-              is_offline_pending: true
-            };
-            setActiveTimeLog(mockLog);
-            Alert.alert(t('biometricScanMatched') || 'Success', t('syncPendingAlertDesc'));
-            checkQueueStatus();
-            return;
-          }
-          throw error;
-        }
-
-        Alert.alert(
-          language === 'fil' ? 'Matagumpay' : 'Success',
-          language === 'fil'
-            ? 'Awtomatikong na-verify ang iyong clock-in batay sa iyong direktang dispatch/out-of-town na schedule.'
-            : 'Your clock-in has been automatically verified based on your direct dispatch/out-of-town schedule.'
-        );
-        await fetchDashboardData(session.user.id);
-        return;
-      }
-
-      const locationResult = await geofence.checkLocation();
+      // 3. Location & Geofence Verification
+      let locationResult: any = await geofence.checkLocation();
 
       if (!locationResult || locationResult.status !== 'inside') {
-        setTimeInLoading(false);
-        const errMsg = locationResult?.errorKey 
-          ? (locationResult.errorKey === 'poorGpsSignal' && locationResult.gpsAccuracy 
-              ? t(locationResult.errorKey, { accuracy: Math.round(locationResult.gpsAccuracy) }) 
-              : t(locationResult.errorKey))
-          : (locationResult?.error || 'Could not verify your location. Please try again.');
-        Alert.alert(
-          t('locationVerificationFailed'),
-          errMsg,
-          [{ text: 'OK' }]
-        );
-        return;
+        const activeSched = getActiveDirectOrTravelSchedule();
+        if (activeSched) {
+          const currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
+          locationResult = {
+            status: 'inside',
+            latitude: currentLoc?.coords.latitude || 14.5995,
+            longitude: currentLoc?.coords.longitude || 120.9842,
+            isMocked: false,
+            gpsAccuracy: currentLoc?.coords.accuracy || 10,
+            timeDrift: 0
+          };
+        } else {
+          setTimeInLoading(false);
+          const errMsg = locationResult?.errorKey 
+            ? (locationResult.errorKey === 'poorGpsSignal' && locationResult.gpsAccuracy 
+                ? t(locationResult.errorKey, { accuracy: Math.round(locationResult.gpsAccuracy) }) 
+                : t(locationResult.errorKey))
+            : (locationResult?.error || 'Could not verify your location. Please try again.');
+          Alert.alert(
+            t('locationVerificationFailed'),
+            errMsg,
+            [{ text: 'OK' }]
+          );
+          return;
+        }
       }
 
-      // Proximity verified, transition to biometric waiting state
+      // 4. Location verified -> Open Camera Selfie Mode
       scanTypeRef.current = 'in';
       pendingLocationRef.current = locationResult;
-      setIsWaitingForScan(true);
-      setScanType('in');
+      setIsCameraMode(true);
     } catch (e: any) {
       Alert.alert('Time In Failed', e.message || 'An error occurred.');
     } finally {
@@ -2691,44 +2654,40 @@ function MainAppContent() {
     setTimeOutLoading(true);
 
     try {
-      const activeSched = getActiveDirectOrTravelSchedule();
-      if (activeSched) {
-        // Bypass geofence check and biometric fingerprint scan
-        const currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
-        const locationResult = {
-          status: 'inside',
-          latitude: currentLoc?.coords.latitude || 14.5995,
-          longitude: currentLoc?.coords.longitude || 120.9842,
-          isMocked: false,
-          gpsAccuracy: currentLoc?.coords.accuracy || 10,
-          timeDrift: 0
-        };
-        await executeTimeOut(locationResult);
-        return;
-      }
-
-      const locationResult = await geofence.checkLocation();
+      let locationResult: any = await geofence.checkLocation();
 
       if (!locationResult || locationResult.status !== 'inside') {
-        setTimeOutLoading(false);
-        const errMsg = locationResult?.errorKey 
-          ? (locationResult.errorKey === 'poorGpsSignal' && locationResult.gpsAccuracy 
-              ? t(locationResult.errorKey, { accuracy: Math.round(locationResult.gpsAccuracy) }) 
-              : t(locationResult.errorKey))
-          : (locationResult?.error || 'Could not verify your location. Please try again.');
-        Alert.alert(
-          t('locationVerificationFailed'),
-          errMsg,
-          [{ text: 'OK' }]
-        );
-        return;
+        const activeSched = getActiveDirectOrTravelSchedule();
+        if (activeSched) {
+          const currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
+          locationResult = {
+            status: 'inside',
+            latitude: currentLoc?.coords.latitude || 14.5995,
+            longitude: currentLoc?.coords.longitude || 120.9842,
+            isMocked: false,
+            gpsAccuracy: currentLoc?.coords.accuracy || 10,
+            timeDrift: 0
+          };
+        } else {
+          setTimeOutLoading(false);
+          const errMsg = locationResult?.errorKey 
+            ? (locationResult.errorKey === 'poorGpsSignal' && locationResult.gpsAccuracy 
+                ? t(locationResult.errorKey, { accuracy: Math.round(locationResult.gpsAccuracy) }) 
+                : t(locationResult.errorKey))
+            : (locationResult?.error || 'Could not verify your location. Please try again.');
+          Alert.alert(
+            t('locationVerificationFailed'),
+            errMsg,
+            [{ text: 'OK' }]
+          );
+          return;
+        }
       }
 
-      // Proximity verified, transition to biometric waiting state
+      // 4. Location verified -> Open Camera Selfie Mode
       scanTypeRef.current = 'out';
       pendingLocationRef.current = locationResult;
-      setIsWaitingForScan(true);
-      setScanType('out');
+      setIsCameraMode(true);
     } catch (e: any) {
       Alert.alert('Time Out Failed', e.message || 'An error occurred.');
     } finally {
@@ -2822,7 +2781,8 @@ function MainAppContent() {
           {activeTab === 'home' && (
             <ScrollView contentContainerStyle={styles.content}>
               {/* Premium Header widget */}
-              <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+              <CopilotStep text={t('tutorialDashboardWelcome')} order={1} name="dashboard_stats">
+                <CopilotView style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
                 <View style={{ flex: 1, marginRight: 16 }}>
                   <Text style={styles.greeting}>{t('welcomeBack')}</Text>
                   <Text style={styles.name}>{profile?.full_name || 'Technician'}</Text>
@@ -2858,7 +2818,8 @@ function MainAppContent() {
                     backgroundColor: isOnline ? COLORS.primary : COLORS.danger
                   }} />
                 </View>
-              </View>
+              </CopilotView>
+              </CopilotStep>
 
               {/* Leave alert and Deployment info */}
               {leaveAlert && (

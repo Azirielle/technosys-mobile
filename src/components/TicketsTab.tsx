@@ -11,6 +11,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { supabase } from '../lib/supabase';
 import { Feather } from '@expo/vector-icons';
+import { CopilotStep, walkthroughable } from 'react-native-copilot';
+const CopilotTouchableOpacity = walkthroughable(TouchableOpacity);
+import { useTabTutorial } from '../hooks/useTabTutorial';
 import { syncQueue, generateUUID } from '../lib/syncQueue';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { withTimeout } from '../lib/timeout';
@@ -98,6 +101,7 @@ export function TicketsTab({ userId, fullName, language, isOnline, isDarkMode = 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState(initialCategory);
   const [priority, setPriority] = useState('medium');
+  useTabTutorial('tickets');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [ticketAttachment, setTicketAttachment] = useState<any>(null);
