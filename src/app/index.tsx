@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, StatusBar, TextInput, Alert, ActivityIndicator, Image, Animated, Platform, ViewStyle, TextStyle, Linking, useWindowDimensions, Modal, Keyboard, BackHandler, Switch } from 'react-native';
-import { supabase } from '../lib/supabase';
-
 import * as ExpoCrypto from 'expo-crypto';
 import * as Device from 'expo-device';
 import { Asset } from 'expo-asset';
@@ -10,8 +8,8 @@ import * as Sharing from 'expo-sharing';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useTabTutorial } from '../hooks/useTabTutorial';
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from 'react-native-copilot';
-const CopilotView = walkthroughable(View);
 
+const CopilotView = walkthroughable(View);
 const CopilotTouchableOpacity = walkthroughable(TouchableOpacity);
 
 
@@ -169,7 +167,6 @@ import { Locale, TRANSLATIONS } from '../lib/translations';
 import * as SecureStore from 'expo-secure-store';
 // Local phone biometrics disabled per strict policy (wall terminal validation only)
 import * as Location from 'expo-location';
-
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
