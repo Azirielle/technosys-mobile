@@ -129,9 +129,14 @@ export default function GeofenceMobileMap({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    height: 250,
     width: '100%',
-    backgroundColor: '#0f172a'
+    backgroundColor: '#0f172a',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    marginVertical: 12
   },
   map: {
     ...StyleSheet.absoluteFill,

@@ -1084,13 +1084,9 @@ export default function HomeScreen() {
               <View style={styles.payslipDivider} />
 
               <View style={{ flexDirection: 'row', marginTop: 16 }}>
-                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginRight: 12 }]} onPress={() => setDispatchVisible(false)}>
-                  <Text style={[styles.submitBtnText, { color: '#64748B' }]}>Decline</Text>
-                </TouchableOpacity>
+                
                 <TouchableOpacity style={[styles.submitBtn, { flex: 2, backgroundColor: '#3B82F6' }]} onPress={() => {
-                  safeAlert('Navigating', 'Opening GPS mapping system...');
-                  setDispatchVisible(false);
-                }}>
+                  Linking.openURL('https://www.google.com/maps'); setDispatchVisible(false); }}>
                   <Text style={styles.submitBtnText}>Acknowledge & Go</Text>
                 </TouchableOpacity>
               </View>
