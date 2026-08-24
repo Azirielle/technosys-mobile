@@ -1,23 +1,23 @@
 {
   "expo": {
     "name": "TechnoSys Mobile",
-    "slug": "technosys-mobile",
+    "slug": "technosys-app",
     "version": "0.5.0",
     "orientation": "portrait",
-    "icon": "./assets/images/technosys_mobile.jpg",
+    "icon": "./assets/images/technosys_mobile.png",
     "scheme": "hrismobile",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
       "config": {
-        "googleMapsApiKey": "AIzaSyC3u_bUxVcLxnHfWrBsi0me2R3MKQ-WV1Y"
+        "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
       }
     },
     "android": {
       "googleServicesFile": "./google-services.json",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyC3u_bUxVcLxnHfWrBsi0me2R3MKQ-WV1Y"
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
         }
       },
       "adaptiveIcon": {
@@ -61,7 +61,8 @@
         }
       ],
       "expo-sharing",
-      "expo-asset"
+      "expo-asset",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -70,8 +71,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e6177d19-034d-468b-bfe7-456dc5ddcb75"
+        "projectId": "36119a6f-9feb-4d18-a676-6cfc6f20844d"
       }
-    }
+    },
+    "owner": "technosyss-team"
   }
 }

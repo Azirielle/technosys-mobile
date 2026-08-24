@@ -2576,2382 +2576,280 @@ function MainAppContent() {
     if (!session) return;
     setTimeInLoading(true);
 
+export default function LoginScreen() {
+  const router = useExpoRouter();
+  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
+  const [phoneNumber, setPhoneNumber] = useState('+639');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.replace('/(tabs)');
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        router.replace('/(tabs)');
+      }
+    });
+    
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const handlePhoneLogin = async () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      Alert.alert('Error', 'Please enter a valid mobile number.');
+      return;
+    }
+    setLoading(true);
+    
+    // TEMPORARY MOCK FOR PHONE LOGIN:
+    // Because we need a real Supabase session for RLS to work, but we don't have SMS OTP yet,
+    // we use an RPC to find the email attached to this phone, then use a default password.
     try {
-      // 1. Check if they have a dispatch schedule for today
-      const todaySched = getTodaySchedule();
-      if (!todaySched) {
-        Alert.alert(
-          language === 'fil' ? 'Walang Dispatch' : 'No Dispatch Assigned',
-          language === 'fil'
-            ? 'Maaari ka lamang mag-clock in kung mayroon kang nakatalagang dispatch assignment para sa araw na ito.'
-            : 'You can only clock in if you have an assigned dispatch/work schedule for today.'
-        );
-        setTimeInLoading(false);
-        return;
-      }
-
-      // 2. Prevent clock-in earlier than 1 hour before scheduled start
-      const schedStart = new Date(todaySched.start_time);
-      const now = new Date();
-      const oneHourBeforeStart = new Date(schedStart.getTime() - 60 * 60 * 1000);
+      const { data: emailAttached, error: rpcError } = await supabase.rpc('get_email_from_contact', { p_contact: phoneNumber });
       
-      if (now < oneHourBeforeStart) {
-        const timeStr = oneHourBeforeStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        Alert.alert(
-          language === 'fil' ? 'Masyadong Maaga' : 'Clock-In Too Early',
-          language === 'fil'
-            ? `Maaari ka lamang mag-clock in simula ${timeStr} (1 oras bago ang iyong shift).`
-            : `You can only clock in starting at ${timeStr} (1 hour before your scheduled shift).`
-        );
-        setTimeInLoading(false);
-        return;
+      if (rpcError || !emailAttached) {
+         Alert.alert('Access Denied', 'Number not found in the database. Please contact HR.');
+         setLoading(false);
+         return;
       }
-
-      // 3. Location & Geofence Verification
-      let locationResult: any = await geofence.checkLocation();
-
-      if (!locationResult || locationResult.status !== 'inside') {
-        const activeSched = getActiveDirectOrTravelSchedule();
-        if (activeSched) {
-          const currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
-          locationResult = {
-            status: 'inside',
-            latitude: currentLoc?.coords.latitude || 14.5995,
-            longitude: currentLoc?.coords.longitude || 120.9842,
-            isMocked: false,
-            gpsAccuracy: currentLoc?.coords.accuracy || 10,
-            timeDrift: 0
-          };
-        } else {
-          setTimeInLoading(false);
-          const errMsg = locationResult?.errorKey 
-            ? (locationResult.errorKey === 'poorGpsSignal' && locationResult.gpsAccuracy 
-                ? t(locationResult.errorKey, { accuracy: Math.round(locationResult.gpsAccuracy) }) 
-                : t(locationResult.errorKey))
-            : (locationResult?.error || 'Could not verify your location. Please try again.');
-          Alert.alert(
-            t('locationVerificationFailed'),
-            errMsg,
-            [{ text: 'OK' }]
-          );
-          return;
-        }
-      }
-
-      // 4. Location verified -> Open Camera Selfie Mode
-      scanTypeRef.current = 'in';
-      pendingLocationRef.current = locationResult;
-      setIsCameraMode(true);
-    } catch (e: any) {
-      Alert.alert('Time In Failed', e.message || 'An error occurred.');
-    } finally {
-      setTimeInLoading(false);
-    }
-  };
-
-  const handleTimeOut = async () => {
-    if (!session || !activeTimeLog) return;
-    setTimeOutLoading(true);
-
-    try {
-      let locationResult: any = await geofence.checkLocation();
-
-      if (!locationResult || locationResult.status !== 'inside') {
-        const activeSched = getActiveDirectOrTravelSchedule();
-        if (activeSched) {
-          const currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
-          locationResult = {
-            status: 'inside',
-            latitude: currentLoc?.coords.latitude || 14.5995,
-            longitude: currentLoc?.coords.longitude || 120.9842,
-            isMocked: false,
-            gpsAccuracy: currentLoc?.coords.accuracy || 10,
-            timeDrift: 0
-          };
-        } else {
-          setTimeOutLoading(false);
-          const errMsg = locationResult?.errorKey 
-            ? (locationResult.errorKey === 'poorGpsSignal' && locationResult.gpsAccuracy 
-                ? t(locationResult.errorKey, { accuracy: Math.round(locationResult.gpsAccuracy) }) 
-                : t(locationResult.errorKey))
-            : (locationResult?.error || 'Could not verify your location. Please try again.');
-          Alert.alert(
-            t('locationVerificationFailed'),
-            errMsg,
-            [{ text: 'OK' }]
-          );
-          return;
-        }
-      }
-
-      // 4. Location verified -> Open Camera Selfie Mode
-      scanTypeRef.current = 'out';
-      pendingLocationRef.current = locationResult;
-      setIsCameraMode(true);
-    } catch (e: any) {
-      Alert.alert('Time Out Failed', e.message || 'An error occurred.');
-    } finally {
-      setTimeOutLoading(false);
-    }
-  };
-
-  const formatPhp = (amount: number) => {
-    if (!amount) return '₱ 0.00';
-    return `₱ ${Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  const formatTime = (isoString: string) => {
-    const d = new Date(isoString);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const renderAppContent = () => {
-    if (isLocked) {
-      return (
-        <SafeAreaView style={styles.safeArea}>
-          <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-            <Feather name="lock" size={64} color={COLORS.danger} style={{ marginBottom: 24 }} />
-            <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.textMain, marginBottom: 8 }}>
-              {t('lockedScreenTitle')}
-            </Text>
-            <Text style={{ fontSize: 14, color: COLORS.textMuted, textAlign: 'center', marginBottom: 32, paddingHorizontal: 20 }}>
-              {t('lockedScreenDesc')}
-            </Text>
-            <TouchableOpacity 
-              style={{ 
-                backgroundColor: COLORS.primary, 
-                paddingHorizontal: 24, 
-                paddingVertical: 14, 
-                borderRadius: 12, 
-                flexDirection: 'row', 
-                alignItems: 'center',
-                shadowColor: COLORS.primary,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.2,
-                shadowRadius: 8
-              }}
-              onPress={async () => {
-                const authenticated = await authenticateBiometrics();
-                if (authenticated) {
-                  setIsLocked(false);
-                  const storedSessionStr = await getSecureItem('USER_SESSION');
-                  if (storedSessionStr) {
-                    const storedSession = JSON.parse(storedSessionStr);
-                    setSession(storedSession);
-                    await supabase.auth.setSession({
-                      access_token: storedSession.access_token,
-                      refresh_token: storedSession.refresh_token
-                    });
-                  }
-                }
-              }}
-            >
-              <Feather name="shield" size={18} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
-                {t('retryAuth')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      );
-    }
-
-    if (!session) {
-      return <LoginScreen onLogin={setSession} />;
-    }
-
-    const vipSchedules = schedules.filter(s => s.is_vip_hook);
-    const regularSchedules = schedules.filter(s => !s.is_vip_hook);
-
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={COLORS.background} />
-        
-        {offlineQueueCount > 0 && (
-          <View style={styles.offlineBanner}>
-            <Feather name="wifi-off" size={14} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={styles.offlineBannerText}>
-              {t('syncBanner', { count: offlineQueueCount })}
-            </Text>
-          </View>
-        )}
-        
-        {/* Dynamic Main Content Based on Tab */}
-        <FadeInView currentTab={activeTab}>
-          {activeTab === 'home' && (
-            <ScrollView contentContainerStyle={styles.content}>
-              {/* Premium Header widget */}
-              <CopilotStep text={t('tutorialDashboardWelcome')} order={1} name="dashboard_stats">
-                <CopilotView style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-                <View style={{ flex: 1, marginRight: 16 }}>
-                  <Text style={styles.greeting}>{t('welcomeBack')}</Text>
-                  <Text style={styles.name}>{profile?.full_name || 'Technician'}</Text>
-                  {(() => {
-                    const isTechnician = profile?.role === 'technician';
-                    const isHelper = profile?.role === 'helper';
-                    const badgeBg = isTechnician ? 'rgba(99, 102, 241, 0.1)' : isHelper ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)';
-                    const badgeBorder = isTechnician ? 'rgba(99, 102, 241, 0.2)' : isHelper ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)';
-                    const badgeText = isTechnician ? '#4f46e5' : isHelper ? '#d97706' : '#059669';
-                    const badgeLabel = profile?.role ? profile.role.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : t('active');
-                    return (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                        <View style={{ backgroundColor: badgeBg, borderColor: badgeBorder, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: badgeText, textTransform: 'uppercase' }}>
-                            {badgeLabel}
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  })()}
-                </View>
-                <View style={{ position: 'relative' }}>
-                  <Image source={require('../../assets/technocycle_logo.png')} style={{ width: 56, height: 56, resizeMode: 'contain' }} />
-                  <View style={{
-                    position: 'absolute',
-                    bottom: 2,
-                    right: 2,
-                    width: 12,
-                    height: 12,
-                    borderRadius: 6,
-                    borderWidth: 2,
-                    borderColor: COLORS.background,
-                    backgroundColor: isOnline ? COLORS.primary : COLORS.danger
-                  }} />
-                </View>
-              </CopilotView>
-              </CopilotStep>
-
-              {/* Leave alert and Deployment info */}
-              {leaveAlert && (
-                <View style={{
-                  backgroundColor: leaveAlert.status === 'approved' ? COLORS.primaryDim : 'rgba(239, 68, 68, 0.08)',
-                  borderColor: leaveAlert.status === 'approved' ? COLORS.primary : COLORS.danger,
-                  borderWidth: 1,
-                  borderRadius: 16,
-                  padding: 16,
-                  marginBottom: 20,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={{
-                      fontWeight: 'bold',
-                      fontSize: 14,
-                      color: leaveAlert.status === 'approved' ? COLORS.primary : COLORS.danger,
-                      marginBottom: 4
-                    }}>
-                      📢 {language === 'fil' ? 'Update sa Pagliban' : 'Leave Request Update'}
-                    </Text>
-                    <Text style={{
-                      fontSize: 12,
-                      color: COLORS.textMain,
-                      lineHeight: 18
-                    }}>
-                      {language === 'fil'
-                        ? `Ang iyong hiling sa pagliban (${leaveAlert.type}) mula ${leaveAlert.startDate} hanggang ${leaveAlert.endDate} ay ${leaveAlert.status === 'approved' ? 'INAPRUBAHAN' : 'TINANGGIHAN'}.`
-                        : `Your leave request (${leaveAlert.type}) from ${leaveAlert.startDate} to ${leaveAlert.endDate} has been ${leaveAlert.status.toUpperCase()}.`}
-                    </Text>
-                  </View>
-                  <TouchableOpacity onPress={() => setLeaveAlert(null)} style={{ padding: 8 }}>
-                    <Feather name="x" size={16} color={leaveAlert.status === 'approved' ? COLORS.primary : COLORS.danger} />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {(() => {
-                const activeSched = getActiveDirectOrTravelSchedule();
-                const countdown = getCountdownText(activeSched);
-                if (!countdown) return null;
-                return (
-                  <View style={{
-                    backgroundColor: '#fffbeb',
-                    borderColor: '#f59e0b',
-                    borderWidth: 1,
-                    borderRadius: 16,
-                    padding: 16,
-                    marginBottom: 20,
-                  }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <Text style={{ fontWeight: 'bold', color: '#b45309', fontSize: 14 }}>
-                        ✈️ {language === 'fil' ? 'Out-of-Town Deployment' : 'Out-of-Town Deployment'}
-                      </Text>
-                      <Text style={{ color: '#b45309', fontWeight: 'bold', fontSize: 13 }}>
-                        {countdown.daysLeft} {language === 'fil' ? 'araw na lang' : 'days left'}
-                      </Text>
-                    </View>
-                    <Text style={{ fontSize: 12, color: COLORS.textMain, marginBottom: 8 }}>
-                      {language === 'fil' 
-                        ? `Araw ${countdown.elapsedDays} ng ${countdown.totalDays} ng iyong deployment.` 
-                        : `Day ${countdown.elapsedDays} of ${countdown.totalDays} of your deployment.`}
-                    </Text>
-                    <View style={{ height: 6, backgroundColor: '#fef3c7', borderRadius: 3, overflow: 'hidden' }}>
-                      <View style={{ 
-                        height: '100%', 
-                        backgroundColor: '#f59e0b', 
-                        width: `${Math.min(100, Math.max(0, (countdown.elapsedDays / countdown.totalDays) * 100))}%` 
-                      }} />
-                    </View>
-                  </View>
-                );
-              })()}
-
-              {/* Redesigned DTR Console Card */}
-              <View style={{ marginBottom: 24 }}>
-                {(() => {
-                  if (isWaitingForScan) {
-                    return (
-                      <View style={styles.scanningCard}>
-                        <Animated.View style={{ transform: [{ scale: pulseAnim }], width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(16, 185, 129, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
-                          <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(16, 185, 129, 0.2)', justifyContent: 'center', alignItems: 'center' }}>
-                            <MaterialCommunityIcons name="fingerprint" size={36} color={COLORS.primary} />
-                          </View>
-                        </Animated.View>
-                        <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.textMain, textAlign: 'center', marginBottom: 6 }}>
-                          {language === 'fil' ? 'Naghihintay ng Biometric Swipe...' : 'Awaiting Biometric Swipe...'}
-                        </Text>
-                        <Text style={{ fontSize: 14, fontWeight: 'bold', color: COLORS.danger, marginBottom: 16 }}>
-                          ⏱️ {Math.floor(scanCountdown / 60)}:{(scanCountdown % 60).toString().padStart(2, '0')}
-                        </Text>
-                        
-                        <TouchableOpacity 
-                          onPress={() => {
-                            setIsWaitingForScan(false);
-                            setScanType(null);
-                            scanTypeRef.current = null;
-                            pendingLocationRef.current = null;
-                          }}
-                          style={styles.cancelScanButton}
-                        >
-                          <Text style={{ color: COLORS.textMain, fontWeight: 'bold', fontSize: 13 }}>
-                            {t('cancel')}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
-                          onPress={() => {
-                            setIsWaitingForScan(false);
-                            setIsCameraMode(true);
-                          }}
-                          style={[styles.cancelScanButton, { backgroundColor: '#10b981', marginTop: 8 }]}
-                        >
-                          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>
-                            📷 {language === 'fil' ? 'Gamitin ang Camera (Hybrid Mode)' : 'Use Camera (Hybrid Mode)'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  }
-
-                  if (isCameraMode) {
-                    return (
-                      <HybridCamera 
-                        language={language as any} 
-                        onCancel={() => {
-                          setIsCameraMode(false);
-                          setIsWaitingForScan(true);
-                        }}
-                        onPhotoTaken={async (photoUri) => {
-                          try {
-                            const response = await fetch(photoUri);
-                            const blob = await response.blob();
-                            let ext = 'jpg';
-                            if (photoUri.startsWith('data:')) {
-                               const match = photoUri.match(/data:image\/([a-zA-Z0-9]+);/);
-                               if (match && match[1]) ext = match[1];
-                            } else {
-                               const dotIdx = photoUri.lastIndexOf('.');
-                               if (dotIdx !== -1) ext = photoUri.substring(dotIdx + 1);
-                            }
-                            const fileName = `${session?.user?.id}-${Date.now()}.${ext}`;
-                            const { data, error } = await supabase.storage.from('dtr-selfies').upload(fileName, blob);
-                            if (error) {
-                              Alert.alert('Upload Failed', error.message);
-                              return;
-                            }
-
-                            // Proceed with time in/out logic using fileName
-                            const type = scanTypeRef.current;
-                            const loc = pendingLocationRef.current;
-                            if (type === 'in') {
-                               const timeInPayload = {
-                                technician_id: session?.user?.id,
-                                app_time_in: new Date().toISOString(),
-                                photo_url: fileName,
-                                geofence_status: loc?.status || 'inside',
-                                latitude: loc?.lat || null,
-                                longitude: loc?.lng || null,
-                                is_mocked: false,
-                                is_suspicious: false,
-                                gps_accuracy: null
-                              };
-                              const { data: insertData, error: insertErr } = await supabase.from('time_logs').insert(timeInPayload).select().single();
-                              if (insertErr) {
-                                console.log("INSERT ERROR PAYLOAD:", timeInPayload);
-                                console.log("INSERT ERROR:", insertErr);
-                                Alert.alert('Error', insertErr.message);
-                              }
-                              else { 
-                                setActiveTimeLog(insertData);
-                                Alert.alert('Success', 'Clock In successful (Pending Approval)'); 
-                                
-                              }
-                            } else if (type === 'out') {
-                              const { error: updateErr } = await supabase.from('time_logs').update({
-                                app_time_out: new Date().toISOString(),
-                                is_suspicious: false
-                              }).eq('technician_id', session?.user?.id).is('app_time_out', null);
-                              if (updateErr) {
-                                console.log("UPDATE ERROR:", updateErr);
-                                Alert.alert('Error', updateErr.message);
-                              }
-                              else setActiveTimeLog((prev: any) => ({ ...prev, app_time_out: new Date().toISOString() })); Alert.alert('Success', 'Clock Out successful'); await fetchDashboardData(session?.user?.id);
-                            }
-
-                            setIsCameraMode(false);
-                            setScanType(null);
-                            scanTypeRef.current = null;
-                            pendingLocationRef.current = null;
-                          } catch (e: any) {
-                            Alert.alert('Error', e.message);
-                          }
-                        }}
-                      />
-                    );
-                  }
-
-                  if (!activeTimeLog || activeTimeLog.photo_status === 'rejected') {
-                    return (
-                      <View>
-                        {activeTimeLog?.photo_status === 'rejected' && (
-                          <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: 12, borderRadius: 12, marginBottom: 16, flexDirection: 'row', alignItems: 'center' }}>
-                            <Feather name="alert-circle" size={20} color={COLORS.danger} style={{ marginRight: 8 }} />
-                            <Text style={{ color: COLORS.danger, fontSize: 13, flex: 1 }}>
-                              {language === 'fil' ? 'Tinanggihan ang iyong huling selfie. Mangyaring mag-Clock In muli.' : 'Your last selfie was rejected. Please clock in again.'}
-                            </Text>
-                          </View>
-                        )}
-                        <TouchableOpacity 
-                          style={styles.readyCard} 
-                          onPress={handleTimeIn} 
-                          disabled={timeInLoading}
-                        >
-                          {timeInLoading ? (
-                            <ActivityIndicator color={COLORS.primary} />
-                          ) : (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-                              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(16, 185, 129, 0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
-                                <Feather name="map-pin" size={24} color={COLORS.primary} />
-                              </View>
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ color: COLORS.textMain, fontWeight: '800', fontSize: 18, marginBottom: 4 }}>
-                                  {language === 'fil' ? 'Mag-Clock In' : 'Locate Office & Check In'}
-                                </Text>
-                                <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-                                  📍 {t('locationVerificationDetails')}
-                                </Text>
-                              </View>
-                              <Feather name="chevron-right" size={20} color={COLORS.textMuted} />
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  }
-
-                  if (activeTimeLog && !activeTimeLog.app_time_out) {
-                    return (
-                      <View style={styles.activeCard}>
-                        <Animated.View style={[StyleSheet.absoluteFill, {
-                          borderWidth: 2,
-                          borderColor: COLORS.primary,
-                          borderRadius: 20,
-                          opacity: breathingAnim
-                        }]} pointerEvents="none" />
-                        
-                        <View style={{ alignItems: 'center', width: '100%' }}>
-                          <Feather name="activity" size={24} color={COLORS.primary} style={{ marginBottom: 6 }} />
-                          <Text style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            {language === 'fil' ? 'KASALUKUYANG SHIFT' : 'ACTIVE SHIFT'}
-                          </Text>
-                          
-                          {activeTimeLog.photo_status === 'pending' && (
-                            <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 6 }}>
-                              <Text style={{ color: '#d97706', fontSize: 11, fontWeight: 'bold' }}>PENDING APPROVAL</Text>
-                            </View>
-                          )}
-                          
-                          <ActiveShiftTimer startTime={activeTimeLog.app_time_in} />
-                          
-                          <Text style={{ color: COLORS.textMuted, fontSize: 11, marginBottom: 16 }}>
-                            {t('loggedAt', { time: new Date(activeTimeLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
-                          </Text>
-
-                          <TouchableOpacity 
-                            style={{
-                              backgroundColor: 'rgba(79, 70, 229, 0.08)',
-                              borderWidth: 1,
-                              borderColor: 'rgba(79, 70, 229, 0.2)',
-                              paddingVertical: 12,
-                              paddingHorizontal: 16,
-                              borderRadius: 14,
-                              width: '100%',
-                              alignItems: 'center',
-                              marginBottom: 0,
-                              flexDirection: 'row',
-                              justifyContent: 'center',
-                              gap: 6
-                            }}
-                            onPress={() => setShowOtModal(true)}
-                          >
-                            <Feather name="clock" size={14} color={COLORS.primary} />
-                            <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 13 }}>
-                              {language === 'fil' ? 'Mag-request ng Overtime' : 'File Overtime Request'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  return (
-                    <View style={styles.completedCard}>
-                      <Feather name="check-circle" size={28} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
-                      <Text style={{ color: COLORS.textMain, fontWeight: '800', fontSize: 18, marginBottom: 4 }}>
-                        {t('shiftCompleted')}
-                      </Text>
-                      <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center' }}>
-                        {t('workedHours', { hours: activeTimeLog.total_hours })}
-                      </Text>
-                      <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 4 }}>
-                        ({new Date(activeTimeLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(activeTimeLog.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
-                      </Text>
-                    </View>
-                  );
-                })()}
-
-                {/* Collapsible Proximity / Map Section */}
-                {!geofence.latitude ? (
-                  <View style={{ marginTop: 12 }}>
-                    <TouchableOpacity
-                      style={{
-                        paddingVertical: 12,
-                        paddingHorizontal: 16,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: COLORS.primary,
-                        backgroundColor: COLORS.primaryDim,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                      onPress={async () => {
-                        await geofence.checkLocation();
-                      }}
-                      disabled={geofence.status === 'checking'}
-                    >
-                      {geofence.status === 'checking' ? (
-                        <ActivityIndicator color={COLORS.primary} size="small" style={{ marginRight: 8 }} />
-                      ) : (
-                        <Feather name="map" size={16} color={COLORS.primary} style={{ marginRight: 8 }} />
-                      )}
-                      <Text style={{ color: COLORS.primary, fontWeight: 'bold', fontSize: 13 }}>
-                        {geofence.status === 'checking' ? (t('checkingLocation') || 'Checking Location...') : t('checkProximity')}
-                      </Text>
-                    </TouchableOpacity>
-
-                    {geofence.error && (
-                      <View style={{
-                        marginTop: 8,
-                        padding: 10,
-                        backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                        borderColor: COLORS.danger,
-                        borderWidth: 1,
-                        borderRadius: 10,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                      }}>
-                        <Feather name="alert-triangle" size={14} color={COLORS.danger} style={{ marginRight: 8 }} />
-                        <Text style={{ color: COLORS.danger, fontSize: 11, fontWeight: '600', flex: 1 }}>{geofence.error}</Text>
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  <View style={{ marginTop: 12 }}>
-                    <View style={{
-                      padding: 12,
-                      borderRadius: 12,
-                      backgroundColor: geofence.status === 'inside' ? COLORS.primaryDim : 'rgba(239, 68, 68, 0.08)',
-                      borderWidth: 1,
-                      borderColor: geofence.status === 'inside' ? COLORS.primary : COLORS.danger,
-                      marginBottom: 8,
-                      flexDirection: 'row',
-                      alignItems: 'center'
-                    }}>
-                      <Feather 
-                        name={geofence.status === 'inside' ? "check-circle" : "alert-triangle"} 
-                        size={16} 
-                        color={geofence.status === 'inside' ? COLORS.primary : COLORS.danger} 
-                        style={{ marginRight: 8 }} 
-                      />
-                      <Text style={{ 
-                        flex: 1, 
-                        fontSize: 12, 
-                        color: geofence.status === 'inside' ? COLORS.primary : COLORS.danger, 
-                        fontWeight: '600' 
-                      }}>
-                        {geofence.status === 'inside' 
-                          ? t('verifiedInside', { office: geofence.matchingOfficeName || '', distance: Math.round(geofence.distance || 0) })
-                          : (geofence.status === 'error' && geofence.errorKey
-                              ? (geofence.errorKey === 'poorGpsSignal' && geofence.gpsAccuracy
-                                  ? t(geofence.errorKey, { accuracy: Math.round(geofence.gpsAccuracy) })
-                                  : t(geofence.errorKey))
-                              : (geofence.error || t('outsideArea', { distance: Math.round(geofence.distance || 0) })))
-                        }
-                        {"  "}
-                        <Text style={{ fontSize: 9, color: '#10b981', fontWeight: 'bold' }}>
-                          ● Live
-                        </Text>
-                      </Text>
-                      {/* Refresh Proximity Button */}
-                      <TouchableOpacity 
-                        onPress={() => geofence.selectedOfficeId && geofence.checkLocation(geofence.selectedOfficeId)} 
-                        style={{ padding: 4, marginRight: 8 }}
-                      >
-                        <Feather name="refresh-cw" size={14} color={geofence.status === 'inside' ? COLORS.primary : COLORS.danger} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={geofence.reset} style={{ padding: 4 }}>
-                        <Feather name="x" size={14} color={geofence.status === 'inside' ? COLORS.primary : COLORS.danger} />
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Custom Branch Selector Dropdown */}
-                    {geofence.offices && geofence.offices.length > 0 && (() => {
-                      const selectedOffice = geofence.offices.find(o => o.id === geofence.selectedOfficeId) || geofence.offices[0];
-                      return (
-                        <View style={{ marginBottom: 8, zIndex: 10 }}>
-                          <TouchableOpacity
-                            onPress={() => setBranchDropdownOpen(!branchDropdownOpen)}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
-                              borderRadius: 10,
-                              borderWidth: 1,
-                              borderColor: COLORS.primary,
-                              backgroundColor: COLORS.card,
-                            }}
-                          >
-                            <Text style={{ fontSize: 12, fontWeight: 'bold', color: COLORS.textMain }}>
-                              🏢 Selected Branch: {selectedOffice.name}
-                            </Text>
-                            <Feather name={branchDropdownOpen ? "chevron-up" : "chevron-down"} size={16} color={COLORS.primary} />
-                          </TouchableOpacity>
-
-                          {branchDropdownOpen && (
-                            <View style={{
-                              marginTop: 4,
-                              borderRadius: 10,
-                              borderWidth: 1,
-                              borderColor: COLORS.border,
-                              backgroundColor: COLORS.card,
-                              maxHeight: 180,
-                              overflow: 'hidden',
-                              shadowColor: '#000',
-                              shadowOffset: { width: 0, height: 2 },
-                              shadowOpacity: 0.1,
-                              shadowRadius: 4,
-                              elevation: 3,
-                            }}>
-                              <ScrollView nestedScrollEnabled={true} style={{ maxHeight: 180 }}>
-                                {geofence.offices.map((office: any) => {
-                                  const isSelected = office.id === geofence.selectedOfficeId;
-                                  return (
-                                    <TouchableOpacity
-                                      key={office.id}
-                                      onPress={() => {
-                                        geofence.checkLocation(office.id);
-                                        setBranchDropdownOpen(false);
-                                      }}
-                                      style={{
-                                        paddingHorizontal: 12,
-                                        paddingVertical: 10,
-                                        borderBottomWidth: 1,
-                                        borderBottomColor: COLORS.border,
-                                        backgroundColor: isSelected ? COLORS.primaryDim : COLORS.card,
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between'
-                                      }}
-                                    >
-                                      <Text style={{ 
-                                        fontSize: 12, 
-                                        fontWeight: isSelected ? 'bold' : 'normal', 
-                                        color: isSelected ? COLORS.primary : COLORS.textMain 
-                                      }}>
-                                        🏢 {office.name} ({office.radius_meters}m)
-                                      </Text>
-                                      {isSelected && <Feather name="check" size={14} color={COLORS.primary} />}
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </ScrollView>
-                            </View>
-                          )}
-                        </View>
-                      );
-                    })()}
-
-                    <GeofenceMobileMap
-                      userLat={geofence.latitude || 0}
-                      userLng={geofence.longitude || 0}
-                      branchLat={geofence.officeLatitude || 0}
-                      branchLng={geofence.officeLongitude || 0}
-                      radius={geofence.officeRadius || 50}
-                      branchName={geofence.matchingOfficeName || 'Office'}
-                    />
-                  </View>
-                )}
-              </View>
-
-              {/* Premium Styled Announcements Section */}
-              {(() => {
-                const filteredAnnouncements = announcements.filter(ann => 
-                  !ann.target_branch_id || ann.target_branch_id === profile?.branch_id
-                );
-                if (filteredAnnouncements.length === 0) return null;
-
-                return (
-                  <View style={{ marginBottom: 24 }}>
-                    <Text style={styles.sectionTitleMain}>{t('announcementsLabel')}</Text>
-                    <ScrollView 
-                      horizontal 
-                      showsHorizontalScrollIndicator={false}
-                      snapToInterval={280 + 16}
-                      decelerationRate="fast"
-                      contentContainerStyle={{ paddingRight: 16 }}
-                    >
-                      {filteredAnnouncements.map((ann) => (
-                        <TouchableOpacity 
-                          key={ann.id} 
-                          onPress={() => setSelectedAnnouncement(ann)}
-                          activeOpacity={0.8}
-                          style={{
-                            width: 280,
-                            backgroundColor: COLORS.card,
-                            borderRadius: 20,
-                            borderWidth: 1,
-                            borderColor: COLORS.border,
-                            padding: 16,
-                            marginRight: 16,
-                            position: 'relative',
-                            overflow: 'hidden'
-                          }}
-                        >
-                          <View style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: 4,
-                            bottom: 0,
-                            backgroundColor: '#6366f1'
-                          }} />
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingLeft: 6 }}>
-                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#6366f1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              📢 {ann.target_branch_id ? (language === 'fil' ? 'Sangay' : 'Branch') : 'Global'}
-                            </Text>
-                            <Text style={{ fontSize: 9, color: COLORS.textMuted }}>
-                              {new Date(ann.created_at).toLocaleDateString(language === 'fil' ? 'fil-PH' : 'en-US', { month: 'long', day: 'numeric' })}
-                            </Text>
-                          </View>
-                          <Text style={{ fontSize: 14, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6, paddingLeft: 6 }} numberOfLines={1}>
-                            {getBilingualText(ann.title, language)}
-                          </Text>
-                          <Text style={{ fontSize: 12, color: COLORS.textMuted, lineHeight: 18, paddingLeft: 6 }} numberOfLines={3}>
-                            {getBilingualText(ann.content, language)}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                );
-              })()}
-
-              {/* Redesigned Priority Dispatch Cards */}
-              <Text style={styles.sectionTitleMain}>{t('priorityDispatch')}</Text>
-              {vipSchedules.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <Feather name="check-square" size={32} color={COLORS.textMuted} style={{ marginBottom: 12 }} />
-                  <Text style={{ color: COLORS.textMain, fontWeight: '700', fontSize: 15, marginBottom: 4 }}>
-                    {language === 'fil' ? 'Lahat ay Naisagawa!' : 'All caught up!'}
-                  </Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center' }}>
-                    {language === 'fil' ? 'Walang nakatakdang priority dispatch para sa araw na ito.' : 'No priority dispatches scheduled for today.'}
-                  </Text>
-                </View>
-              ) : (
-                vipSchedules.map(sched => (
-                  <View key={sched.id} style={[styles.dispatchCard, { borderLeftColor: '#ef4444', borderLeftWidth: 4 }]}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <View style={[styles.dispatchBadge, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)', borderWidth: 1 }]}>
-                        <Text style={[styles.dispatchBadgeText, { color: '#ef4444' }]}>{t('urgent').toUpperCase()}</Text>
-                      </View>
-                      {sched.attendance_mode && (
-                        <View style={styles.attendanceBadge}>
-                          <Text style={styles.attendanceBadgeText}>
-                            💼 {sched.attendance_mode === 'hq' ? 'HQ Standard' : (sched.attendance_mode === 'direct_dispatch' ? (language === 'fil' ? 'Direktang Dispatch' : 'Direct Dispatch') : (language === 'fil' ? 'Labas ng Bayan' : 'Out-of-Town'))}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.dispatchTitle}>{sched.client_name}</Text>
-                    <Text style={styles.dispatchTime}><Feather name="clock" size={12}/> {formatTime(sched.start_time)}{sched.end_time ? ` - ${formatTime(sched.end_time)}` : ''}</Text>
-                    
-                    <TouchableOpacity onPress={() => openDirections(sched.location)} style={styles.directionsButton}>
-                      <Feather name="map-pin" size={12} color={COLORS.primary} style={{ marginRight: 6 }} />
-                      <Text style={styles.directionsButtonText} numberOfLines={1}>{sched.location}</Text>
-                      <Feather name="corner-up-right" size={14} color={COLORS.primary} style={{ marginLeft: 'auto' }} />
-                    </TouchableOpacity>
-
-                    {sched.senior_partner?.full_name && (
-                      <View style={styles.partnerRow}>
-                        <Feather name="user" size={12} color={COLORS.textMain} style={{ marginRight: 6 }} />
-                        <Text style={{ fontSize: 12, color: COLORS.textMain, fontWeight: '700' }}>
-                          {language === 'fil' ? 'Senior Tech: ' : 'Senior Partner: '}
-                          <Text style={{ fontWeight: 'normal' }}>{sched.senior_partner.full_name}</Text>
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                ))
-              )}
-
-              {/* Redesigned Standard Schedule Cards */}
-              <Text style={[styles.sectionTitleMain, { marginTop: 24 }]}>{t('standardSchedule')}</Text>
-              {regularSchedules.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <Feather name="check-square" size={32} color={COLORS.textMuted} style={{ marginBottom: 12 }} />
-                  <Text style={{ color: COLORS.textMain, fontWeight: '700', fontSize: 15, marginBottom: 4 }}>
-                    {language === 'fil' ? 'Lahat ay Naisagawa!' : 'All caught up!'}
-                  </Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center' }}>
-                    {language === 'fil' ? 'Walang nakatakdang dispatch para sa araw na ito.' : 'No dispatches scheduled for today.'}
-                  </Text>
-                </View>
-              ) : (
-                regularSchedules.map(sched => (
-                  <View key={sched.id} style={[styles.dispatchCard, { borderLeftColor: '#64748b', borderLeftWidth: 4 }]}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <View style={[styles.dispatchBadge, { backgroundColor: 'rgba(100, 116, 139, 0.1)', borderColor: 'rgba(100, 116, 139, 0.2)', borderWidth: 1 }]}>
-                        <Text style={[styles.dispatchBadgeText, { color: '#64748b' }]}>{language === 'fil' ? 'KARANIWAN' : 'STANDARD'}</Text>
-                      </View>
-                      {sched.attendance_mode && (
-                        <View style={styles.attendanceBadge}>
-                          <Text style={styles.attendanceBadgeText}>
-                            💼 {sched.attendance_mode === 'hq' ? 'HQ Standard' : (sched.attendance_mode === 'direct_dispatch' ? (language === 'fil' ? 'Direktang Dispatch' : 'Direct Dispatch') : (language === 'fil' ? 'Labas ng Bayan' : 'Out-of-Town'))}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.dispatchTitle}>{sched.client_name}</Text>
-                    <Text style={styles.dispatchTime}><Feather name="clock" size={12}/> {formatTime(sched.start_time)}{sched.end_time ? ` - ${formatTime(sched.end_time)}` : ''}</Text>
-                    
-                    <TouchableOpacity onPress={() => openDirections(sched.location)} style={styles.directionsButton}>
-                      <Feather name="map-pin" size={12} color={COLORS.primary} style={{ marginRight: 6 }} />
-                      <Text style={styles.directionsButtonText} numberOfLines={1}>{sched.location}</Text>
-                      <Feather name="corner-up-right" size={14} color={COLORS.primary} style={{ marginLeft: 'auto' }} />
-                    </TouchableOpacity>
-
-                    {sched.senior_partner?.full_name && (
-                      <View style={styles.partnerRow}>
-                        <Feather name="user" size={12} color={COLORS.textMain} style={{ marginRight: 6 }} />
-                        <Text style={{ fontSize: 12, color: COLORS.textMain, fontWeight: '700' }}>
-                          {language === 'fil' ? 'Senior Tech: ' : 'Senior Partner: '}
-                          <Text style={{ fontWeight: 'normal' }}>{sched.senior_partner.full_name}</Text>
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                ))
-              )}
-            </ScrollView>
-          )}
-
-          {activeTab === 'payslip' && (
-            <>
-            <ScrollView contentContainerStyle={styles.content}>
-              <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }]}>
-                <Text style={styles.name}>{t('payrollTab') || 'My Earnings'}</Text>
-                <Image source={require('../../assets/technocycle_logo.png')} style={{ width: 56, height: 56, resizeMode: 'contain' }} />
-              </View>
-
-              <TextInput 
-                placeholder={language === 'fil' ? 'Hanapin ang Petsa o Halaga...' : 'Search Date or Amount...'} 
-                placeholderTextColor={COLORS.textMuted}
-                style={{ backgroundColor: COLORS.card, padding: 14, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border, color: COLORS.textMain }}
-                value={searchPayslip}
-                onChangeText={setSearchPayslip}
-              />
-
-              {payslips && payslips.length > 0 ? (
-                [payslips[0]].map((p, idx) => {
-                  const payslip = p;
-                    const cycleLogs = dtrLogs.filter(log => {
-                      const logDate = log.created_at ? log.created_at.split('T')[0] : '';
-                      return logDate >= payslip.period_start && logDate <= payslip.period_end;
-                    });
-                    const daysWorked = cycleLogs.length || 10;
-                    const totalHours = cycleLogs.reduce((sum, log) => sum + Number(log.total_hours || 0), 0) || (daysWorked * 8);
-                    
-                    const baseHourlyRate = Number(profile?.base_salary || 20000) / 208;
-                    const expectedRegularPay = baseHourlyRate * totalHours;
-                    const holidayBonus = Math.max(0, Number(payslip.gross_pay) - expectedRegularPay);
-                    const holidayHours = holidayBonus > 0 ? Math.round(holidayBonus / (baseHourlyRate * 0.3)) : 0;
-                    
-                    const withholdingTax = Math.max(0, Number(payslip.gross_pay) - Number(payslip.sss_deduction) - Number(payslip.philhealth_deduction) - Number(payslip.pagibig_deduction) - Number(payslip.net_pay));
-
-                    return (
-                      <TouchableOpacity 
-                        key={idx} 
-                        style={styles.payslipCard}
-                        onPress={() => {
-                          setPayslip(payslip);
-                          setShowPayslipDetailsModal(true);
-                        }}
-                      >
-                        <Text style={styles.sectionTitle}>{language === 'fil' ? 'Huling Payslip' : 'Payslip Record'}</Text>
-                        <Text style={styles.period}>{language === 'fil' ? 'Siklo' : 'Cycle'}: {payslip.period_start} to {payslip.period_end}</Text>
-                        
-                        <View style={[styles.netPayBox, { marginBottom: 0 }]}>
-                          <Text style={styles.netPayLabel}>{language === 'fil' ? 'Kabuuang Netong Sahod' : 'Net Take-Home Pay'}</Text>
-                          <Text style={styles.netPayAmount}>{formatPhp(payslip.net_pay)}</Text>
-                        </View>
-                        <View style={{ marginTop: 16, alignItems: 'center' }}>
-                          <Text style={{ color: COLORS.primary, fontWeight: 'bold' }}>{language === 'fil' ? 'Tingnan ang Detalye' : 'View Full Details'} &rarr;</Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                })
-              ) : (
-                <View style={[styles.payslipCard, { alignItems: 'center', paddingVertical: 60 }]}>
-                  <Feather name="file-text" size={48} color={COLORS.border} style={{ marginBottom: 16 }} />
-                  <Text style={{ color: COLORS.textMuted }}>No published payslips found.</Text>
-                </View>
-              )}
-            </ScrollView>
-
-            <Modal visible={showPayslipHistory} animationType="slide" transparent={true} onRequestClose={() => setShowPayslipHistory(false)}>
-              <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-                <View style={{ backgroundColor: COLORS.background, height: '80%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.textMain }}>{language === 'fil' ? 'Kasaysayan ng Payslip' : 'Payslip History'}</Text>
-                    <TouchableOpacity onPress={() => setShowPayslipHistory(false)}>
-                      <Feather name="x" size={24} color={COLORS.textMain} />
-                    </TouchableOpacity>
-                  </View>
-                  <TextInput 
-                    placeholder={language === 'fil' ? 'Hanapin ang Petsa...' : 'Search Date...'} 
-                    placeholderTextColor={COLORS.textMuted}
-                    style={{ backgroundColor: '#fff', padding: 14, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border }}
-                    value={searchPayslip}
-                    onChangeText={setSearchPayslip}
-                  />
-                  <ScrollView>
-                    {payslips.filter(p => p.period_start.includes(searchPayslip) || p.period_end.includes(searchPayslip) || (p.net_pay && p.net_pay.toString().includes(searchPayslip))).map((p, idx) => (
-                      <TouchableOpacity key={idx} style={{ padding: 16, backgroundColor: '#fff', borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border }} onPress={() => { setShowPayslipHistory(false); setPayslip(p); setShowDisputeModal(true); }}>
-                        <Text style={{ fontWeight: 'bold', color: COLORS.textMain }}>{new Date(p.period_start).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} - {new Date(p.period_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</Text>
-                        <Text style={{ color: COLORS.primary, marginTop: 4 }}>Net Pay: {Number(p.net_pay).toLocaleString('en-US', { style: 'currency', currency: 'PHP' })}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              </View>
-            </Modal>
-            </>
-          )}
-
-
-
-          {activeTab === 'schedules' && (
-            <SchedulesTab 
-              schedules={schedules || []} 
-              isDarkMode={isDarkMode} 
-              language={language} 
-              openDirections={openDirections} 
-              formatTime={formatTime} 
-            />
-          )}
-
-          {activeTab === 'tickets' && (
-            <TicketsTab userId={session.user.id} fullName={profile?.full_name || 'Technician'} language={language} isOnline={isOnline} isDarkMode={isDarkMode} />
-          )}
-
-
-
-
-          {activeTab === 'profile' && (
-            <ScrollView contentContainerStyle={styles.content}>
-            <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }]}>
-                <Text style={[styles.name, { flex: 1, marginRight: 16 }]}>{t('profileTitle')}</Text>
-                <TouchableOpacity onPress={handleLogoTap} activeOpacity={0.7}>
-                  <Image source={require('../../assets/technocycle_logo.png')} style={{ width: 56, height: 56, resizeMode: 'contain' }} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Avatar Header Row */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, marginBottom: 24 }}>
-                <TouchableOpacity 
-                  onPress={handleUploadAvatar}
-                  disabled={avatarUploading}
-                  style={{ position: 'relative', marginRight: 16 }}
-                >
-                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.primaryDim, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {avatarUploading ? (
-                      <ActivityIndicator size="small" color={COLORS.primary} />
-                    ) : profile?.avatar_url ? (
-                      <Image source={{ uri: profile.avatar_url }} style={{ width: 64, height: 64 }} />
-                    ) : (
-                      <Text style={{ color: COLORS.primary, fontSize: 24, fontWeight: 'bold' }}>{profile?.full_name?.charAt(0) || 'T'}</Text>
-                    )}
-                  </View>
-                  <View style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: COLORS.primary, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.card }}>
-                    <Feather name="camera" size={10} color="#fff" />
-                  </View>
-                </TouchableOpacity>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: COLORS.textMain, fontSize: 18, fontWeight: 'bold', marginBottom: 2 }}>{profile?.full_name}</Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 6 }}>
-                    {profile?.role ? profile.role.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : t('active')}
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isOnline ? COLORS.primary : COLORS.danger, marginRight: 6 }} />
-                    <Text style={{ color: isOnline ? COLORS.primary : COLORS.danger, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      {isOnline ? t('online') : t('offline')}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Account Group Card */}
-              <Text style={{ color: COLORS.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, marginLeft: 4 }}>
-                {t('accountSection')}
-              </Text>
-              <View style={{ backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: 8, marginBottom: 20 }}>
-                <TouchableOpacity 
-                  onPress={() => { setShowDtrModal(true); fetchDtrLogs(); }}
-                  style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(16, 185, 129, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="clock" size={16} color={COLORS.primary} />
-                    </View>
-                    <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 14 }}>{t('dtrLabel')}</Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Document Management System (DMS) Group Card */}
-              <Text style={{ color: COLORS.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, marginLeft: 4 }}>
-                {t('companyFormsLabel')}
-              </Text>
-              <View style={{ backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: 8, marginBottom: 20 }}>
-                {/* Employee Handbook */}
-                <TouchableOpacity 
-                  onPress={() => startFormDownload('Employee_Handbook_2026.pdf')}
-                  style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: COLORS.border }}
-                  disabled={!!downloadingFile}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(59, 130, 246, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="book-open" size={16} color="#3b82f6" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 14 }}>Employee Handbook.pdf</Text>
-                      {downloadingFile === 'Employee_Handbook_2026.pdf' && (
-                        <Text style={{ color: COLORS.primary, fontSize: 11, fontWeight: '700', marginTop: 2 }}>{t('downloading')} {downloadProgress}%</Text>
-                      )}
-                    </View>
-                  </View>
-                  <Feather name="download" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
-
-                {/* File Leave Directly (Interactive Portal) */}
-                <TouchableOpacity 
-                  onPress={() => setActiveTab('tickets')}
-                  style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: COLORS.border }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(16, 185, 129, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="calendar" size={16} color={COLORS.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 14 }}>{language === 'fil' ? 'Aplikasyon sa Leave' : 'Leave Requests Portal'}</Text>
-                      <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{language === 'fil' ? 'Mag-apply at tingnan ang mga leave online' : 'Apply and track leave requests online'}</Text>
-                    </View>
-                  </View>
-                  <Feather name="chevron-right" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
-
-                {/* Leave Application Form */}
-                <TouchableOpacity 
-                  onPress={() => startFormDownload('Leave_Application_Form.pdf')}
-                  style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: COLORS.border }}
-                  disabled={!!downloadingFile}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(16, 185, 129, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="file-text" size={16} color={COLORS.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 14 }}>Leave Application Form.pdf</Text>
-                      {downloadingFile === 'Leave_Application_Form.pdf' && (
-                        <Text style={{ color: COLORS.primary, fontSize: 11, fontWeight: '700', marginTop: 2 }}>{t('downloading')} {downloadProgress}%</Text>
-                      )}
-                    </View>
-                  </View>
-                  <Feather name="download" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
-
-                {/* Resignation Template */}
-                <TouchableOpacity 
-                  onPress={() => startFormDownload('Resignation_Template.pdf')}
-                  style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                  disabled={!!downloadingFile}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(239, 68, 68, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="file-minus" size={16} color={COLORS.danger} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 14 }}>Resignation Template.pdf</Text>
-                      {downloadingFile === 'Resignation_Template.pdf' && (
-                        <Text style={{ color: COLORS.primary, fontSize: 11, fontWeight: '700', marginTop: 2 }}>{t('downloading')} {downloadProgress}%</Text>
-                      )}
-                    </View>
-                  </View>
-                  <Feather name="download" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Preferences Group Card */}
-              <Text style={{ color: COLORS.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, marginLeft: 4 }}>
-                {t('preferencesSection')}
-              </Text>
-              <View style={{ backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: 8, marginBottom: 20 }}>
-                <View style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(59, 130, 246, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="globe" size={16} color="#3b82f6" />
-                    </View>
-                    <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 14 }}>{t('languageLabel')}</Text>
-                  </View>
-                  
-                  {/* Segmented language switcher */}
-                  <View style={{ position: 'relative', width: 116, height: 32, backgroundColor: COLORS.border, borderRadius: 8, flexDirection: 'row', alignItems: 'center', padding: 2 }}>
-                    <Animated.View style={{
-                      position: 'absolute',
-                      top: 2,
-                      bottom: 2,
-                      left: 0,
-                      width: 56,
-                      backgroundColor: COLORS.whiteCard,
-                      borderRadius: 6,
-                      transform: [{
-                        translateX: langAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [2, 58]
-                        })
-                      }],
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: 0.1,
-                      shadowRadius: 2,
-                      elevation: 2
-                    }} />
-                    <TouchableOpacity onPress={() => changeLanguage('en')} style={{ flex: 1, alignItems: 'center', zIndex: 1, height: '100%', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 12, fontWeight: 'bold', color: language === 'en' ? COLORS.primary : COLORS.textMuted }}>EN</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => changeLanguage('fil')} style={{ flex: 1, alignItems: 'center', zIndex: 1, height: '100%', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 12, fontWeight: 'bold', color: language === 'fil' ? COLORS.primary : COLORS.textMuted }}>FIL</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-
-              {/* System Group Card */}
-              <Text style={{ color: COLORS.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, marginLeft: 4 }}>
-                {t('systemSection')}
-              </Text>
-              <View style={{ backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, padding: 8, marginBottom: 24 }}>
-                {/* Connection Status Row */}
-                <View style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(71, 85, 105, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="activity" size={16} color="#475569" />
-                    </View>
-                    <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 14 }}>{t('syncStatus')}</Text>
-                  </View>
-                  <Text style={{ color: isOnline ? COLORS.primary : COLORS.danger, fontWeight: 'bold', fontSize: 13 }}>
-                    {isOnline ? t('online') : t('offline')}
-                  </Text>
-                </View>
-
-                {/* Dark Mode Toggle Row */}
-                <View style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(250, 204, 21, 0.15)' : 'rgba(79, 70, 229, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name={isDarkMode ? "sun" : "moon"} size={16} color={isDarkMode ? "#eab308" : COLORS.primary} />
-                    </View>
-                    <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 14 }}>
-                      {language === 'fil' ? 'Madilim na Mode' : 'Dark Mode'}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={isDarkMode}
-                    onValueChange={async (value) => {
-                      setIsDarkMode(value);
-                      await AsyncStorage.setItem('THEME_MODE', value ? 'dark' : 'light');
-                    }}
-                    trackColor={{ false: '#cbd5e1', true: '#10b981' }}
-                    thumbColor={Platform.OS === 'android' ? '#ffffff' : undefined}
-                  />
-                </View>
-
-                {/* Highly Accessible Log Out Row */}
-                <TouchableOpacity 
-                  onPress={async () => {
-                    geofence.reset();
-                    setBranchDropdownOpen(false);
-                    setShowLeavesModal(false);
-                    setShowApplyLeaveModal(false);
-                    setShowDisputeModal(false);
-                    setSelectedAnnouncement(null);
-                    setShowOtModal(false);
-                    setShowDtrModal(false);
-                    setShowErrorDetails(false);
-                    setSession(null); setProfile(null); setSchedules([]); setPayslip(null); setActiveTimeLog(null); setActiveTab('home');
-                    try { await supabase.auth.signOut(); } catch(e) {}
-                  }}
-                  style={{ padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(239, 68, 68, 0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="log-out" size={16} color={COLORS.danger} />
-                    </View>
-                    <Text style={{ color: COLORS.danger, fontWeight: 'bold', fontSize: 14 }}>{t('logOut')}</Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color={COLORS.danger} style={{ opacity: 0.5 }} />
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          )}
-        </FadeInView>
-
-        {/* FIXED BOTTOM NAVIGATION BAR */}
-        <View style={styles.bottomNav}>
-          <TouchableOpacity style={styles.navItem} onPress={() => setActiveTab('home')}>
-            <Feather name="home" size={24} color={activeTab === 'home' ? COLORS.primary : COLORS.textMuted} />
-            <Text style={[styles.navText, { color: activeTab === 'home' ? COLORS.primary : COLORS.textMuted }]}>{t('homeTab')}</Text>
-            <View style={[styles.navDot, { backgroundColor: activeTab === 'home' ? COLORS.primary : 'transparent' }]} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.navItem} onPress={() => setActiveTab('schedules')}>
-            <Feather name="calendar" size={24} color={activeTab === 'schedules' ? COLORS.primary : COLORS.textMuted} />
-            <Text style={[styles.navText, { color: activeTab === 'schedules' ? COLORS.primary : COLORS.textMuted }]}>{language === 'fil' ? 'Iskedyul' : 'Schedule'}</Text>
-            <View style={[styles.navDot, { backgroundColor: activeTab === 'schedules' ? COLORS.primary : 'transparent' }]} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.navItem} onPress={() => setActiveTab('tickets')}>
-            <Feather name="message-square" size={24} color={activeTab === 'tickets' ? COLORS.primary : COLORS.textMuted} />
-            <Text style={[styles.navText, { color: activeTab === 'tickets' ? COLORS.primary : COLORS.textMuted }]}>{t('supportTab')}</Text>
-            <View style={[styles.navDot, { backgroundColor: activeTab === 'tickets' ? COLORS.primary : 'transparent' }]} />
-          </TouchableOpacity>
-
-
-          
-          <TouchableOpacity style={styles.navItem} onPress={() => setActiveTab('payslip')}>
-            <Feather name="dollar-sign" size={24} color={activeTab === 'payslip' ? COLORS.primary : COLORS.textMuted} />
-            <Text style={[styles.navText, { color: activeTab === 'payslip' ? COLORS.primary : COLORS.textMuted }]}>{t('payrollTab')}</Text>
-            <View style={[styles.navDot, { backgroundColor: activeTab === 'payslip' ? COLORS.primary : 'transparent' }]} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.navItem} onPress={() => setActiveTab('profile')}>
-            <Feather name="user" size={24} color={activeTab === 'profile' ? COLORS.primary : COLORS.textMuted} />
-            <Text style={[styles.navText, { color: activeTab === 'profile' ? COLORS.primary : COLORS.textMuted }]}>{t('profileTab')}</Text>
-            <View style={[styles.navDot, { backgroundColor: activeTab === 'profile' ? COLORS.primary : 'transparent' }]} />
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  };
-
-  const appContent = renderAppContent();
-
-  const renderedContent = (
-    <View style={{ flex: 1, position: 'relative' }}>
-      {appContent}
-
-      {showLeavesModal && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.background, zIndex: 99998, padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40 }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <TouchableOpacity onPress={() => setShowLeavesModal(false)} style={{ padding: 8, marginLeft: -8 }}>
-              <Feather name="arrow-left" size={24} color={COLORS.textMain} />
-            </TouchableOpacity>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.textMain }}>{language === 'fil' ? 'Kasaysayan ng Leave' : 'Leave Requests'}</Text>
-            <TouchableOpacity onPress={fetchLeaves} style={{ padding: 8, marginRight: -8 }} disabled={leavesLoading}>
-              {leavesLoading ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Feather name="refresh-cw" size={18} color={COLORS.primary} />}
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity 
-            onPress={() => setShowApplyLeaveModal(true)}
-            style={{ backgroundColor: COLORS.primary, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}
-          >
-            <Text style={{ color: COLORS.background, fontSize: 14, fontWeight: 'bold' }}>{language === 'fil' ? 'Mag-file ng Bagong Leave' : 'File New Leave Request'}</Text>
-          </TouchableOpacity>
-
-          {leavesLoading && leaves.length === 0 ? (
-            <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
-          ) : leaves.length === 0 ? (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 60 }}>
-              <Feather name="calendar" size={48} color={COLORS.border} style={{ marginBottom: 16 }} />
-              <Text style={{ color: COLORS.textMuted, fontStyle: 'italic' }}>{language === 'fil' ? 'Walang nahanap na mga leave request.' : 'No leave requests found.'}</Text>
-            </View>
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
-              {leaves.map((item) => {
-                const startStr = new Date(item.start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-                const endStr = new Date(item.end_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-                
-                let badgeColor = '#f59e0b'; // pending
-                if (item.status === 'approved') badgeColor = COLORS.primary;
-                if (item.status === 'rejected') badgeColor = COLORS.danger;
-
-                return (
-                  <View key={item.id} style={{ backgroundColor: COLORS.card, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.primary, textTransform: 'uppercase' }}>
-                        {item.leave_type}
-                      </Text>
-                      <View style={{ backgroundColor: badgeColor + '15', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-                        <Text style={{ fontSize: 10, color: badgeColor, fontWeight: '800', textTransform: 'uppercase' }}>
-                          {item.status}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 4 }}>
-                      📅 {startStr} - {endStr}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 8 }}>
-                      {item.reason}
-                    </Text>
-                    {item.attachment_url && (
-                      <TouchableOpacity 
-                        onPress={() => Linking.openURL(item.attachment_url)}
-                        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.border, padding: 8, borderRadius: 8, alignSelf: 'flex-start' }}
-                      >
-                        <Feather name="file" size={14} color={COLORS.textMain} style={{ marginRight: 6 }} />
-                        <Text style={{ fontSize: 11, color: COLORS.textMain, fontWeight: 'bold' }}>{language === 'fil' ? 'Tingnan ang Attachment' : 'View Attachment'}</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-            </ScrollView>
-          )}
-        </View>
-      )}
-
-      {showApplyLeaveModal && (
-        <Modal animationType="slide" transparent={false} visible={showApplyLeaveModal} onRequestClose={() => setShowApplyLeaveModal(false)}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background, padding: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingHorizontal: 10 }}>
-              <TouchableOpacity onPress={() => setShowApplyLeaveModal(false)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="x" size={24} color={COLORS.textMain} />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.textMain }}>{language === 'fil' ? 'Mag-apply para sa Leave' : 'Apply for Leave'}</Text>
-              <View style={{ width: 40 }} />
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 40 }}>
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>{language === 'fil' ? 'Uri ng Leave' : 'Leave Type'}</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-                {(['sick', 'vacation', 'emergency', 'unpaid'] as const).map((type) => (
-                  <TouchableOpacity 
-                    key={type}
-                    onPress={() => setLeaveType(type)}
-                    style={{ 
-                      flex: 1, 
-                      padding: 10, 
-                      borderRadius: 10, 
-                      borderWidth: 1, 
-                      borderColor: leaveType === type ? COLORS.primary : COLORS.border,
-                      backgroundColor: leaveType === type ? COLORS.primaryDim : 'transparent',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: leaveType === type ? COLORS.primary : COLORS.textMuted, textTransform: 'uppercase' }}>
-                      {type}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>{language === 'fil' ? 'Simulang Petsa (YYYY-MM-DD)' : 'Start Date (YYYY-MM-DD)'}</Text>
-              <TextInput 
-                style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12, fontSize: 14, color: COLORS.textMain, marginBottom: 16, backgroundColor: COLORS.card }}
-                placeholder="e.g. 2026-07-20"
-                placeholderTextColor={COLORS.textMuted}
-                value={leaveStartDate}
-                onChangeText={setLeaveStartDate}
-              />
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>{language === 'fil' ? 'Katapusang Petsa (YYYY-MM-DD)' : 'End Date (YYYY-MM-DD)'}</Text>
-              <TextInput 
-                style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12, fontSize: 14, color: COLORS.textMain, marginBottom: 16, backgroundColor: COLORS.card }}
-                placeholder="e.g. 2026-07-22"
-                placeholderTextColor={COLORS.textMuted}
-                value={leaveEndDate}
-                onChangeText={setLeaveEndDate}
-              />
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>{language === 'fil' ? 'Dahilan' : 'Reason'}</Text>
-              <TextInput 
-                style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12, fontSize: 14, color: COLORS.textMain, marginBottom: 16, backgroundColor: COLORS.card, height: 100 }}
-                placeholder="Reason for leave request"
-                placeholderTextColor={COLORS.textMuted}
-                value={leaveReason}
-                onChangeText={setLeaveReason}
-                multiline
-              />
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>{language === 'fil' ? 'Attachment (Kailangan)' : 'Attachment (Required)'}</Text>
-              <TouchableOpacity 
-                onPress={handleSelectLeaveAttachment}
-                style={{ 
-                  flexDirection: 'row', 
-                  alignItems: 'center', 
-                  borderWidth: 1, 
-                  borderColor: COLORS.border, 
-                  borderStyle: 'dashed', 
-                  borderRadius: 12, 
-                  padding: 16, 
-                  backgroundColor: COLORS.card,
-                  justifyContent: 'center',
-                  marginBottom: 24 
-                }}
-              >
-                <Feather name="paperclip" size={16} color={COLORS.textMuted} style={{ marginRight: 8 }} />
-                <Text style={{ color: COLORS.textMuted, fontSize: 13, fontWeight: '600' }}>
-                  {leaveAttachment ? leaveAttachment.name : (language === 'fil' ? 'Pumili ng Larawan o PDF' : 'Choose Photo or PDF')}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                onPress={handleApplyLeaveSubmit}
-                disabled={leaveSubmitLoading}
-                style={{ backgroundColor: COLORS.primary, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
-              >
-                {leaveSubmitLoading ? <ActivityIndicator color={COLORS.background} size="small" /> : <Text style={{ color: COLORS.background, fontSize: 14, fontWeight: 'bold' }}>{language === 'fil' ? 'I-submit ang Application' : 'Submit Leave Request'}</Text>}
-              </TouchableOpacity>
-            </ScrollView>
-          </SafeAreaView>
-        </Modal>
-      )}
-
-      {showOtModal && (
-        <Modal animationType="slide" transparent={false} visible={showOtModal} onRequestClose={() => setShowOtModal(false)}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background, padding: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingHorizontal: 10 }}>
-              <TouchableOpacity onPress={() => setShowOtModal(false)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="x" size={24} color={COLORS.textMain} />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.textMain }}>
-                {language === 'fil' ? 'Mag-request ng Overtime' : 'Request Overtime'}
-              </Text>
-              <View style={{ width: 40 }} />
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 40 }}>
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 12 }}>
-                {language === 'fil'
-                  ? 'Gamitin ang form na ito upang mag-request ng overtime hours kapag nagtatrabaho lagpas ng 5:00 PM.'
-                  : 'Use this form to request overtime hours when working past 5:00 PM.'}
-              </Text>
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>
-                {language === 'fil' ? 'Petsa ng Overtime' : 'Overtime Date'}
-              </Text>
-              <TextInput 
-                style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12, fontSize: 14, color: COLORS.textMuted, marginBottom: 16, backgroundColor: COLORS.card }}
-                value={new Date().toLocaleDateString(undefined, { dateStyle: 'long' })}
-                editable={false}
-              />
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>
-                {language === 'fil' ? 'Bilang ng Oras (OT Hours)' : 'Requested Hours (OT Hours)'}
-              </Text>
-              <TextInput 
-                style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12, fontSize: 14, color: COLORS.textMain, marginBottom: 16, backgroundColor: COLORS.card }}
-                keyboardType="numeric"
-                placeholder="e.g. 2"
-                placeholderTextColor={COLORS.textMuted}
-                value={otHours}
-                onChangeText={setOtHours}
-              />
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>
-                {language === 'fil' ? 'Dahilan ng Overtime' : 'Reason for Overtime'}
-              </Text>
-              <TextInput 
-                style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12, fontSize: 14, color: COLORS.textMain, marginBottom: 24, backgroundColor: COLORS.card, height: 120 }}
-                placeholder={language === 'fil' ? 'Ilagay ang dahilan ng pag-overtime...' : 'Explain the reason for overtime...'}
-                placeholderTextColor={COLORS.textMuted}
-                value={otReason}
-                onChangeText={setOtReason}
-                multiline
-              />
-
-              <TouchableOpacity 
-                onPress={handleOtSubmit}
-                disabled={otSubmitting}
-                style={{ backgroundColor: COLORS.primary, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
-              >
-                {otSubmitting ? (
-                  <ActivityIndicator color={COLORS.background} size="small" />
-                ) : (
-                  <Text style={{ color: COLORS.background, fontSize: 14, fontWeight: 'bold' }}>
-                    {language === 'fil' ? 'I-submit ang OT Request' : 'Submit OT Request'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
-          </SafeAreaView>
-        </Modal>
-      )}
-
       
-      {showPayslipDetailsModal && payslip && (
-        <Modal animationType="slide" transparent={false} visible={showPayslipDetailsModal} onRequestClose={() => setShowPayslipDetailsModal(false)}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: COLORS.background, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-              <TouchableOpacity onPress={() => setShowPayslipDetailsModal(false)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="arrow-left" size={24} color={COLORS.textMain} />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.textMain }}>{language === 'fil' ? 'Detalye ng Payslip' : 'Payslip Details'}</Text>
-              <View style={{ width: 40 }} />
-            </View>
-            <ScrollView contentContainerStyle={{ padding: 20 }}>
-              <View style={styles.payslipCard}>
-                <Text style={styles.sectionTitle}>{language === 'fil' ? 'Huling Payslip' : 'Payslip Record'}</Text>
-                <Text style={styles.period}>{language === 'fil' ? 'Siklo' : 'Cycle'}: {payslip.period_start} to {payslip.period_end}</Text>
-                
-                <View style={styles.netPayBox}>
-                  <Text style={styles.netPayLabel}>{language === 'fil' ? 'Kabuuang Netong Sahod' : 'Net Take-Home Pay'}</Text>
-                  <Text style={styles.netPayAmount}>{formatPhp(payslip.net_pay)}</Text>
-                </View>
+      // Attempt login with a universal default password for testing phase
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: emailAttached,
+        password: 'password123', // Assumption for testing
+      });
 
-                <Text style={{ color: COLORS.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginTop: 8 }}>
-                  {language === 'fil' ? 'PAGHAHATI-HATI NG KITA' : 'EARNINGS BREAKDOWN'}
-                </Text>
-                
-                <View style={{ backgroundColor: COLORS.card, borderRadius: 16, borderLeftWidth: 0, borderRightWidth: 0, borderWidth: 1, borderColor: COLORS.border, padding: 12, marginBottom: 20 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>{language === 'fil' ? 'Base Regular Pay' : 'Base Regular Pay'}</Text>
-                    <Text style={{ color: COLORS.textMain, fontWeight: '600', fontSize: 13 }}>{formatPhp(Math.min(Number(payslip.gross_pay), (Number(profile?.base_salary || 20000) / 208) * 80))}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 }}>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>{language === 'fil' ? 'Oras ng Holiday at Bonus' : 'Holiday Hours & Multiplier'}</Text>
-                    <Text style={{ color: COLORS.primary, fontWeight: 'bold', fontSize: 13 }}>+{formatPhp(Math.max(0, Number(payslip.gross_pay) - ((Number(profile?.base_salary || 20000) / 208) * 80)))}</Text>
-                  </View>
-                </View>
+      if (authError) {
+        Alert.alert('Auth Error', 'Number found, but failed to generate session. (Check test passwords)');
+        setLoading(false);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Could not verify number.');
+      setLoading(false);
+    }
+  };
 
-                <Text style={{ color: COLORS.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-                  {language === 'fil' ? 'MGA BINAWAS (DEDUCTIONS)' : 'DEDUCTIONS & ADJUSTMENTS'}
-                </Text>
+  const handleEmailLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password.');
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-                <View style={{ backgroundColor: COLORS.card, borderRadius: 16, borderLeftWidth: 0, borderRightWidth: 0, borderWidth: 1, borderColor: COLORS.border, padding: 12, marginBottom: 8 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>SSS Contribution</Text>
-                    <Text style={{ color: COLORS.danger, fontWeight: 'bold', fontSize: 13 }}>- {formatPhp(payslip.sss_deduction)}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>PhilHealth Contribution</Text>
-                    <Text style={{ color: COLORS.danger, fontWeight: 'bold', fontSize: 13 }}>- {formatPhp(payslip.philhealth_deduction)}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Pag-IBIG Contribution</Text>
-                    <Text style={{ color: COLORS.danger, fontWeight: 'bold', fontSize: 13 }}>- {formatPhp(payslip.pagibig_deduction)}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 }}>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>{language === 'fil' ? 'Withholding Tax / Karagdagang Bawas' : 'Withholding Tax adjustments'}</Text>
-                    <Text style={{ color: COLORS.danger, fontWeight: 'bold', fontSize: 13 }}>- {formatPhp(Math.max(0, Number(payslip.gross_pay) - Number(payslip.sss_deduction) - Number(payslip.philhealth_deduction) - Number(payslip.pagibig_deduction) - Number(payslip.net_pay)))}</Text>
-                  </View>
-                </View>
+    if (error) {
+      Alert.alert('Login Failed', error.message);
+      setLoading(false);
+    }
+  };
 
-                <TouchableOpacity 
-                  onPress={() => {
-                      setShowPayslipDetailsModal(false);
-                      setTimeout(() => setShowDisputeModal(true), 300);
-                  }}
-                  style={{ backgroundColor: COLORS.danger, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 24, marginBottom: 12 }}
-                >
-                  <Text style={{ color: COLORS.background, fontSize: 14, fontWeight: 'bold' }}>
-                    {language === 'fil' ? 'I-dispute ang Payslip' : 'Dispute Payslip'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </SafeAreaView>
-        </Modal>
-      )}
-
-      {showDisputeModal && (
-        <Modal animationType="slide" transparent={false} visible={showDisputeModal} onRequestClose={() => setShowDisputeModal(false)}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff', padding: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingHorizontal: 10 }}>
-              <TouchableOpacity onPress={() => setShowDisputeModal(false)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="x" size={24} color={COLORS.textMain} />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.textMain }}>{language === 'fil' ? 'I-dispute ang Payslip' : 'Dispute Payslip'}</Text>
-              <View style={{ width: 40 }} />
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 40 }}>
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 8 }}>
-                {language === 'fil' ? 'Siklo ng Payslip' : 'Payslip Cycle'}: {payslip?.period_start ? new Date(payslip.period_start).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''} to {payslip?.period_end ? new Date(payslip.period_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''}
-              </Text>
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 8 }}>
-                {language === 'fil' ? 'Kabuuang Netong Sahod' : 'Net Take-Home Pay'}: {formatPhp(payslip?.net_pay)}
-              </Text>
-
-              <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 16 }} />
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>
-                {language === 'fil' ? 'Dahilan ng Dispute (e.g. kulang ang overtime or holiday pay)' : 'Reason for Dispute (e.g. missing hours or allowances)'}
-              </Text>
-              <TextInput 
-                style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12, fontSize: 14, color: COLORS.textMain, marginBottom: 16, backgroundColor: COLORS.card, height: 120 }}
-                placeholder="State the reason why you are disputing this payslip..."
-                placeholderTextColor={COLORS.textMuted}
-                value={disputeReason}
-                onChangeText={setDisputeReason}
-                multiline
-              />
-
-              <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 6 }}>
-                {language === 'fil' ? 'Supporting Document / Patunay (Kailangan)' : 'Supporting Document (Required)'}
-              </Text>
-              <TouchableOpacity 
-                onPress={handleSelectDisputeAttachment}
-                style={{ 
-                  flexDirection: 'row', 
-                  alignItems: 'center', 
-                  borderWidth: 1, 
-                  borderColor: COLORS.border, 
-                  borderStyle: 'dashed', 
-                  borderRadius: 12, 
-                  padding: 16, 
-                  backgroundColor: COLORS.card,
-                  justifyContent: 'center',
-                  marginBottom: 24 
-                }}
-              >
-                <Feather name="paperclip" size={16} color={COLORS.textMuted} style={{ marginRight: 8 }} />
-                <Text style={{ color: COLORS.textMuted, fontSize: 13, fontWeight: '600' }}>
-                  {disputeAttachment ? disputeAttachment.name : (language === 'fil' ? 'Pumili ng Larawan o PDF' : 'Choose Photo or PDF')}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                onPress={handleApplyDisputeSubmit}
-                disabled={disputeSubmitLoading}
-                style={{ backgroundColor: COLORS.danger, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
-              >
-                {disputeSubmitLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>{language === 'fil' ? 'I-submit ang Dispute' : 'Submit Dispute'}</Text>}
-              </TouchableOpacity>
-            </ScrollView>
-          </SafeAreaView>
-        </Modal>
-      )}
-
-      {showDtrModal && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.background, zIndex: 99998, padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40 }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <TouchableOpacity onPress={() => setShowDtrModal(false)} style={{ padding: 8, marginLeft: -8 }}>
-              <Feather name="arrow-left" size={24} color={COLORS.textMain} />
-            </TouchableOpacity>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.textMain }}>{t('dtrHistoryTitle')}</Text>
-            <TouchableOpacity onPress={fetchDtrLogs} style={{ padding: 8, marginRight: -8 }} disabled={dtrLoading}>
-              {dtrLoading ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Feather name="refresh-cw" size={18} color={COLORS.primary} />}
-            </TouchableOpacity>
-          </View>
-          
-          <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-            {t('currentMonthLogs')} ({dtrLogs.length})
-          </Text>
-
-          {dtrLogs.length === 0 ? (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 60 }}>
-              <Feather name="clock" size={48} color={COLORS.border} style={{ marginBottom: 16 }} />
-              <Text style={{ color: COLORS.textMuted, fontStyle: 'italic' }}>
-                {dtrLoading ? t('loadingLogs') : t('noLogs')}
-              </Text>
-            </View>
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
-              {dtrLogs.map((log) => {
-                const logDate = new Date(log.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-                const timeInStr = log.app_time_in ? formatTime(log.app_time_in) : '--:--';
-                const timeOutStr = log.app_time_out ? formatTime(log.app_time_out) : '--:--';
-                const hours = log.total_hours !== null ? `${log.total_hours} hrs` : t('active');
-                const isManual = log.is_manual_entry || log.geofence_status === 'manual_override';
-
-                return (
-                  <View key={log.id} style={{ backgroundColor: COLORS.card, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <Text style={{ fontSize: 14, fontWeight: 'bold', color: COLORS.textMain }}>📅 {logDate}</Text>
-                      {isManual ? (
-                        <View style={{ backgroundColor: '#e2e8f0', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-                          <Text style={{ fontSize: 10, color: '#475569', fontWeight: '800' }}>{t('manualEntry')}</Text>
-                        </View>
-                      ) : (
-                        <View style={{ backgroundColor: COLORS.primaryDim, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-                          <Text style={{ fontSize: 10, color: COLORS.primary, fontWeight: '800' }}>{t('gpsVerified')}</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, textTransform: 'uppercase' }}>{t('clockIn')}</Text>
-                        <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginTop: 2 }}>{timeInStr}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, textTransform: 'uppercase' }}>{t('clockOut')}</Text>
-                        <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textMain, marginTop: 2 }}>{timeOutStr}</Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-end', flex: 1 }}>
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, textTransform: 'uppercase' }}>{t('duration')}</Text>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.primary, marginTop: 2 }}>{hours}</Text>
-                      </View>
-                    </View>
-                    
-                    {log.gps_accuracy && !isManual && (
-                      <Text style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 8 }}>
-                        📍 {t('accuracy')}: {log.gps_accuracy.toFixed(1)}m {log.is_mocked ? ` | ⚠️ ${t('mockGps')}` : ''}
-                      </Text>
-                    )}
-                  </View>
-                );
-              })}
-            </ScrollView>
-          )}
-        </View>
-      )}
-      {splashVisible && (
-        <Animated.View style={[styles.splashContainer, { opacity: splashOpacity }]} pointerEvents={splashVisible ? 'auto' : 'none'}>
-          <Animated.View style={{ transform: [{ scale: logoScale }], opacity: logoOpacity, alignItems: 'center' }}>
-            <Image source={require('../../assets/technocycle_logo.png')} style={styles.splashLogo} />
-            <Animated.View style={{ opacity: taglineOpacity, transform: [{ translateY: taglineTranslateY }], alignItems: 'center' }}>
-              <Text style={styles.splashBrand}>TECHNOSYS</Text>
-              <Text style={styles.splashSubBrand}>Secure Field System</Text>
-              <View style={styles.splashIndicatorContainer}>
-                <ActivityIndicator color={COLORS.primary} size="small" />
-              </View>
-            </Animated.View>
-          </Animated.View>
-        </Animated.View>
-      )}
-
-      {activeAlert && (() => {
-        const { icon, color } = getAlertIconAndColor(activeAlert.title, activeAlert.message || '');
-        const alertButtons = activeAlert.buttons || [{ text: 'OK', onPress: () => {} }];
-        
-        return (
-          <Modal
-            visible={!!activeAlert}
-            transparent
-            animationType="fade"
-            onRequestClose={() => handleAlertDismiss()}
-          >
-            <View style={{
-              flex: 1,
-              backgroundColor: 'rgba(15, 23, 42, 0.6)',
-              justifyContent: 'center',
-              alignItems: 'center',
-              padding: 20
-            }}>
-              <View style={{
-                backgroundColor: COLORS.card,
-                borderRadius: 24,
-                width: '88%',
-                maxWidth: 340,
-                padding: 24,
-                alignItems: 'center',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 10 },
-                shadowOpacity: 0.25,
-                shadowRadius: 20,
-                elevation: 10,
-                borderWidth: 1,
-                borderColor: COLORS.border
-              }}>
-                {/* Icon Container */}
-                <View style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 28,
-                  backgroundColor: color + '15',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  marginBottom: 16
-                }}>
-                  <Feather name={icon} size={28} color={color} />
-                </View>
-
-                {/* Title */}
-                <Text style={{
-                  fontSize: 18,
-                  fontWeight: '800',
-                  color: COLORS.textMain,
-                  textAlign: 'center',
-                  marginBottom: 8
-                }}>
-                  {activeAlert.title}
-                </Text>
-
-                {/* Message */}
-                {activeAlert.message ? (
-                  <Text style={{
-                    fontSize: 14,
-                    color: COLORS.textMuted,
-                    textAlign: 'center',
-                    lineHeight: 20,
-                    marginBottom: 24
-                  }}>
-                    {activeAlert.message}
-                  </Text>
-                ) : (
-                  <View style={{ height: 16 }} />
-                )}
-
-                {/* Collapsible Details Panel */}
-                {activeAlert.rawMessage && (
-                  <View style={{ width: '100%', marginBottom: 16 }}>
-                    <TouchableOpacity
-                      onPress={() => setShowErrorDetails(prev => !prev)}
-                      activeOpacity={0.7}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: 8,
-                        backgroundColor: COLORS.background,
-                        borderRadius: 10,
-                        borderWidth: 1,
-                        borderColor: COLORS.border
-                      }}
-                    >
-                      <Feather 
-                        name={showErrorDetails ? "chevron-up" : "chevron-down"} 
-                        size={16} 
-                        color={COLORS.textMuted} 
-                        style={{ marginRight: 6 }} 
-                      />
-                      <Text style={{ fontSize: 12, color: COLORS.textMuted, fontWeight: '700' }}>
-                        {showErrorDetails 
-                          ? (language === 'fil' ? 'Itago ang Detalye' : 'Hide Details') 
-                          : (language === 'fil' ? 'Ipakita ang Detalye' : 'Show Details')}
-                      </Text>
-                    </TouchableOpacity>
-                    
-                    {showErrorDetails && (
-                      <View style={{
-                        marginTop: 8,
-                        padding: 12,
-                        backgroundColor: '#0f172a',
-                        borderRadius: 10,
-                        maxHeight: 120,
-                        width: '100%'
-                      }}>
-                        <ScrollView style={{ flexGrow: 0 }}>
-                          <Text style={{
-                            fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-                            fontSize: 11,
-                            color: '#94a3b8',
-                            lineHeight: 16
-                          }}>
-                            {activeAlert.rawMessage}
-                          </Text>
-                        </ScrollView>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* Buttons Container */}
-                <View style={{ width: '100%' }}>
-                  {alertButtons.map((btn, idx) => {
-                    const isCancel = btn.style === 'cancel' || btn.text?.toLowerCase() === 'cancel' || btn.text?.toLowerCase() === 'itigil';
-                    const isDestructive = btn.style === 'destructive';
-                    
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        onPress={() => handleAlertDismiss(btn.onPress)}
-                        activeOpacity={0.7}
-                        style={{
-                          width: '100%',
-                          height: 48,
-                          borderRadius: 14,
-                          backgroundColor: isCancel 
-                            ? 'transparent' 
-                            : isDestructive 
-                              ? '#ef4444' 
-                              : color,
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          marginTop: idx > 0 ? 8 : 0
-                        }}
-                      >
-                        <Text style={{
-                          color: isCancel ? COLORS.textMuted : '#ffffff',
-                          fontSize: 15,
-                          fontWeight: '700'
-                        }}>
-                          {btn.text || 'OK'}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            </View>
-          </Modal>
-        );
-      })()}
-
-      {selectedAnnouncement && (
-        <Modal 
-          animationType="fade" 
-          transparent={true} 
-          visible={!!selectedAnnouncement} 
-          onRequestClose={() => setSelectedAnnouncement(null)}
-        >
-          <TouchableOpacity 
-            style={{ 
-              flex: 1, 
-              backgroundColor: 'rgba(15, 23, 42, 0.65)', 
-              justifyContent: 'center', 
-              alignItems: 'center', 
-              padding: 20 
-            }} 
-            activeOpacity={1} 
-            onPress={() => setSelectedAnnouncement(null)}
-          >
-            <TouchableOpacity 
-              activeOpacity={1} 
-              onPress={(e) => e.stopPropagation()} 
-              style={{ 
-                width: '100%', 
-                maxWidth: 420, 
-                maxHeight: '80%', 
-                backgroundColor: COLORS.card, 
-                borderRadius: 24, 
-                borderWidth: 1, 
-                borderColor: COLORS.border, 
-                shadowColor: '#000', 
-                shadowOffset: { width: 0, height: 10 }, 
-                shadowOpacity: 0.25, 
-                shadowRadius: 20, 
-                elevation: 12, 
-                overflow: 'hidden' 
-              }}
-            >
-              {/* Modal Header */}
-              <View style={{ 
-                flexDirection: 'row', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                paddingHorizontal: 20, 
-                paddingVertical: 16, 
-                borderBottomWidth: 1, 
-                borderBottomColor: COLORS.border,
-                backgroundColor: COLORS.card
-              }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(99, 102, 241, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
-                    <Feather name="bell" size={16} color="#6366f1" />
-                  </View>
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: COLORS.textMain }}>
-                    {language === 'fil' ? 'Anunsyo' : 'Announcement'}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => setSelectedAnnouncement(null)} style={{ padding: 6, borderRadius: 12, backgroundColor: COLORS.border }}>
-                  <Feather name="x" size={18} color={COLORS.textMain} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Scrollable Body */}
-              <ScrollView contentContainerStyle={{ padding: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <View style={{ backgroundColor: 'rgba(99, 102, 241, 0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#6366f1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      📢 {selectedAnnouncement.target_branch_id ? (language === 'fil' ? 'Sangay' : 'Branch') : 'Global'}
-                    </Text>
-                  </View>
-                  <Text style={{ fontSize: 11, color: COLORS.textMuted, fontWeight: '500' }}>
-                    {new Date(selectedAnnouncement.created_at).toLocaleDateString(language === 'fil' ? 'fil-PH' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                  </Text>
-                </View>
-
-                <Text style={{ fontSize: 18, fontWeight: '800', color: COLORS.textMain, marginBottom: 14, lineHeight: 24 }}>
-                  {getBilingualText(selectedAnnouncement.title, language)}
-                </Text>
-
-                <View style={{ height: 1, backgroundColor: COLORS.border, marginBottom: 16 }} />
-
-                <Text style={{ fontSize: 14, color: COLORS.textMain, lineHeight: 22 }}>
-                  {getBilingualText(selectedAnnouncement.content, language)}
-                </Text>
-              </ScrollView>
-
-              {/* Footer */}
-              <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.card }}>
-                <TouchableOpacity 
-                  onPress={() => setSelectedAnnouncement(null)} 
-                  style={{ 
-                    backgroundColor: COLORS.primary, 
-                    paddingVertical: 12, 
-                    borderRadius: 14, 
-                    alignItems: 'center' 
-                  }}
-                >
-                  <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>
-                    {language === 'fil' ? 'Isara' : 'Close'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
-      )}
-    </View>
-  );
-
-  const showSimulatorFrame = Platform.OS === 'web' && width > 480;
-  if (showSimulatorFrame) {
+  if (loading) {
     return (
-      <View style={styles.webContainer}>
-        <View style={styles.phoneFrame}>
-          {/* Status Bar / Notch Simulation */}
-          <View style={styles.phoneNotch} />
-          {/* Inner Screen */}
-          <View style={styles.phoneScreen}>
-            {renderedContent}
-          </View>
-          {/* Home Indicator Simulation */}
-          <View style={styles.phoneHomeBar} />
-        </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={BRAND.blue} />
       </View>
     );
   }
 
-  return renderedContent;
+  return (
+    <View style={styles.masterContainer}>
+      <LinearGradient
+        colors={['#FFFFFF', '#F8FAFC', '#E2E8F0']}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.content}>
+          <Image 
+            source={require('../../assets/logo.png')} 
+            style={styles.logo}
+          />
+          <Text style={styles.title}>TechnoSys Pro</Text>
+          <Text style={styles.subtitle}>Technician Action Kiosk</Text>
+
+          <View style={styles.inputCard}>
+            
+            {loginMethod === 'phone' ? (
+              <>
+                <Text style={styles.methodTitle}>Mobile Access</Text>
+                <View style={styles.inputWrapper}>
+                  <Feather name="phone" size={20} color="#64748B" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="+639..."
+                    placeholderTextColor="#94A3B8"
+                    value={phoneNumber}
+                    onChangeText={setPhoneNumber}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+
+                <TouchableOpacity style={styles.loginBtn} onPress={handlePhoneLogin} activeOpacity={0.8}>
+                  <Text style={styles.loginBtnText}>Sign In</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.switchBtn} onPress={() => setLoginMethod('email')}>
+                  <Text style={styles.switchBtnText}>Log in with email instead</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.methodTitle}>Email Access</Text>
+                <View style={styles.inputWrapper}>
+                  <Feather name="mail" size={20} color="#64748B" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Work Email"
+                    placeholderTextColor="#94A3B8"
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                  />
+                </View>
+
+                <View style={styles.inputWrapper}>
+                  <Feather name="lock" size={20} color="#64748B" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Password"
+                    placeholderTextColor="#94A3B8"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                  />
+                </View>
+
+                <TouchableOpacity style={styles.loginBtn} onPress={handleEmailLogin} activeOpacity={0.8}>
+                  <Text style={styles.loginBtnText}>Sign In</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.switchBtn} onPress={() => setLoginMethod('phone')}>
+                  <Text style={styles.switchBtnText}>Log in with mobile number instead</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+          </View>
+        </View>
+      </SafeAreaView>
+    </View>
+  );
 }
 
-function getStyles(COLORS: any) { return StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: COLORS.background, height: '100%' },
-  container: { flex: 1, backgroundColor: COLORS.background, height: '100%' },
-  content: { padding: 24, paddingBottom: 40 },
-  header: { marginBottom: 32, marginTop: 12 },
-  greeting: { color: COLORS.textMuted, fontSize: 16, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 },
-  name: { color: COLORS.textMain, fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
-  input: { backgroundColor: COLORS.card, color: COLORS.textMain, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
-  
-  timeInButton: { backgroundColor: COLORS.primary, padding: 24, borderRadius: 20, alignItems: 'center', shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
-  timeInSuccess: { backgroundColor: COLORS.primaryDim, padding: 24, borderRadius: 20, alignItems: 'center', borderColor: COLORS.primary, borderWidth: 1 },
-  
-  readyCard: {
-    backgroundColor: COLORS.isDarkMode ? 'rgba(16, 185, 129, 0.12)' : '#f0fdf4',
-    borderColor: COLORS.isDarkMode ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.3)',
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: COLORS.isDarkMode ? 0.2 : 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  scanningCard: {
-    backgroundColor: COLORS.whiteCard,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 24,
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    backgroundColor: '#F8FAFC',
   },
-  activeCard: {
-    backgroundColor: COLORS.whiteCard,
-    borderColor: 'transparent',
-    borderWidth: 2,
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 3,
-    position: 'relative',
-    overflow: 'hidden',
+  masterContainer: {
+    flex: 1,
   },
-  completedCard: {
-    backgroundColor: '#f1f5f9',
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 24,
+  safeArea: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-  },
-  cancelScanButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.whiteCard,
-    marginTop: 8,
-  },
-  timeOutSecondaryButton: {
-    backgroundColor: COLORS.danger,
-    paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 12,
-    width: '100%',
-    alignItems: 'center',
-    shadowColor: COLORS.danger,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 2,
   },
-
-  dispatchCard: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    elevation: 1,
+  logo: {
+    width: 100,
+    height: 100,
+    resizeMode: 'contain',
+    marginBottom: 24,
   },
-  dispatchBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  dispatchBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  attendanceBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: COLORS.isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.05)',
-    borderWidth: 1,
-    borderColor: COLORS.isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(15, 23, 42, 0.1)',
-  },
-  attendanceBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    color: COLORS.isDarkMode ? '#94a3b8' : '#475569',
-  },
-  dispatchTitle: {
-    color: COLORS.textMain,
-    fontSize: 16,
-    fontWeight: 'bold',
+  title: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 32,
+    color: '#0F172A',
     marginBottom: 8,
   },
-  dispatchTime: {
-    color: COLORS.textMuted,
-    fontSize: 13,
-    marginBottom: 12,
+  subtitle: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 16,
+    color: '#64748B',
+    marginBottom: 40,
   },
-  directionsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.whiteCard,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  directionsButtonText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-  },
-  partnerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    padding: 8,
-    backgroundColor: 'rgba(15, 23, 42, 0.03)',
-    borderRadius: 8,
-  },
-  emptyCard: {
-    backgroundColor: COLORS.whiteCard,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderRadius: 16,
+  inputCard: {
+    backgroundColor: '#fff',
+    width: '100%',
     padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    borderRadius: 24,
+    shadowColor: BRAND.blue,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 8,
   },
-  
-  payslipCard: { backgroundColor: COLORS.card, borderRadius: 20, padding: 24, borderWidth: 1, borderColor: COLORS.border },
-  sectionTitle: { color: COLORS.textMain, fontSize: 20, fontWeight: '800', marginBottom: 4, letterSpacing: -0.5 },
-  period: { color: COLORS.textMuted, fontSize: 14, marginBottom: 20 },
-  netPayBox: { backgroundColor: COLORS.primary, borderRadius: 16, padding: 20, alignItems: 'center', marginBottom: 24, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8 },
-  netPayLabel: { color: '#ecfdf5', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 4, letterSpacing: 1 },
-  netPayAmount: { color: '#fff', fontSize: 32, fontWeight: '800' },
-  divider: { height: 1, backgroundColor: COLORS.border, marginBottom: 20 },
-  deductionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  deductionLabel: { color: COLORS.textMuted, fontSize: 15 },
-  grossAmount: { color: COLORS.textMain, fontSize: 15, fontWeight: 'bold' },
-  deductionAmount: { color: COLORS.danger, fontSize: 15, fontWeight: 'bold' },
- 
-  sectionTitleMain: { color: COLORS.textMain, fontSize: 14, fontWeight: '800', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 },
-
-  bottomNav: { flexDirection: 'row', backgroundColor: COLORS.card, paddingBottom: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border, justifyContent: 'space-around' },
-  navItem: { alignItems: 'center', justifyContent: 'center' },
-  navText: { fontSize: 11, fontWeight: '600', marginTop: 4 },
-  navDot: { width: 4, height: 4, borderRadius: 2, marginTop: 4 },
-  splashContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 200000,
-  } as ViewStyle,
-  splashLogo: {
-    width: 110,
-    height: 110,
-    resizeMode: 'contain',
+  methodTitle: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 18,
+    color: '#0F172A',
     marginBottom: 20,
+    textAlign: 'center',
   },
-  splashBrand: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#0f172a',
-    letterSpacing: 6,
-    marginBottom: 6,
-  } as TextStyle,
-  splashSubBrand: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.primary,
-    letterSpacing: 3,
-    textTransform: 'uppercase',
-  } as TextStyle,
-  splashIndicatorContainer: {
-    marginTop: 40,
-    height: 20,
-  } as ViewStyle,
-  offlineBanner: {
-    backgroundColor: '#f43f5e',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  inputWrapper: {
     flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    height: 56,
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
+    fontFamily: 'DMSans-Regular',
+    fontSize: 16,
+    color: '#0F172A',
+  },
+  loginBtn: {
+    backgroundColor: BRAND.blue,
+    borderRadius: 12,
+    height: 56,
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
-    zIndex: 99
-  } as ViewStyle,
-  offlineBannerText: {
-    color: '#ffffff',
+    marginTop: 8,
+    shadowColor: BRAND.blue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  loginBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 16,
+    color: BRAND.yellow,
+  },
+  switchBtn: {
+    marginTop: 24,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  switchBtnText: {
+    fontFamily: 'DMSans-Medium',
     fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase'
-  } as TextStyle,
-  webContainer: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-    height: '100%',
-    paddingVertical: 40
-  } as ViewStyle,
-  phoneFrame: {
-    width: 390,
-    height: 844,
-    backgroundColor: COLORS.background,
-    borderRadius: 44,
-    borderWidth: 12,
-    borderColor: '#1e293b',
-    overflow: 'hidden',
-    position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.4,
-    shadowRadius: 25,
-    elevation: 8
-  } as ViewStyle,
-  phoneNotch: {
-    position: 'absolute',
-    top: 0,
-    left: '50%',
-    transform: [{ translateX: -75 }] as any,
-    width: 150,
-    height: 30,
-    backgroundColor: '#1e293b',
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
-    zIndex: 99999
-  } as ViewStyle,
-  phoneScreen: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    height: '100%',
-    width: '100%'
-  } as ViewStyle,
-  phoneHomeBar: {
-    position: 'absolute',
-    bottom: 8,
-    left: '50%',
-    transform: [{ translateX: -60 }] as any,
-    width: 120,
-    height: 5,
-    backgroundColor: '#1e293b',
-    borderRadius: 3,
-    zIndex: 99999
-  } as ViewStyle
-}); }
+    color: BRAND.blue,
+  }
+});
+
