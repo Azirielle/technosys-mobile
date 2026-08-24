@@ -1,8 +1,29 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Linking } from 'react-native';
-import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import { StyleSheet, View, Text } from 'react-native';
+import MapView, { Marker, Circle, PROVIDER_GOOGLE } from './MapWrapper';
 import { getDistance } from 'geolib';
-import { Feather } from '@expo/vector-icons';
+
+// Radar map style (Dark Mode/Sci-fi look)
+const radarStyle = [
+  { elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#334155' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2835' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
+  { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#020617' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
+  { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] }
+];
 
 interface GeofenceMobileMapProps {
   userLat?: number;
@@ -21,39 +42,29 @@ export default function GeofenceMobileMap({
   radius,
   branchName
 }: GeofenceMobileMapProps) {
-  // If branch coordinates are invalid, show a placeholder
   if (!branchLat || !branchLng) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' }]}>
-        <Text style={{ color: '#64748b', fontSize: 12 }}>No location coordinates available</Text>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: '#94a3b8', fontSize: 12 }}>No location available</Text>
       </View>
     );
   }
 
-  // Calculate distance only if user coordinates exist
   const hasUserLocation = userLat !== undefined && userLng !== undefined;
   const distance = hasUserLocation 
-    ? getDistance(
-        { latitude: userLat, longitude: userLng },
-        { latitude: branchLat, longitude: branchLng }
-      )
+    ? getDistance({ latitude: userLat, longitude: userLng }, { latitude: branchLat, longitude: branchLng })
     : Infinity;
   const isInside = hasUserLocation && distance <= radius;
 
-  // Format display text
-  const displayDistance = distance >= 1000 
-    ? `${(distance / 1000).toFixed(1)} km` 
-    : `${Math.round(distance)} meters`;
-
-  // Calculate Region to fit both branch and user, or just center on branch
-  const mapRadius = Math.max(radius, distance) * 1.5;
-  const delta = (mapRadius / 111000) * 2; // rough latitude delta to fit the bounds
+  const mapRadius = Math.max(radius, distance === Infinity ? radius : distance) * 1.5;
+  const delta = (mapRadius / 111000) * 2;
 
   return (
     <View style={styles.container}>
       <MapView
         provider={PROVIDER_GOOGLE}
         style={styles.map}
+        customMapStyle={radarStyle}
         initialRegion={{
           latitude: branchLat,
           longitude: branchLng,
@@ -61,20 +72,29 @@ export default function GeofenceMobileMap({
           longitudeDelta: delta,
         }}
         showsUserLocation={false} 
+        showsCompass={false}
+        showsScale={false}
       >
-        {/* Branch Marker */}
         <Marker
           coordinate={{ latitude: branchLat, longitude: branchLng }}
           title={branchName}
-          description={`Radius: ${radius}m`}
           tracksViewChanges={false}
         >
           <View style={styles.branchMarker}>
-            <Feather name="home" size={14} color="#fff" />
+            <View style={styles.branchMarkerInner} />
           </View>
         </Marker>
 
-        {/* Geofence Boundary */}
+        {/* Outer Radar Ring */}
+        <Circle
+          center={{ latitude: branchLat, longitude: branchLng }}
+          radius={radius * 3}
+          strokeWidth={1}
+          strokeColor="rgba(16, 185, 129, 0.2)"
+          fillColor="transparent"
+        />
+
+        {/* Inner Geofence Boundary */}
         <Circle
           center={{ latitude: branchLat, longitude: branchLng }}
           radius={radius}
@@ -83,81 +103,78 @@ export default function GeofenceMobileMap({
           fillColor={isInside ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.05)'}
         />
 
-        {/* User Location Marker */}
         {hasUserLocation && (
           <Marker
             key={`user-${userLat}-${userLng}`}
             coordinate={{ latitude: userLat!, longitude: userLng! }}
-            title="You are here"
+            title="You"
             zIndex={2}
           >
-            <View style={[styles.userMarkerGlow, { backgroundColor: isInside ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)' }]}>
-              <View style={[styles.userMarker, { backgroundColor: isInside ? '#10b981' : '#ef4444' }]} />
+            <View style={styles.userMarkerGlow}>
+              <View style={[styles.userMarker, { backgroundColor: isInside ? '#10b981' : '#3b82f6' }]} />
             </View>
           </Marker>
         )}
       </MapView>
 
-      <View style={styles.footerLabel}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={styles.footerText}>
-            📍 <Text style={{ fontWeight: 'bold' }}>{branchName}</Text>
-          </Text>
-          <Text style={[styles.statusText, { color: isInside ? '#10b981' : '#ef4444' }]}>
-            {isInside ? '🟢 INSIDE' : '🔴 OUTSIDE'}
-          </Text>
-        </View>
-        <Text style={styles.footerSubText}>
-          Distance: {displayDistance} (Geofence: {radius}m)
+      <View style={styles.radarOverlay}>
+        <Text style={styles.radarText}>RADAR RESOLUTION: 50m</Text>
+        <Text style={[styles.radarStatus, { color: isInside ? '#10b981' : '#ef4444' }]}>
+          {isInside ? '● INSIDE BOUNDARY' : '○ OUTSIDE BOUNDARY'}
         </Text>
       </View>
-      <TouchableOpacity 
-        style={styles.mapButton} 
-        onPress={() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${branchLat},${branchLng}`)}
-      >
-        <Feather name="map" size={16} color="#fff" style={{ marginRight: 6 }} />
-        <Text style={styles.mapButtonText}>Navigate via Google Maps</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     width: '100%',
-    height: 250,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#e2e8f0', 
-    marginVertical: 12,
-    backgroundColor: '#f8fafc'
+    backgroundColor: '#0f172a'
   },
-  mapButton: { position: 'absolute', bottom: 16, right: 16, backgroundColor: '#6366f1', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 3 },
-  mapButtonText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
   map: {
-    width: '100%',
-    height: 195, 
+    ...StyleSheet.absoluteFill,
+  },
+  radarOverlay: {
+    position: 'absolute',
+    top: 16,
+    alignSelf: 'center',
+    alignItems: 'center',
+  },
+  radarText: {
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  radarStatus: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
+    letterSpacing: 1,
   },
   branchMarker: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#1e293b',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: 'rgba(16, 185, 129, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+  },
+  branchMarkerInner: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10b981',
   },
   userMarkerGlow: {
     width: 32,
     height: 32,
     borderRadius: 16,
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -169,33 +186,8 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  footerLabel: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#ffffff',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0'
-  },
-  footerText: {
-    color: '#334155',
-    fontSize: 13,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  footerSubText: {
-    color: '#64748b',
-    fontSize: 11,
-    marginTop: 4,
-    marginLeft: 20, 
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 4,
   }
 });
