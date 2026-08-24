@@ -151,8 +151,7 @@ export default function HomeScreen() {
       const { data } = await supabase
         .from('tool_assignments')
         .select(
-          id, quantity, borrowed_at, returned_at, status, notes,
-          tool_catalog ( id, name, image_url )
+          'id, quantity, borrowed_at, returned_at, status, notes, tool_catalog ( id, name, image_url )'
         )
         .eq('technician_id', user.id)
         .order('borrowed_at', { ascending: false });
