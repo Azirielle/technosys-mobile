@@ -395,6 +395,8 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         onBackdropPress={() => setTicketModalVisible(false)} 
         onSwipeComplete={() => setTicketModalVisible(false)} 
         swipeDirection={['down']} 
+        propagateSwipe={true}
+        swipeThreshold={50}
         style={{ justifyContent: 'flex-end', margin: 0 }}
       >
         <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: '60%' }}>
@@ -550,9 +552,9 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     padding: 16,
-    paddingTop: Platform.OS === 'android' ? 44 : 16,
+    paddingTop: 12,
     backgroundColor: '#FFF',
-    borderTopWidth: 1,
+    borderTopWidth: 0,
     borderColor: '#E2E8F0',
     alignItems: 'center',
   },

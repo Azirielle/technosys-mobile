@@ -729,7 +729,6 @@ export default function HomeScreen() {
                     <MenuGridItem icon="bell" label={t('announcements')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { fetchAnnouncements(); setUpdatesModalVisible(true); }} />
                     <MenuGridItem icon="help-circle" label={t('support')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { fetchTickets(); setSupportModalVisible(true); }} />
                     <MenuGridItem icon="settings" label={t('preferences')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { setMenuVisible(false); setPreferencesModalVisible(true); }} />
-                    <MenuGridItem icon="user" label={t('settings')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { setMenuVisible(false); setProfileModalVisible(true); }} />
                   </View>
                   <View style={{height: 120}} />
                 </ScrollView>
@@ -2000,10 +1999,19 @@ export default function HomeScreen() {
                   <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 18 }}>
                     I acknowledge receiving the amount stated above and have no further claims for services rendered to TECHNOCYCLE CORPORATION.
                   </Text>
-                  
                   <TouchableOpacity 
-                    style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 32, width: '100%' }]}
-                    onPress={() => safeAlert('Dispute Logged', 'HR has been notified of your payslip dispute.')}
+                    style={[styles.submitBtn, { backgroundColor: BRAND.blue, marginTop: 32, width: '100%' }]}
+                    onPress={() => safeAlert('Download Started', 'Your payslip is being downloaded to your device.')}
+                  >
+                    <Text style={[styles.submitBtnText, { color: '#FFF' }]}>Download Payslip</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 16, width: '100%' }]}
+                    onPress={() => {
+                      setPayslipsModalVisible(false);
+                      setTimeout(() => setSupportModalVisible(true), 500);
+                    }}
                   >
                     <Text style={[styles.submitBtnText, { color: BRAND.red }]}>Dispute Payslip</Text>
                   </TouchableOpacity>
