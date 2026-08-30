@@ -160,13 +160,18 @@ export default function SupportChatUI({ onClose }: { onClose: () => void }) {
       // Replace with your actual edge function URL
       const EDGE_FUNCTION_URL = "https://ggknkdyuglzcnkwhvdak.supabase.co/functions/v1/chat-support";
 
+      const chatHistory = messages.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.text
+      }));
+
       const es = new EventSource(EDGE_FUNCTION_URL, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
         },
         method: "POST",
-        body: JSON.stringify({ query: userMessage.text, attachment: attachedFile }),
+        body: JSON.stringify({ query: userMessage.text, attachment: attachedFile, history: chatHistory }),
       });
 
       es.addEventListener("message", (event: any) => {
@@ -196,6 +201,7 @@ export default function SupportChatUI({ onClose }: { onClose: () => void }) {
              supabase.from('ai_chat_queue').insert({
                user_id: session.user.id,
                query: userMessage.text,
+               history: chatHistory,
                status: 'waiting'
              }).select().single().then(({ data: queueItem }) => {
                 if (queueItem) {
