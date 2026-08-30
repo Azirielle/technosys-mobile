@@ -23,7 +23,7 @@ interface Message {
   attachment?: { name: string, uri: string };
 }
 
-export default function SupportChatUI({ onClose }: { onClose: () => void }) {
+export default function SupportChatUI({ onClose, initialQuery }: { onClose: () => void, initialQuery?: string }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -138,7 +138,14 @@ export default function SupportChatUI({ onClose }: { onClose: () => void }) {
        }
     }, 5000);
 
-    return () => {
+  
+  useEffect(() => {
+    if (initialQuery && messages.length === 1) {
+      sendMessage(initialQuery);
+    }
+  }, [initialQuery]);
+
+  return () => {
       supabase.removeChannel(channel);
       clearInterval(interval);
     };
@@ -372,7 +379,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
 
         <View style={{ paddingHorizontal: 16, paddingVertical: 4, backgroundColor: '#FFF', flexDirection: 'row' }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {['Report Payroll Issue', 'Report Equipment Issue', 'Report DTR Issue'].map((chip, idx) => (
+            {['Report Payroll Issue', 'Report Equipment Issue', 'Report DTR Issue', 'File a Leave'].map((chip, idx) => (
               <TouchableOpacity key={idx} style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => { setInputText(''); sendMessage(chip); }}>
                 <Text style={{ fontSize: 13, color: BRAND.blue }}>{chip}</Text>
               </TouchableOpacity>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, Animated, Easing, ActivityIndicator, ScrollView, Image, Alert, Platform, FlatList, TextInput, Linking } from 'react-native';
+import RNModal from 'react-native-modal';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Animated, Easing, ActivityIndicator, ScrollView, Image, Alert, Platform, FlatList, TextInput, Linking } from 'react-native';
 import * as Updates from 'expo-updates';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -14,6 +15,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SupportChatUI from '../../components/SupportChatUI';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 const { width, height } = Dimensions.get('window');
 
@@ -189,6 +192,37 @@ export default function HomeScreen() {
     setTicketsLoading(false);
   };
 
+  
+  const downloadPayslip = async () => {
+    if (!selectedPayslip) return;
+    try {
+      const html = `
+        <html>
+          <body style="font-family: sans-serif; padding: 40px; color: #333;">
+            <h1 style="color: #1E3A8A; margin-bottom: 5px;">TECHNOCYCLE CORPORATION</h1>
+            <h3 style="color: #64748B; margin-top: 0;">Official Payslip</h3>
+            <hr style="border: 1px solid #E2E8F0; margin-bottom: 30px;" />
+            <p><strong>Period:</strong> ${new Date(selectedPayslip.pay_period_start).toLocaleDateString()} - ${new Date(selectedPayslip.pay_period_end).toLocaleDateString()}</p>
+            <p><strong>Base Pay:</strong> ?${Number(selectedPayslip.base_pay).toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+            <p><strong>Overtime:</strong> ?${Number(selectedPayslip.overtime_pay).toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+            <p><strong>Deductions:</strong> -?${Number(selectedPayslip.total_deductions).toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+            <hr style="border: 1px dashed #CBD5E1; margin: 20px 0;" />
+            <h2 style="color: #0F172A;">Net Pay: ?${Number(selectedPayslip.net_pay).toLocaleString('en-US', {minimumFractionDigits: 2})}</h2>
+            <p style="margin-top: 40px; font-size: 12px; color: #94A3B8;">This is a system generated document.</p>
+          </body>
+        </html>
+      `;
+      const { uri } = await Print.printToFileAsync({ html });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+      } else {
+        safeAlert('Error', 'Sharing is not available on this device');
+      }
+    } catch (err) {
+      safeAlert('Error', 'Failed to generate PDF');
+    }
+  };
+
   const submitTicket = async () => {
     if (!ticketForm.title || !ticketForm.description) {
       safeAlert('Error', 'Please fill in all fields.');
@@ -256,6 +290,7 @@ export default function HomeScreen() {
   const [payslips, setPayslips] = useState<any[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
+  const [aiInitialQuery, setAiInitialQuery] = useState('');
 
   // File Leave Feature
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
@@ -700,7 +735,7 @@ export default function HomeScreen() {
         </View>
 
         {/* MENU OVERLAY */}
-        <Modal visible={menuVisible} transparent={true} animationType="slide" onRequestClose={() => setMenuVisible(false)}>
+        <RNModal isVisible={menuVisible}   onBackdropPress={() => setMenuVisible(false)} onSwipeComplete={() => setMenuVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={[styles.menuOverlay, { opacity: 1 }]}>
             <View style={styles.menuContent}>
               <SafeAreaView style={{flex: 1}}>
@@ -721,7 +756,7 @@ export default function HomeScreen() {
                   <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>My HR & Pay</Text>
                   <View style={styles.menuGrid}>
                     <MenuGridItem icon="dollar-sign" label={t('payslips')} fontFamily={activeFontBold} color={BRAND.green} onPress={() => { fetchPayslips(); setPayslipsModalVisible(true); }} />
-                    <MenuGridItem icon="sun" label={t('file_leave')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { fetchLeaveRequests(); setLeaveModalVisible(true); }} />
+                    <MenuGridItem icon="sun" label={t('file_leave')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { setMenuVisible(false); setAiInitialQuery('I would like to file a leave of absence.'); setTimeout(() => setSupportModalVisible(true), 500); }} />
                     <MenuGridItem icon="clock" label={t('timesheets')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { fetchTimeLogs(); setTimesheetModalVisible(true); }} />
                   </View>
                   <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>Company & Support</Text>
@@ -740,10 +775,10 @@ export default function HomeScreen() {
               </SafeAreaView>
               </View>
             </View>
-        </Modal>
+        </RNModal>
 
         {/* VERIFICATION MODAL */}
-        <Modal visible={clockInModal} transparent={true} animationType="fade" onRequestClose={() => setClockInModal(false)}>
+        <RNModal isVisible={clockInModal}   onBackdropPress={() => setClockInModal(false)} onSwipeComplete={() => setClockInModal(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.verificationOverlay}>
             <View style={styles.verificationCard}>
               {locationStatus === 'verifying' ? (
@@ -784,10 +819,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* PROFILE MODAL (Bottom Sheet) */}
-        <Modal visible={profileModalVisible} transparent={true} animationType="slide" onRequestClose={() => setProfileModalVisible(false)}>
+        <RNModal isVisible={profileModalVisible}   onBackdropPress={() => setProfileModalVisible(false)} onSwipeComplete={() => setProfileModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={styles.profileSheet}>
               {/* Handle */}
@@ -856,10 +891,10 @@ export default function HomeScreen() {
 
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* DTR MODAL */}
-        <Modal visible={dtrModalVisible} transparent={true} animationType="slide" onRequestClose={() => setDtrModalVisible(false)}>
+        <RNModal isVisible={dtrModalVisible}   onBackdropPress={() => setDtrModalVisible(false)} onSwipeComplete={() => setDtrModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -887,10 +922,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* FORMS MODAL */}
-        <Modal visible={formsModalVisible} transparent={true} animationType="slide" onRequestClose={() => setFormsModalVisible(false)}>
+        <RNModal isVisible={formsModalVisible}   onBackdropPress={() => setFormsModalVisible(false)} onSwipeComplete={() => setFormsModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '60%' }]}>
               <View style={styles.sheetHandle} />
@@ -909,10 +944,10 @@ export default function HomeScreen() {
               </ScrollView>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* LANGUAGE MODAL */}
-        <Modal visible={langModalVisible} transparent={true} animationType="slide" onRequestClose={() => setLangModalVisible(false)}>
+        <RNModal isVisible={langModalVisible}   onBackdropPress={() => setLangModalVisible(false)} onSwipeComplete={() => setLangModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '50%' }]}>
               <View style={styles.sheetHandle} />
@@ -930,10 +965,10 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* PREFERENCES MODAL */}
-        <Modal visible={preferencesModalVisible} transparent={true} animationType="slide" onRequestClose={() => setPreferencesModalVisible(false)}>
+        <RNModal isVisible={preferencesModalVisible}   onBackdropPress={() => setPreferencesModalVisible(false)} onSwipeComplete={() => setPreferencesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: 400 }]}>
               <View style={styles.sheetHandle} />
@@ -988,10 +1023,10 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* LOGOUT CONFIRMATION MODAL */}
-        <Modal visible={logoutModalVisible} transparent={true} animationType="fade" onRequestClose={() => setLogoutModalVisible(false)}>
+        <RNModal isVisible={logoutModalVisible}   onBackdropPress={() => setLogoutModalVisible(false)} onSwipeComplete={() => setLogoutModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.verificationOverlay}>
             <View style={[styles.verificationCard, { padding: 32, alignItems: 'center' }]}>
               <View style={[styles.gridIconCircle, { backgroundColor: '#FEE2E2', width: 64, height: 64, borderRadius: 32, marginBottom: 16 }]}>
@@ -1010,10 +1045,10 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </RNModal>
         {/* NOTIFICATION DRAWER */}
         {/* NOTIFICATION DRAWER */}
-        <Modal visible={notifVisible} transparent={true} animationType="slide" onRequestClose={() => setNotifVisible(false)}>
+        <RNModal isVisible={notifVisible}   onBackdropPress={() => setNotifVisible(false)} onSwipeComplete={() => setNotifVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -1076,10 +1111,10 @@ export default function HomeScreen() {
               />
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* PRIORITY DISPATCH MODAL */}
-        <Modal visible={dispatchVisible} transparent={true} animationType="slide" onRequestClose={() => setDispatchVisible(false)}>
+        <RNModal isVisible={dispatchVisible}   onBackdropPress={() => setDispatchVisible(false)} onSwipeComplete={() => setDispatchVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
               <TouchableOpacity onPress={() => setDispatchVisible(false)} style={{ padding: 8, marginLeft: -8 }}>
@@ -1144,10 +1179,10 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* NOTIFICATION DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedNotif} transparent={true} animationType="slide" onRequestClose={() => setSelectedNotif(null)}>
+        <RNModal isVisible={!!selectedNotif}   onBackdropPress={() => setSelectedNotif(null)} onSwipeComplete={() => setSelectedNotif(null)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {selectedNotif && (
               <>
@@ -1198,10 +1233,10 @@ export default function HomeScreen() {
               </>
             )}
           </View>
-        </Modal>
+        </RNModal>
 
         {/* EQUIPMENT MODAL */}
-        <Modal visible={equipModalVisible} transparent={true} animationType="slide" onRequestClose={() => setEquipModalVisible(false)}>
+        <RNModal isVisible={equipModalVisible}   onBackdropPress={() => setEquipModalVisible(false)} onSwipeComplete={() => setEquipModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -1256,13 +1291,13 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* SUPPORT MODAL */}
-        <Modal visible={supportModalVisible} transparent={false} animationType="slide" onRequestClose={() => setSupportModalVisible(false)}><SupportChatUI onClose={() => setSupportModalVisible(false)} /></Modal>
+        <RNModal isVisible={supportModalVisible}   onBackdropPress={() => setSupportModalVisible(false)} onSwipeComplete={() => setSupportModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}><SupportChatUI onClose={() => setSupportModalVisible(false)} initialQuery={aiInitialQuery} /></RNModal>
 
         {/* SUPPORT TICKET DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedTicket} transparent={true} animationType="slide" onRequestClose={() => setSelectedTicket(null)}>
+        <RNModal isVisible={!!selectedTicket}   onBackdropPress={() => setSelectedTicket(null)} onSwipeComplete={() => setSelectedTicket(null)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: TICKET --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1299,10 +1334,10 @@ export default function HomeScreen() {
               </ScrollView>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* UPDATES MODAL */}
-        <Modal visible={updatesModalVisible} transparent={true} animationType="slide" onRequestClose={() => setUpdatesModalVisible(false)}>
+        <RNModal isVisible={updatesModalVisible}   onBackdropPress={() => setUpdatesModalVisible(false)} onSwipeComplete={() => setUpdatesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1349,29 +1384,18 @@ export default function HomeScreen() {
                       <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 14, color: '#334155', lineHeight: 22, marginBottom: 16 }}>
                         {item.content}
                       </Text>
-                      <View style={{ height: 1, backgroundColor: '#F1F5F9', marginBottom: 12 }} />
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-                        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', padding: 8 }}>
-                          <Feather name="thumbs-up" size={18} color="#64748B" />
-                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B', marginLeft: 8 }}>Like</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', padding: 8 }}>
-                          <Feather name="message-square" size={18} color="#64748B" />
-                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B', marginLeft: 8 }}>Comment</Text>
-                        </TouchableOpacity>
-                      </View>
                     </View>
                   )}
                 />
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         
 
         {/* WORK ORDERS MODAL */}
-        <Modal visible={workOrdersModalVisible} transparent={true} animationType="slide" onRequestClose={() => setWorkOrdersModalVisible(false)}>
+        <RNModal isVisible={workOrdersModalVisible}   onBackdropPress={() => setWorkOrdersModalVisible(false)} onSwipeComplete={() => setWorkOrdersModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1424,10 +1448,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* SCHEDULES MODAL (LIST VIEW) */}
-        <Modal visible={schedulesModalVisible} transparent={true} animationType="slide" onRequestClose={() => setSchedulesModalVisible(false)}>
+        <RNModal isVisible={schedulesModalVisible}   onBackdropPress={() => setSchedulesModalVisible(false)} onSwipeComplete={() => setSchedulesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1501,10 +1525,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* SCHEDULES DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedSchedule} transparent={true} animationType="slide" onRequestClose={() => setSelectedSchedule(null)}>
+        <RNModal isVisible={!!selectedSchedule}   onBackdropPress={() => setSelectedSchedule(null)} onSwipeComplete={() => setSelectedSchedule(null)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: SCHEDULE --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1573,10 +1597,10 @@ export default function HomeScreen() {
             </TouchableOpacity>
             
           </View>
-        </Modal>
+        </RNModal>
 
         {/* TIMESHEETS MODAL */}
-        <Modal visible={timesheetModalVisible} transparent={true} animationType="slide" onRequestClose={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }}>
+        <RNModal isVisible={timesheetModalVisible}   onBackdropPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); } onSwipeComplete={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); } swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}}>
           {selectedTimeLog ? (
             <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
               {/* --- DETAILED VIEW: TIMESHEET --- */}
@@ -1728,10 +1752,10 @@ export default function HomeScreen() {
               </View>
             </View>
           )}
-        </Modal>
+        </RNModal>
 
         {/* LEAVE MODAL */}
-        <Modal visible={leaveModalVisible} transparent={true} animationType="slide" onRequestClose={() => setLeaveModalVisible(false)}>
+        <RNModal isVisible={leaveModalVisible}   onBackdropPress={() => setLeaveModalVisible(false)} onSwipeComplete={() => setLeaveModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1886,10 +1910,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* PAYSLIPS MODAL */}
-        <Modal visible={payslipsModalVisible} transparent={true} animationType="slide" onRequestClose={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }}>
+        <RNModal isVisible={payslipsModalVisible}   onBackdropPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); } onSwipeComplete={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); } swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}}>
           {selectedPayslip ? (
             <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>              {/* --- DETAILED VIEW: MODERN BANKING RECEIPT --- */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -2001,7 +2025,7 @@ export default function HomeScreen() {
                   </Text>
                   <TouchableOpacity 
                     style={[styles.submitBtn, { backgroundColor: BRAND.blue, marginTop: 32, width: '100%' }]}
-                    onPress={() => safeAlert('Download Started', 'Your payslip is being downloaded to your device.')}
+                    onPress={downloadPayslip}
                   >
                     <Text style={[styles.submitBtnText, { color: '#FFF' }]}>Download Payslip</Text>
                   </TouchableOpacity>
@@ -2077,7 +2101,7 @@ export default function HomeScreen() {
               </View>
             </View>
           )}
-        </Modal>
+        </RNModal>
 
       </SafeAreaView>
     </View>
@@ -2140,7 +2164,7 @@ const styles = StyleSheet.create({
   gridItemText: { fontFamily: 'DMSans-Medium', fontSize: 13, color: '#fff', textAlign: 'center' },
   bottomCloseContainer: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
   flowerCloseBtn: { alignItems: 'center', justifyContent: 'center' },
-  flowerRing1: { width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(251, 191, 36, 0.15)', justifyContent: 'center', alignItems: 'center' },
+  flowerRing1: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(251, 191, 36, 0.15)', justifyContent: 'center', alignItems: 'center' },
   flowerRing2: { width: 100, height: 100, borderRadius: 50, backgroundColor: BRAND.blue, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: BRAND.yellow },
   flowerText: { fontFamily: 'DMSans-Bold', fontSize: 12, color: BRAND.yellow, textAlign: 'center', lineHeight: 16 },
   verificationOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
