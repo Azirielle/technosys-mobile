@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, Modal, ScrollView } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -35,6 +35,36 @@ export default function SupportChatUI({ onClose }: { onClose: () => void }) {
   const [inputText, setInputText] = useState('');
   const [attachedFile, setAttachedFile] = useState<any>(null);
   const [isTyping, setIsTyping] = useState(false);
+
+  const [ticketModalVisible, setTicketModalVisible] = useState(false);
+  const [ticketTitle, setTicketTitle] = useState('');
+  const [ticketDesc, setTicketDesc] = useState('');
+  const [ticketCategory, setTicketCategory] = useState('Payroll Dispute');
+  
+  const submitTicket = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      
+      const { error } = await supabase.from('tickets').insert({
+        employee_id: session.user.id,
+        title: ticketTitle,
+        category: ticketCategory,
+        description: ticketDesc,
+        status: 'open',
+      });
+      
+      if (error) throw error;
+      
+      Alert.alert("Success", "Ticket submitted successfully!");
+      setTicketModalVisible(false);
+      setTicketTitle('');
+      setTicketDesc('');
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    }
+  };
+
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
   const [activeAiMessageId, setActiveAiMessageId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -290,18 +320,41 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                     </View>
                   )}
                   
+                  
                   {item.text.length > 0 && (
                     isUser ? (
                       <Text style={[styles.messageText, styles.messageTextUser]}>{item.text}</Text>
                     ) : (
-                      <MarkdownText text={item.text} style={[styles.messageText, styles.messageTextAI]} />
+                      <>
+                        <MarkdownText text={item.text.replace('[ACTION:OPEN_TICKET_FORM]', '')} style={[styles.messageText, styles.messageTextAI]} />
+                        {item.text.includes('[ACTION:OPEN_TICKET_FORM]') && (
+                          <TouchableOpacity 
+                            style={{ marginTop: 12, backgroundColor: BRAND.blue, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+                            onPress={() => setTicketModalVisible(true)}
+                          >
+                            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Open Dispute / Ticket Form</Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
                     )
                   )}
+
                 </View>
               </View>
             );
           }}
         />
+
+        
+        <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#FFF', flexDirection: 'row' }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {['Dispute Payroll', 'Report Equipment Issue', 'DTR Dispute'].map((chip, idx) => (
+              <TouchableOpacity key={idx} style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => setInputText(chip)}>
+                <Text style={{ fontSize: 13, color: BRAND.blue }}>{chip}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
         <View style={styles.inputContainer}>
         {attachedFile && (
@@ -335,6 +388,38 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
             <Ionicons name="send" size={20} color="#FFF" />
           </TouchableOpacity>
         </View>
+      <Modal visible={ticketModalVisible} animationType="slide" transparent={true}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: '60%' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: BRAND.blue }}>Submit a Ticket / Dispute</Text>
+              <TouchableOpacity onPress={() => setTicketModalVisible(false)}>
+                <Feather name="x" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Category</Text>
+            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+              {['Payroll Dispute', 'Equipment Issue', 'DTR Issue'].map((cat) => (
+                <TouchableOpacity key={cat} onPress={() => setTicketCategory(cat)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: ticketCategory === cat ? BRAND.blue : '#F1F5F9', marginRight: 8 }}>
+                  <Text style={{ fontSize: 12, color: ticketCategory === cat ? '#FFF' : '#475569' }}>{cat}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Title</Text>
+            <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketTitle} onChangeText={setTicketTitle} placeholder="E.g., Missing OT Pay on Aug 15" />
+
+            <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Description / Details</Text>
+            <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 20, height: 100, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Provide details about your dispute..." />
+
+            <TouchableOpacity style={{ backgroundColor: BRAND.blue, padding: 14, borderRadius: 8, alignItems: 'center' }} onPress={submitTicket}>
+              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Submit Ticket</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
