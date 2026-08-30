@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, Modal, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, ScrollView } from 'react-native';
+import Modal from 'react-native-modal';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -46,11 +47,28 @@ export default function SupportChatUI({ onClose }: { onClose: () => void }) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
+      let uploadedUrl = null;
+      if (attachedFile && attachedFile.uri) {
+        const filePath = `${session.user.id}/${Date.now()}_${attachedFile.name}`;
+        const response = await fetch(attachedFile.uri);
+        const blob = await response.blob();
+        
+        const { error: uploadError } = await supabase.storage.from('ticket_attachments').upload(filePath, blob, {
+          contentType: attachedFile.mimeType
+        });
+        
+        if (!uploadError) {
+          const { data } = supabase.storage.from('ticket_attachments').getPublicUrl(filePath);
+          uploadedUrl = data.publicUrl;
+        }
+      }
+
       const { error } = await supabase.from('tickets').insert({
         employee_id: session.user.id,
         title: ticketTitle,
         category: ticketCategory,
         description: ticketDesc,
+        attachment_url: uploadedUrl,
         status: 'open',
       });
       
@@ -60,6 +78,7 @@ export default function SupportChatUI({ onClose }: { onClose: () => void }) {
       setTicketModalVisible(false);
       setTicketTitle('');
       setTicketDesc('');
+      setAttachedFile(null);
     } catch (err: any) {
       Alert.alert("Error", err.message);
     }
@@ -125,13 +144,14 @@ export default function SupportChatUI({ onClose }: { onClose: () => void }) {
     };
   }, [activeQueueId, activeAiMessageId]);
 
-  const sendMessage = async () => {
-    if (!inputText.trim()) return;
+  const sendMessage = async (overrideText?: string) => {
+    const textToSend = overrideText || inputText;
+    if (!textToSend.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      text: inputText.trim(),
+      text: textToSend.trim(),
       progressSteps: [],
       isStreaming: false,
       attachment: attachedFile ? { name: attachedFile.name, uri: attachedFile.uri } : undefined
@@ -139,7 +159,6 @@ export default function SupportChatUI({ onClose }: { onClose: () => void }) {
 
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
-    setAttachedFile(null);
     setIsTyping(true);
 
     const aiMessageId = (Date.now() + 1).toString();
@@ -311,9 +330,9 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                     )}
 
                   {/* Render Progress Steps for AI */}
-                  {!isUser && item.progressSteps.length > 0 && (
+                  {!isUser && item.progressSteps.some(step => step.toLowerCase().includes("queue") || step.toLowerCase().includes("traffic")) && (
                     <View style={styles.progressContainer}>
-                      {item.progressSteps.map((step, idx) => (
+                      {item.progressSteps.filter(step => step.toLowerCase().includes("queue") || step.toLowerCase().includes("traffic")).map((step, idx) => (
                         <View key={idx} style={styles.progressStep}>
                           {(item.isStreaming && idx === item.progressSteps.length - 1) ? (
                             <ActivityIndicator size="small" color={BRAND.blue} />
@@ -334,12 +353,12 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                       <>
                         <MarkdownText text={item.text.replace('[ACTION:OPEN_TICKET_FORM]', '')} style={[styles.messageText, styles.messageTextAI]} />
                         {item.text.includes('[ACTION:OPEN_TICKET_FORM]') && (
-                          <TouchableOpacity 
-                            style={{ marginTop: 12, backgroundColor: BRAND.blue, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
-                            onPress={() => setTicketModalVisible(true)}
-                          >
-                            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Open Dispute / Ticket Form</Text>
-                          </TouchableOpacity>
+                            <TouchableOpacity 
+                              style={{ marginTop: 12, backgroundColor: BRAND.blue, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+                              onPress={() => setTicketModalVisible(true)}
+                            >
+                              <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Open Support / Ticket Form</Text>
+                            </TouchableOpacity>
                         )}
                       </>
                     )
@@ -351,11 +370,10 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           }}
         />
 
-        
-        <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#FFF', flexDirection: 'row' }}>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 4, backgroundColor: '#FFF', flexDirection: 'row' }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {['Dispute Payroll', 'Report Equipment Issue', 'DTR Dispute'].map((chip, idx) => (
-              <TouchableOpacity key={idx} style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => setInputText(chip)}>
+            {['Report Payroll Issue', 'Report Equipment Issue', 'Report DTR Issue'].map((chip, idx) => (
+              <TouchableOpacity key={idx} style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => { setInputText(''); sendMessage(chip); }}>
                 <Text style={{ fontSize: 13, color: BRAND.blue }}>{chip}</Text>
               </TouchableOpacity>
             ))}
@@ -363,66 +381,72 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         </View>
 
         <View style={styles.inputContainer}>
-        {attachedFile && (
-          <View style={{ position: "absolute", top: -40, left: 16, backgroundColor: "#E2E8F0", padding: 8, borderRadius: 8, flexDirection: "row", alignItems: "center" }}>
-            <Feather name="paperclip" size={14} color="#475569" style={{ marginRight: 4 }} />
-            <Text style={{ fontSize: 12, color: "#475569", marginRight: 8 }} numberOfLines={1}>{attachedFile.name}</Text>
-            <TouchableOpacity onPress={() => setAttachedFile(null)}><Feather name="x" size={14} color="#EF4444" /></TouchableOpacity>
-          </View>
-        )}
-        <TouchableOpacity style={{ padding: 8, marginRight: 8, backgroundColor: "#F1F5F9", borderRadius: 20 }} 
-          onPress={async () => { 
-            const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true }); 
-            if(!res.canceled) { 
-              const file = res.assets[0]; 
-              if (file.size && file.size > 5 * 1024 * 1024) {
-                Alert.alert("File Too Large", "Attachments are limited to a maximum of 5MB. Please choose a smaller file.");
-                return;
-              }
-              const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 }); 
-              setAttachedFile({ base64, mimeType: file.mimeType, name: file.name }); 
-            } 
-          }}> 
-          <Feather name="paperclip" size={20} color={attachedFile ? BRAND.blue : "#64748B"} /> 
-        </TouchableOpacity> 
-        <TextInput style={styles.input} placeholder="Ask about procedures, manuals..." value={inputText} onChangeText={setInputText} onSubmitEditing={sendMessage} multiline={true} placeholderTextColor='#94A3B8' />
+        <TextInput style={styles.input} placeholder="Ask about procedures, manuals..." value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} multiline={true} placeholderTextColor='#94A3B8' />
           <TouchableOpacity 
             style={[styles.sendBtn, !inputText.trim() && { opacity: 0.5 }]} 
-            onPress={sendMessage}
+            onPress={() => sendMessage()}
             disabled={!inputText.trim() || isTyping}
           >
             <Ionicons name="send" size={20} color="#FFF" />
           </TouchableOpacity>
         </View>
-      <Modal visible={ticketModalVisible} animationType="slide" transparent={true}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: '60%' }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 18, fontWeight: 'bold', color: BRAND.blue }}>Submit a Ticket / Dispute</Text>
-              <TouchableOpacity onPress={() => setTicketModalVisible(false)}>
-                <Feather name="x" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Category</Text>
-            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
-              {['Payroll Dispute', 'Equipment Issue', 'DTR Issue'].map((cat) => (
-                <TouchableOpacity key={cat} onPress={() => setTicketCategory(cat)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: ticketCategory === cat ? BRAND.blue : '#F1F5F9', marginRight: 8 }}>
-                  <Text style={{ fontSize: 12, color: ticketCategory === cat ? '#FFF' : '#475569' }}>{cat}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Title</Text>
-            <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketTitle} onChangeText={setTicketTitle} placeholder="E.g., Missing OT Pay on Aug 15" />
-
-            <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Description / Details</Text>
-            <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 20, height: 100, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Provide details about your dispute..." />
-
-            <TouchableOpacity style={{ backgroundColor: BRAND.blue, padding: 14, borderRadius: 8, alignItems: 'center' }} onPress={submitTicket}>
-              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Submit Ticket</Text>
+      <Modal 
+        isVisible={ticketModalVisible} 
+        onBackdropPress={() => setTicketModalVisible(false)} 
+        onSwipeComplete={() => setTicketModalVisible(false)} 
+        swipeDirection={['down']} 
+        style={{ justifyContent: 'flex-end', margin: 0 }}
+      >
+        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: '60%' }}>
+          <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#E2E8F0', alignSelf: 'center', marginBottom: 16 }} />
+          
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: BRAND.blue }}>Submit a Ticket / Report</Text>
+            <TouchableOpacity onPress={() => setTicketModalVisible(false)}>
+              <Feather name="x" size={24} color="#333" />
             </TouchableOpacity>
           </View>
+          
+          <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Category</Text>
+          <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+            {['Payroll Issue', 'Equipment Issue', 'DTR Issue'].map((cat) => (
+              <TouchableOpacity key={cat} onPress={() => setTicketCategory(cat)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: ticketCategory === cat ? BRAND.blue : '#F1F5F9', marginRight: 8 }}>
+                <Text style={{ fontSize: 12, color: ticketCategory === cat ? '#FFF' : '#475569' }}>{cat}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Issue Subject</Text>
+          <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketTitle} onChangeText={setTicketTitle} placeholder="E.g., Missing OT Pay on Aug 15" />
+
+          <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Description / Details</Text>
+          <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 100, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Provide details about your issue..." />
+
+          <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Proof / Attachment</Text>
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 20 }} 
+            onPress={async () => { 
+              const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true }); 
+              if(!res.canceled) { 
+                const file = res.assets[0]; 
+                if (file.size && file.size > 5 * 1024 * 1024) {
+                  Alert.alert("File Too Large", "Attachments are limited to a maximum of 5MB.");
+                  return;
+                }
+                setAttachedFile({ uri: file.uri, mimeType: file.mimeType, name: file.name }); 
+              } 
+            }}> 
+            <Feather name="paperclip" size={20} color={attachedFile ? BRAND.blue : "#64748B"} style={{marginRight: 8}} /> 
+            <Text style={{ color: attachedFile ? BRAND.blue : '#94A3B8', flex: 1 }} numberOfLines={1}>{attachedFile ? attachedFile.name : "Attach a file (optional)"}</Text>
+            {attachedFile && (
+              <TouchableOpacity onPress={() => setAttachedFile(null)}>
+                <Feather name="x" size={20} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity style={{ backgroundColor: BRAND.blue, padding: 14, borderRadius: 8, alignItems: 'center' }} onPress={submitTicket}>
+            <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Submit Ticket</Text>
+          </TouchableOpacity>
         </View>
       </Modal>
 
