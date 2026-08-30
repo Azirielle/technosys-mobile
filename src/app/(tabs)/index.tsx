@@ -15,7 +15,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SupportChatUI from '../../components/SupportChatUI';
-import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
 const { width, height } = Dimensions.get('window');
@@ -212,6 +211,8 @@ export default function HomeScreen() {
           </body>
         </html>
       `;
+      const Print = require('expo-print');
+      const Sharing = require('expo-sharing');
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri);
