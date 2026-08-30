@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -311,7 +311,22 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
             <TouchableOpacity onPress={() => setAttachedFile(null)}><Feather name="x" size={14} color="#EF4444" /></TouchableOpacity>
           </View>
         )}
-        <TouchableOpacity style={{ padding: 8, marginRight: 8, backgroundColor: "#F1F5F9", borderRadius: 20 }} onPress={async () => { const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true }); if(!res.canceled) { const file = res.assets[0]; const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 }); setAttachedFile({ base64, mimeType: file.mimeType, name: file.name }); } }}> <Feather name="paperclip" size={20} color={attachedFile ? BRAND.blue : "#64748B"} /> </TouchableOpacity> <TextInput style={styles.input} placeholder="Ask about procedures, manuals..." value={inputText} onChangeText={setInputText} onSubmitEditing={sendMessage} multiline={true} placeholderTextColor='#94A3B8' />
+        <TouchableOpacity style={{ padding: 8, marginRight: 8, backgroundColor: "#F1F5F9", borderRadius: 20 }} 
+          onPress={async () => { 
+            const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true }); 
+            if(!res.canceled) { 
+              const file = res.assets[0]; 
+              if (file.size && file.size > 5 * 1024 * 1024) {
+                Alert.alert("File Too Large", "Attachments are limited to a maximum of 5MB. Please choose a smaller file.");
+                return;
+              }
+              const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 }); 
+              setAttachedFile({ base64, mimeType: file.mimeType, name: file.name }); 
+            } 
+          }}> 
+          <Feather name="paperclip" size={20} color={attachedFile ? BRAND.blue : "#64748B"} /> 
+        </TouchableOpacity> 
+        <TextInput style={styles.input} placeholder="Ask about procedures, manuals..." value={inputText} onChangeText={setInputText} onSubmitEditing={sendMessage} multiline={true} placeholderTextColor='#94A3B8' />
           <TouchableOpacity 
             style={[styles.sendBtn, !inputText.trim() && { opacity: 0.5 }]} 
             onPress={sendMessage}
@@ -320,7 +335,6 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
             <Ionicons name="send" size={20} color="#FFF" />
           </TouchableOpacity>
         </View>
-        <Text style={{ textAlign: 'center', fontSize: 10, color: '#94A3B8', marginTop: 8, fontFamily: 'DMSans-Regular' }}>Attachments maximum 5MB</Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
