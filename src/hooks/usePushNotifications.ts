@@ -23,10 +23,15 @@ export function usePushNotifications(userId?: string) {
   const responseListener = useRef<any>(null);
 
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => {
-      if (token && userId) {
+    registerForPushNotificationsAsync().then(async (token) => {
+      if (token) {
         setExpoPushToken(token);
-        savePushTokenToDatabase(token, userId);
+        
+        // Grab the authenticated user directly from Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          savePushTokenToDatabase(token, session.user.id);
+        }
       }
     });
 

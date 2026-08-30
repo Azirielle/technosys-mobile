@@ -10,14 +10,18 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "config": {
-        "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+        "googleMapsApiKey": "AIzaSyC3u_bUxVcLxnHfWrBsi0me2R3MKQ-WV1Y"
+      },
+      "bundleIdentifier": "com.technosys.hrismobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "googleServicesFile": "./google-services.json",
       "config": {
         "googleMaps": {
-          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+          "apiKey": "AIzaSyC3u_bUxVcLxnHfWrBsi0me2R3MKQ-WV1Y"
         }
       },
       "adaptiveIcon": {
@@ -73,6 +77,12 @@
       "eas": {
         "projectId": "36119a6f-9feb-4d18-a676-6cfc6f20844d"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/36119a6f-9feb-4d18-a676-6cfc6f20844d"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     },
     "owner": "technosyss-team"
   }

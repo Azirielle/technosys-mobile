@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, Animated, Easing, ActivityIndicator, ScrollView, Image, Alert, Platform, FlatList, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, Animated, Easing, ActivityIndicator, ScrollView, Image, Alert, Platform, FlatList, TextInput, Linking } from 'react-native';
+import * as Updates from 'expo-updates';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -7,10 +8,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { getDistance } from 'geolib';
-import MapView, { Marker, Circle } from '../../components/MapWrapper';
+import MapView, { Marker, Circle, Polyline } from '../../components/MapWrapper';
 import { supabase } from '../../lib/supabase';
+import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import SupportChatUI from '../../components/SupportChatUI';
 
 const { width, height } = Dimensions.get('window');
 
@@ -150,10 +153,7 @@ export default function HomeScreen() {
     if (user) {
       const { data } = await supabase
         .from('tool_assignments')
-        .select(
-          id, quantity, borrowed_at, returned_at, status, notes,
-          tool_catalog ( id, name, image_url )
-        )
+        .select('id, quantity, borrowed_at, returned_at, status, notes, tool_catalog ( id, name, image_url )')
         .eq('technician_id', user.id)
         .order('borrowed_at', { ascending: false });
       
@@ -266,11 +266,13 @@ export default function HomeScreen() {
   const [newLeaveStartDate, setNewLeaveStartDate] = useState('');
   const [newLeaveEndDate, setNewLeaveEndDate] = useState('');
   const [newLeaveReason, setNewLeaveReason] = useState('');
+    const [leaveFile, setLeaveFile] = useState<any>(null);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   // Timesheets Feature
   const [timesheetModalVisible, setTimesheetModalVisible] = useState(false);
+    const [hasClockedInToday, setHasClockedInToday] = useState(false);
   const [timeLogs, setTimeLogs] = useState<any[]>([]);
   const [selectedTimeLog, setSelectedTimeLog] = useState<any>(null);
   const [timesheetLoading, setTimesheetLoading] = useState(false);
@@ -317,7 +319,20 @@ export default function HomeScreen() {
   };
 
   const submitLeaveRequest = async () => {
-    if (!newLeaveStartDate || !newLeaveEndDate || !newLeaveReason) {
+      if (!newLeaveStartDate || !newLeaveEndDate || !newLeaveReason.trim()) {
+        safeAlert('Error', 'Please fill in all required fields (Start Date, End Date, Reason).');
+        return;
+      }
+      if (newLeaveType === 'sick' && !leaveFile) {
+        safeAlert('Error', 'Medical Certificate is required for Sick Leave.');
+        return;
+      }
+      if (leaveFile && leaveFile.size > 5 * 1024 * 1024) {
+        safeAlert('Error', 'Medical Certificate must be less than 5MB.');
+        return;
+      }
+
+      if (!newLeaveStartDate || !newLeaveEndDate || !newLeaveReason) {
       safeAlert('Error', 'Please fill in all fields (Start Date, End Date, Reason).');
       return;
     }
@@ -343,6 +358,7 @@ export default function HomeScreen() {
         setNewLeaveEndDate('');
         setNewLeaveReason('');
         setNewLeaveType('vacation');
+          setLeaveFile(null);
         fetchLeaveRequests();
       }
     }
@@ -430,7 +446,7 @@ export default function HomeScreen() {
       if (Platform.OS === 'web') {
         window.location.href = '/';
       } else {
-        router.replace('/');
+        try { await Updates.reloadAsync(); } catch (e) { router.replace('/'); }
       }
     } catch (err) {
       console.error(err);
@@ -449,6 +465,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     async function loadData() {
+        (async () => { try { const { status } = await Location.requestForegroundPermissionsAsync(); if (status === 'granted') { const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }); setUserLoc({ lat: loc.coords.latitude, lon: loc.coords.longitude }); } } catch (e) {} })();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
@@ -464,14 +481,26 @@ export default function HomeScreen() {
         .single();
       
       if (scheduleData) setSchedule(scheduleData);
+
+      // Check if user clocked in today
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const { data: todaysLog } = await supabase
+        .from('time_logs')
+        .select('id, app_time_out')
+        .eq('technician_id', user.id)
+        .gte('created_at', startOfDay.toISOString())
+        .limit(1);
+
+      if (todaysLog && todaysLog.length > 0) {
+        setHasClockedInToday(true);
+      }
     }
     loadData();
   }, []);
 
-  const openMenu = () => {
-    setMenuVisible(true);
-    Animated.timing(menuAnim, { toValue: 1, duration: 300, easing: Easing.out(Easing.poly(4)), useNativeDriver: true }).start();
-  };
+  const openMenu = () => { setMenuVisible(true); };
 
   const closeMenu = () => {
     Animated.timing(menuAnim, { toValue: 0, duration: 250, easing: Easing.in(Easing.poly(4)), useNativeDriver: true }).start(() => setMenuVisible(false));
@@ -512,6 +541,7 @@ export default function HomeScreen() {
           geofence_status: 'inside'
         });
         setLocationStatus('success');
+        setHasClockedInToday(true);
         setTimeout(() => setClockInModal(false), 2000);
       } else {
         // Fallback due to distance
@@ -558,6 +588,7 @@ export default function HomeScreen() {
 
         Alert.alert('Override Submitted', 'Your photo has been sent to HR for review.');
         setClockInModal(false);
+        setHasClockedInToday(true);
       } catch (err) {
         console.error(err);
         Alert.alert('Upload Failed', 'There was an issue uploading your photo.');
@@ -587,16 +618,28 @@ export default function HomeScreen() {
 
         {/* MAIN CONTENT */}
         <View style={styles.mainContent}>
-          <TouchableOpacity style={styles.clockInCard} activeOpacity={0.8} onPress={handleClockIn}>
-            <View style={styles.clockInIconContainer}>
-              <Ionicons name="scan-outline" size={32} color={BRAND.blue} />
+          {hasClockedInToday ? (
+            <View style={[styles.clockInCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1 }]} >
+              <View style={[styles.clockInIconContainer, { backgroundColor: '#BBF7D0' }]}>
+                <Feather name="check" size={32} color={BRAND.green} />
+              </View>
+              <View style={styles.clockInTextContainer}>
+                <Text style={[styles.clockInTitle, { color: BRAND.green }]}>Clock In Done</Text>
+                <Text style={styles.clockInSub}>Wait for admin to process clock-out</Text>
+              </View>
             </View>
-            <View style={styles.clockInTextContainer}>
-              <Text style={styles.clockInTitle}>Clock In</Text>
-              <Text style={styles.clockInSub}>Tap to verify location presence</Text>
-            </View>
-            <Feather name="arrow-right" size={24} color={BRAND.blue} />
-          </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.clockInCard} activeOpacity={0.8} onPress={handleClockIn}>
+              <View style={styles.clockInIconContainer}>
+                <Ionicons name="scan-outline" size={32} color={BRAND.blue} />
+              </View>
+              <View style={styles.clockInTextContainer}>
+                <Text style={styles.clockInTitle}>{t('clock_in')}</Text>
+                <Text style={styles.clockInSub}>{t('tap_to_verify')}</Text>
+              </View>
+              <Feather name="arrow-right" size={24} color={BRAND.blue} />
+            </TouchableOpacity>
+          )}
 
           <View style={styles.bubbleRow}>
             <TouchableOpacity style={styles.bubbleBtn} onPress={() => { fetchEquipment(); setEquipModalVisible(true); }}>
@@ -657,9 +700,9 @@ export default function HomeScreen() {
         </View>
 
         {/* MENU OVERLAY */}
-        <Modal visible={menuVisible} transparent={true} animationType="none">
-          <Animated.View style={[styles.menuOverlay, { opacity: menuAnim }]}>
-            <Animated.View style={[styles.menuContent, { transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }] }]}>
+        <Modal visible={menuVisible} transparent={true} animationType="slide" onRequestClose={() => setMenuVisible(false)}>
+          <View style={[styles.menuOverlay, { opacity: 1 }]}>
+            <View style={styles.menuContent}>
               <SafeAreaView style={{flex: 1}}>
                 <View style={styles.menuHeaderRow}>
                   <View style={{width: 32}}/>
@@ -696,12 +739,12 @@ export default function HomeScreen() {
                    </TouchableOpacity>
                 </View>
               </SafeAreaView>
-            </Animated.View>
-          </Animated.View>
+              </View>
+            </View>
         </Modal>
 
         {/* VERIFICATION MODAL */}
-        <Modal visible={clockInModal} transparent={true} animationType="fade">
+        <Modal visible={clockInModal} transparent={true} animationType="fade" onRequestClose={() => setClockInModal(false)}>
           <View style={styles.verificationOverlay}>
             <View style={styles.verificationCard}>
               {locationStatus === 'verifying' ? (
@@ -725,7 +768,7 @@ export default function HomeScreen() {
                   <Text style={styles.fallbackSub}>You are outside the target green zone.</Text>
                   <View style={styles.mapContainer}>
                     {userLoc && schedule && (
-                      <MapView style={styles.map} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: 0.005, longitudeDelta: 0.005 }}>
+                      <MapView provider={'google'} style={styles.map} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: 0.005, longitudeDelta: 0.005 }}>
                         <Circle center={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} radius={schedule.geofence_radius} strokeColor="rgba(16, 185, 129, 0.5)" fillColor="rgba(16, 185, 129, 0.2)" />
                         <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} />
                       </MapView>
@@ -745,7 +788,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* PROFILE MODAL (Bottom Sheet) */}
-        <Modal visible={profileModalVisible} transparent={true} animationType="slide">
+        <Modal visible={profileModalVisible} transparent={true} animationType="slide" onRequestClose={() => setProfileModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={styles.profileSheet}>
               {/* Handle */}
@@ -817,7 +860,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* DTR MODAL */}
-        <Modal visible={dtrModalVisible} transparent={true} animationType="slide">
+        <Modal visible={dtrModalVisible} transparent={true} animationType="slide" onRequestClose={() => setDtrModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -848,7 +891,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* FORMS MODAL */}
-        <Modal visible={formsModalVisible} transparent={true} animationType="slide">
+        <Modal visible={formsModalVisible} transparent={true} animationType="slide" onRequestClose={() => setFormsModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '60%' }]}>
               <View style={styles.sheetHandle} />
@@ -870,7 +913,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* LANGUAGE MODAL */}
-        <Modal visible={langModalVisible} transparent={true} animationType="slide">
+        <Modal visible={langModalVisible} transparent={true} animationType="slide" onRequestClose={() => setLangModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '50%' }]}>
               <View style={styles.sheetHandle} />
@@ -891,7 +934,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* PREFERENCES MODAL */}
-        <Modal visible={preferencesModalVisible} transparent={true} animationType="slide">
+        <Modal visible={preferencesModalVisible} transparent={true} animationType="slide" onRequestClose={() => setPreferencesModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: 400 }]}>
               <View style={styles.sheetHandle} />
@@ -949,7 +992,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* LOGOUT CONFIRMATION MODAL */}
-        <Modal visible={logoutModalVisible} transparent={true} animationType="fade">
+        <Modal visible={logoutModalVisible} transparent={true} animationType="fade" onRequestClose={() => setLogoutModalVisible(false)}>
           <View style={styles.verificationOverlay}>
             <View style={[styles.verificationCard, { padding: 32, alignItems: 'center' }]}>
               <View style={[styles.gridIconCircle, { backgroundColor: '#FEE2E2', width: 64, height: 64, borderRadius: 32, marginBottom: 16 }]}>
@@ -971,7 +1014,7 @@ export default function HomeScreen() {
         </Modal>
         {/* NOTIFICATION DRAWER */}
         {/* NOTIFICATION DRAWER */}
-        <Modal visible={notifVisible} transparent={true} animationType="slide">
+        <Modal visible={notifVisible} transparent={true} animationType="slide" onRequestClose={() => setNotifVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -1037,7 +1080,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* PRIORITY DISPATCH MODAL */}
-        <Modal visible={dispatchVisible} transparent={true} animationType="slide">
+        <Modal visible={dispatchVisible} transparent={true} animationType="slide" onRequestClose={() => setDispatchVisible(false)}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
               <TouchableOpacity onPress={() => setDispatchVisible(false)} style={{ padding: 8, marginLeft: -8 }}>
@@ -1076,12 +1119,22 @@ export default function HomeScreen() {
 
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 24 }}>
                 <Feather name="info" size={16} color="#64748B" style={{ marginTop: 2, marginRight: 8 }} />
-                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: '#475569', lineHeight: 22, flex: 1 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: '#475569', lineHeight: 22, flex: 1 }}>
                   {schedule?.remarks || 'Perform standard maintenance checks on network rack cooling systems.'}
                 </Text>
               </View>
 
               <View style={styles.payslipDivider} />
+
+              {schedule && userLoc && (
+                <View style={{ height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                  <MapView provider={'google'} style={{ flex: 1 }} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: Math.abs(schedule.geofence_lat - userLoc.lat) * 2.5 || 0.05, longitudeDelta: Math.abs(schedule.geofence_lon - userLoc.lon) * 2.5 || 0.05 }}>
+                    <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} pinColor='blue' />
+                    <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} pinColor='red' />
+                    <Polyline coordinates={[{latitude: userLoc.lat, longitude: userLoc.lon}, {latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}]} strokeColor='#3B82F6' strokeWidth={4} lineDashPattern={[10, 10]} />
+                  </MapView>
+                </View>
+              )}
 
               <View style={{ flexDirection: 'row', marginTop: 16 }}>
                 
@@ -1095,7 +1148,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* NOTIFICATION DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedNotif} transparent={true} animationType="slide">
+        <Modal visible={!!selectedNotif} transparent={true} animationType="slide" onRequestClose={() => setSelectedNotif(null)}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {selectedNotif && (
               <>
@@ -1149,7 +1202,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* EQUIPMENT MODAL */}
-        <Modal visible={equipModalVisible} transparent={true} animationType="slide">
+        <Modal visible={equipModalVisible} transparent={true} animationType="slide" onRequestClose={() => setEquipModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -1207,120 +1260,10 @@ export default function HomeScreen() {
         </Modal>
 
         {/* SUPPORT MODAL */}
-        <Modal visible={supportModalVisible} transparent={true} animationType="slide">
-          <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '90%' }]}>
-              <View style={styles.sheetHandle} />
-              
-              <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>{createTicketMode ? 'New Ticket' : 'Help & Support'}</Text>
-                <TouchableOpacity onPress={() => {
-                  if (createTicketMode) {
-                    setCreateTicketMode(false);
-                  } else {
-                    setSupportModalVisible(false);
-                  }
-                }}>
-                  <Feather name={createTicketMode ? "arrow-left" : "x"} size={24} color="#64748B" />
-                </TouchableOpacity>
-              </View>
-
-              {createTicketMode ? (
-                /* CREATE TICKET MODE */
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 16 }}>
-                  <Text style={styles.inputLabel}>Title</Text>
-                  <TextInput 
-                    style={styles.inputField}
-                    placeholder="Briefly describe the issue..."
-                    placeholderTextColor="#94A3B8"
-                    value={ticketForm.title}
-                    onChangeText={(text) => setTicketForm({...ticketForm, title: text})}
-                  />
-                  
-                  <Text style={styles.inputLabel}>Category</Text>
-                  <View style={styles.categoryPills}>
-                    {TICKET_CATEGORIES.map(cat => (
-                      <TouchableOpacity 
-                        key={cat}
-                        style={[styles.categoryPill, ticketForm.category === cat && styles.categoryPillActive]}
-                        onPress={() => setTicketForm({...ticketForm, category: cat})}
-                      >
-                        <Text style={[styles.categoryPillText, ticketForm.category === cat && styles.categoryPillTextActive]}>{cat}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <Text style={styles.inputLabel}>Description</Text>
-                  <TextInput 
-                    style={[styles.inputField, { height: 120, textAlignVertical: 'top' }]}
-                    placeholder="Provide detailed information..."
-                    placeholderTextColor="#94A3B8"
-                    multiline
-                    value={ticketForm.description}
-                    onChangeText={(text) => setTicketForm({...ticketForm, description: text})}
-                  />
-
-                  <TouchableOpacity 
-                    style={[styles.submitBtn, isSubmittingTicket && { opacity: 0.7 }]}
-                    onPress={submitTicket}
-                    disabled={isSubmittingTicket}
-                  >
-                    {isSubmittingTicket ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.submitBtnText}>Submit Ticket</Text>
-                    )}
-                  </TouchableOpacity>
-                </ScrollView>
-              ) : (
-                /* LIST TICKETS MODE */
-                <>
-                  <TouchableOpacity style={styles.newTicketBtn} onPress={() => setCreateTicketMode(true)}>
-                    <Feather name="plus" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.newTicketBtnText}>Create New Ticket</Text>
-                  </TouchableOpacity>
-
-                  {ticketsLoading ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                      <ActivityIndicator size="large" color={BRAND.blue} />
-                    </View>
-                  ) : (
-                    <FlatList
-                      data={tickets}
-                      keyExtractor={(item) => item.id}
-                      showsVerticalScrollIndicator={false}
-                      contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
-                      ListEmptyComponent={() => (
-                        <View style={{ padding: 32, alignItems: 'center' }}>
-                          <Feather name="check-circle" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
-                            You have no open support tickets!
-                          </Text>
-                        </View>
-                      )}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity style={styles.ticketItem} onPress={() => setSelectedTicket(item)} activeOpacity={0.7}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.ticketTitle}>{item.title}</Text>
-                            <Text style={styles.ticketSub}>{item.category} • {new Date(item.created_at).toLocaleDateString()}</Text>
-                          </View>
-                          <View style={[styles.ticketBadge, item.status === 'open' ? styles.badgeOpen : styles.badgeResolved]}>
-                            <Text style={[styles.ticketBadgeText, item.status === 'open' ? styles.badgeTextOpen : styles.badgeTextResolved]}>
-                              {item.status.toUpperCase()}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      )}
-                    />
-                  )}
-                </>
-              )}
-            </View>
-          </View>
-        </Modal>
+        <Modal visible={supportModalVisible} transparent={false} animationType="slide" onRequestClose={() => setSupportModalVisible(false)}><SupportChatUI onClose={() => setSupportModalVisible(false)} /></Modal>
 
         {/* SUPPORT TICKET DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedTicket} transparent={true} animationType="slide">
+        <Modal visible={!!selectedTicket} transparent={true} animationType="slide" onRequestClose={() => setSelectedTicket(null)}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: TICKET --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1360,7 +1303,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* UPDATES MODAL */}
-        <Modal visible={updatesModalVisible} transparent={true} animationType="slide">
+        <Modal visible={updatesModalVisible} transparent={true} animationType="slide" onRequestClose={() => setUpdatesModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1390,24 +1333,35 @@ export default function HomeScreen() {
                     </View>
                   )}
                   renderItem={({ item }) => (
-                    <TouchableOpacity 
-                      style={styles.updateItem}
-                      activeOpacity={0.7}
-                      onPress={() => setSelectedUpdate(item)}
-                    >
-                      <View style={styles.updateIconWrap}>
-                        <Feather name="radio" size={20} color={BRAND.blue} />
+                    <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                          <Feather name="user" size={20} color={BRAND.blue} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: '#0F172A' }}>{item.profiles?.full_name || 'Admin'}</Text>
+                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: '#64748B' }}>
+                            {new Date(item.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        </View>
+                        <Feather name="more-horizontal" size={20} color="#94A3B8" />
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.updateTitle}>{item.title}</Text>
-                        <Text style={styles.updateSub}>
-                          {item.profiles?.full_name || 'Admin'} • {new Date(item.created_at).toLocaleDateString()}
-                        </Text>
-                        <Text style={styles.updateContent} numberOfLines={2}>
-                          {item.content}
-                        </Text>
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A', marginBottom: 4 }}>{item.title}</Text>
+                      <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 14, color: '#334155', lineHeight: 22, marginBottom: 16 }}>
+                        {item.content}
+                      </Text>
+                      <View style={{ height: 1, backgroundColor: '#F1F5F9', marginBottom: 12 }} />
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+                        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', padding: 8 }}>
+                          <Feather name="thumbs-up" size={18} color="#64748B" />
+                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B', marginLeft: 8 }}>Like</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', padding: 8 }}>
+                          <Feather name="message-square" size={18} color="#64748B" />
+                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B', marginLeft: 8 }}>Comment</Text>
+                        </TouchableOpacity>
                       </View>
-                    </TouchableOpacity>
+                    </View>
                   )}
                 />
               )}
@@ -1415,45 +1369,10 @@ export default function HomeScreen() {
           </View>
         </Modal>
 
-        {/* UPDATES DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedUpdate} transparent={true} animationType="slide">
-          <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
-            {/* --- DETAILED VIEW: UPDATE --- */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
-              <TouchableOpacity onPress={() => setSelectedUpdate(null)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="arrow-left" size={24} color="#0F172A" />
-              </TouchableOpacity>
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginLeft: 8 }}>Announcement</Text>
-            </View>
-            
-            <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#E2E8F0', flex: 1, marginBottom: 40 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                <View style={[styles.updateIconWrap, { backgroundColor: '#EFF6FF', marginRight: 16 }]}>
-                  <Feather name="radio" size={24} color={BRAND.blue} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A', marginBottom: 4 }}>
-                    {selectedUpdate?.title}
-                  </Text>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B' }}>
-                    {selectedUpdate?.profiles?.full_name || 'Admin'} • {selectedUpdate?.created_at ? new Date(selectedUpdate.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.payslipDivider} />
-              
-              <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
-                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 16, color: '#334155', lineHeight: 24 }}>
-                  {selectedUpdate?.content}
-                </Text>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        
 
         {/* WORK ORDERS MODAL */}
-        <Modal visible={workOrdersModalVisible} transparent={true} animationType="slide">
+        <Modal visible={workOrdersModalVisible} transparent={true} animationType="slide" onRequestClose={() => setWorkOrdersModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1509,7 +1428,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* SCHEDULES MODAL (LIST VIEW) */}
-        <Modal visible={schedulesModalVisible} transparent={true} animationType="slide">
+        <Modal visible={schedulesModalVisible} transparent={true} animationType="slide" onRequestClose={() => setSchedulesModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1586,7 +1505,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* SCHEDULES DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedSchedule} transparent={true} animationType="slide">
+        <Modal visible={!!selectedSchedule} transparent={true} animationType="slide" onRequestClose={() => setSelectedSchedule(null)}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: SCHEDULE --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1658,7 +1577,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* TIMESHEETS MODAL */}
-        <Modal visible={timesheetModalVisible} transparent={true} animationType="slide">
+        <Modal visible={timesheetModalVisible} transparent={true} animationType="slide" onRequestClose={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }}>
           {selectedTimeLog ? (
             <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
               {/* --- DETAILED VIEW: TIMESHEET --- */}
@@ -1813,7 +1732,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* LEAVE MODAL */}
-        <Modal visible={leaveModalVisible} transparent={true} animationType="slide">
+        <Modal visible={leaveModalVisible} transparent={true} animationType="slide" onRequestClose={() => setLeaveModalVisible(false)}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1854,8 +1773,7 @@ export default function HomeScreen() {
                       </Text>
                     </TouchableOpacity>
                     {showStartDatePicker && (
-                      <DateTimePicker
-                        value={newLeaveStartDate ? new Date(newLeaveStartDate) : new Date()}
+                      <DateTimePicker value={newLeaveStartDate ? new Date(newLeaveStartDate) : new Date()} minimumDate={new Date()}
                         mode="date"
                         display="default"
                         onChange={(event, selectedDate) => {
@@ -1898,10 +1816,19 @@ export default function HomeScreen() {
                       placeholderTextColor="#94A3B8"
                       multiline
                       value={newLeaveReason}
-                      onChangeText={setNewLeaveReason}
-                    />
+                      onChangeText={setNewLeaveReason} />
 
-                    <TouchableOpacity style={[styles.submitBtn, { backgroundColor: BRAND.blue }]} onPress={submitLeaveRequest}>
+                      {newLeaveType === 'sick' && (
+                        <View style={{ marginBottom: 16 }}>
+                          <Text style={styles.inputLabel}>Medical Certificate (Max 5MB) *</Text>
+                          <TouchableOpacity style={[styles.textInput, { justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }]} onPress={async () => { const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true }); if(!res.canceled) setLeaveFile(res.assets[0]); }}>
+                            <Feather name='upload-cloud' size={20} color='#94A3B8' style={{ marginRight: 8 }} />
+                            <Text style={{ fontFamily: 'DMSans-Medium', color: leaveFile ? '#0F172A' : '#94A3B8' }}>{leaveFile ? leaveFile.name : 'Tap to upload certificate'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                      <TouchableOpacity style={[styles.submitBtn, { backgroundColor: BRAND.blue }]} onPress={submitLeaveRequest}>
                       <Text style={styles.submitBtnText}>Submit Leave Request</Text>
                     </TouchableOpacity>
                   </ScrollView>
@@ -1963,7 +1890,7 @@ export default function HomeScreen() {
         </Modal>
 
         {/* PAYSLIPS MODAL */}
-        <Modal visible={payslipsModalVisible} transparent={true} animationType="slide">
+        <Modal visible={payslipsModalVisible} transparent={true} animationType="slide" onRequestClose={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }}>
           {selectedPayslip ? (
             <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>              {/* --- DETAILED VIEW: MODERN BANKING RECEIPT --- */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -2317,5 +2244,20 @@ const styles = StyleSheet.create({
   payslipSectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   payslipLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

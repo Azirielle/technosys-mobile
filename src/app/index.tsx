@@ -1,4 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useRouter as useExpoRouter } from 'expo-router';
+import { supabase } from '../lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const BRAND = {
+  blue: '#1E3A8A',
+  yellow: '#FBBF24',
+  green: '#10B981',
+  lightBg: '#F8FAFC'
+};
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, StatusBar, TextInput, Alert, ActivityIndicator, Image, Animated, Platform, ViewStyle, TextStyle, Linking, useWindowDimensions, Modal, Keyboard, BackHandler, Switch } from 'react-native';
 import * as ExpoCrypto from 'expo-crypto';
 import * as Device from 'expo-device';
@@ -310,6 +320,7 @@ const LoginScreen = ({ onLogin }: any) => {
   const [loginMethod, setLoginMethod] = useState<'phone'|'email'>('phone');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
@@ -363,6 +374,7 @@ const LoginScreen = ({ onLogin }: any) => {
   };
 
   const handleEmailLogin = async () => {
+    setLoginError(null);
     setLoading(true);
     setErrorMsg(null);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -570,7 +582,7 @@ function ActiveShiftTimer({ startTime }: ActiveShiftTimerProps) {
   );
 }
 
-export default function App() {
+function App() {
   useTabTutorial('HOME');
   return (
     <CopilotProvider stopOnOutsideClick androidStatusBarVisible>
@@ -2575,13 +2587,16 @@ function MainAppContent() {
   const handleTimeIn = async () => {
     if (!session) return;
     setTimeInLoading(true);
+  };
+}
 
-export default function LoginScreen() {
+export default function RootLoginScreen() {
   const router = useExpoRouter();
   const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('+639');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -2605,8 +2620,9 @@ export default function LoginScreen() {
   }, []);
 
   const handlePhoneLogin = async () => {
+    setLoginError(null);
     if (!phoneNumber || phoneNumber.length < 10) {
-      Alert.alert('Error', 'Please enter a valid mobile number.');
+      setLoginError('Please enter a valid mobile number.');
       return;
     }
     setLoading(true);
@@ -2618,7 +2634,7 @@ export default function LoginScreen() {
       const { data: emailAttached, error: rpcError } = await supabase.rpc('get_email_from_contact', { p_contact: phoneNumber });
       
       if (rpcError || !emailAttached) {
-         Alert.alert('Access Denied', 'Number not found in the database. Please contact HR.');
+         setLoginError('Number not found. Please contact HR.');
          setLoading(false);
          return;
       }
@@ -2640,8 +2656,9 @@ export default function LoginScreen() {
   };
 
   const handleEmailLogin = async () => {
+    setLoginError(null);
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password.');
+      setLoginError('Please enter both email and password.');
       return;
     }
     setLoading(true);
@@ -2651,7 +2668,7 @@ export default function LoginScreen() {
     });
 
     if (error) {
-      Alert.alert('Login Failed', error.message);
+      setLoginError(error.message);
       setLoading(false);
     }
   };
@@ -2685,6 +2702,7 @@ export default function LoginScreen() {
             {loginMethod === 'phone' ? (
               <>
                 <Text style={styles.methodTitle}>Mobile Access</Text>
+                {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
                 <View style={styles.inputWrapper}>
                   <Feather name="phone" size={20} color="#64748B" style={styles.inputIcon} />
                   <TextInput
@@ -2708,6 +2726,7 @@ export default function LoginScreen() {
             ) : (
               <>
                 <Text style={styles.methodTitle}>Email Access</Text>
+                {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
                 <View style={styles.inputWrapper}>
                   <Feather name="mail" size={20} color="#64748B" style={styles.inputIcon} />
                   <TextInput
@@ -2852,4 +2871,11 @@ const styles = StyleSheet.create({
     color: BRAND.blue,
   }
 });
+
+
+
+
+
+
+
 
