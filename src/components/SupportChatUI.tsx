@@ -40,6 +40,7 @@ export default function SupportChatUI({ onClose, initialQuery }: { onClose: () =
   const [ticketModalVisible, setTicketModalVisible] = useState(false);
   const [ticketTitle, setTicketTitle] = useState('');
   const [ticketDesc, setTicketDesc] = useState('');
+  const [ticketDynamic, setTicketDynamic] = useState<any>({});
   const [ticketCategory, setTicketCategory] = useState('Payroll Dispute');
   
   const submitTicket = async () => {
@@ -63,14 +64,34 @@ export default function SupportChatUI({ onClose, initialQuery }: { onClose: () =
         }
       }
 
+      
+      // Construct dynamic description
+      let finalTitle = ticketTitle;
+      let finalDesc = ticketDesc;
+      
+      if (ticketCategory === 'Payroll Issue') {
+         finalTitle = `Payroll Dispute: ${ticketDynamic.payPeriod || 'Unknown Period'}`;
+         finalDesc = `Pay Period: ${ticketDynamic.payPeriod}\nReason: ${ticketDesc}`;
+      } else if (ticketCategory === 'Equipment Issue') {
+         finalTitle = `Equipment: ${ticketDynamic.toolName || 'Unknown Tool'}`;
+         finalDesc = `Tool Name: ${ticketDynamic.toolName}\nIssue Type: ${ticketDynamic.issueType}\nDetails: ${ticketDesc}`;
+      } else if (ticketCategory === 'DTR Issue') {
+         finalTitle = `DTR Dispute: ${ticketDynamic.logDate || 'Unknown Date'}`;
+         finalDesc = `Log Date: ${ticketDynamic.logDate}\nExpected Time: ${ticketDynamic.expectedTime}\nExplanation: ${ticketDesc}`;
+      } else if (ticketCategory === 'File Leave') {
+         finalTitle = `Leave Request: ${ticketDynamic.leaveType || 'General'}`;
+         finalDesc = `Leave Type: ${ticketDynamic.leaveType}\nStart Date: ${ticketDynamic.startDate}\nEnd Date: ${ticketDynamic.endDate}\nReason: ${ticketDesc}`;
+      }
+
       const { error } = await supabase.from('tickets').insert({
         employee_id: session.user.id,
-        title: ticketTitle,
+        title: finalTitle,
         category: ticketCategory,
-        description: ticketDesc,
+        description: finalDesc,
         attachment_url: uploadedUrl,
         status: 'open',
       });
+
       
       if (error) throw error;
       
@@ -139,12 +160,6 @@ export default function SupportChatUI({ onClose, initialQuery }: { onClose: () =
     }, 5000);
 
   
-  useEffect(() => {
-    if (initialQuery && messages.length === 1) {
-      sendMessage(initialQuery);
-    }
-  }, [initialQuery]);
-
   return () => {
       supabase.removeChannel(channel);
       clearInterval(interval);
@@ -418,18 +433,64 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           
           <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Category</Text>
           <View style={{ flexDirection: 'row', marginBottom: 16 }}>
-            {['Payroll Issue', 'Equipment Issue', 'DTR Issue'].map((cat) => (
+            {['Payroll Issue', 'Equipment Issue', 'DTR Issue', 'File Leave'].map((cat) => (
               <TouchableOpacity key={cat} onPress={() => setTicketCategory(cat)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: ticketCategory === cat ? BRAND.blue : '#F1F5F9', marginRight: 8 }}>
                 <Text style={{ fontSize: 12, color: ticketCategory === cat ? '#FFF' : '#475569' }}>{cat}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Issue Subject</Text>
-          <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketTitle} onChangeText={setTicketTitle} placeholder="E.g., Missing OT Pay on Aug 15" />
+          
+          {ticketCategory === 'Payroll Issue' && (
+            <>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Pay Period</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.payPeriod || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, payPeriod: t})} placeholder="E.g., Aug 1 - Aug 15" />
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Dispute Reason</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 100, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Explain the missing amount or deduction..." />
+            </>
+          )}
 
-          <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Description / Details</Text>
-          <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 100, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Provide details about your issue..." />
+          {ticketCategory === 'Equipment Issue' && (
+            <>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Tool Name / ID</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.toolName || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, toolName: t})} placeholder="E.g., Makita Drill #4" />
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Issue Type</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.issueType || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, issueType: t})} placeholder="Damaged, Malfunction, Lost..." />
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Description</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 80, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="How did it happen?" />
+            </>
+          )}
+
+          {ticketCategory === 'DTR Issue' && (
+            <>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Log Date</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.logDate || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, logDate: t})} placeholder="YYYY-MM-DD" />
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Expected Time</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.expectedTime || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, expectedTime: t})} placeholder="E.g., 8:00 AM - 5:00 PM" />
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Explanation</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 80, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Forgot to clock in, system error..." />
+            </>
+          )}
+
+          {ticketCategory === 'File Leave' && (
+            <>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Leave Type</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.leaveType || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, leaveType: t})} placeholder="Vacation, Sick, Unpaid..." />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Start Date</Text>
+                  <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.startDate || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, startDate: t})} placeholder="YYYY-MM-DD" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>End Date</Text>
+                  <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.endDate || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, endDate: t})} placeholder="YYYY-MM-DD" />
+                </View>
+              </View>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Reason</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 80, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Provide reason for leave..." />
+            </>
+          )}
+
 
           <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Proof / Attachment</Text>
           <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 20 }} 
