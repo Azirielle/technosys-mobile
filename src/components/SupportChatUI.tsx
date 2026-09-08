@@ -1,11 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, ScrollView , LayoutAnimation, UIManager, Image, Linking } from 'react-native';
 import Modal from 'react-native-modal';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '../lib/supabase';
+import * as Crypto from 'expo-crypto';
 import EventSource from 'react-native-sse';
+import { useFocusEffect } from 'expo-router';
 
 const BRAND = {
   blue: '#1E3A8A',    
@@ -16,55 +20,485 @@ const BRAND = {
 
 interface Message {
   id: string;
-  role: 'user' | 'ai';
+  role: 'user' | 'ai' | 'system';
   text: string;
   progressSteps: string[];
   isStreaming: boolean;
   attachment?: { name: string, uri: string };
+  attachment_url?: string | null;
+  attachment_type?: string | null;
+  sender_role?: string;
 }
 
-export default function SupportChatUI({ onClose, initialQuery }: { onClose: () => void, initialQuery?: string }) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'ai',
-      text: "Mabuhay! I am your AI Support Assistant. Ask me anything about the equipment manuals or operations.",
-      progressSteps: [],
-      isStreaming: false
+export default function SupportChatUI({ onClose, initialQuery, ticketId }: { onClose: () => void, initialQuery?: string, ticketId?: string }) {
+  const getCatColor = (cat: string) => { 
+    if (cat === 'Payroll Issue') return '#10B981'; 
+    if (cat === 'Equipment Issue') return '#F59E0B'; 
+    if (cat === 'DTR Issue') return '#6366F1';
+    if (cat === 'File Leave') return '#EF4444'; 
+    if (cat === 'Others') return '#8B5CF6';
+    return '#3B82F6'; 
+  };
+  const [activeTicket, setActiveTicket] = useState<any>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [chatAttachment, setChatAttachment] = useState<{ uri: string, name: string, mimeType: string } | null>(null);
+  const [isUploadingChatAttachment, setIsUploadingChatAttachment] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const channelRef = useRef<any>(null);
+
+  const broadcastChannelRef = useRef<any>(null);
+
+  const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.doc', '.xlsx', '.xls'];
+  const ALLOWED_MIME_TYPES = [
+    'image/png', 'image/jpeg', 'image/jpg', 'image/webp',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel'
+  ];
+
+  const validateAttachment = (file: { name: string, size?: number, mimeType?: string }) => {
+    const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+    const isExtValid = ALLOWED_EXTENSIONS.includes(ext);
+    const isMimeValid = file.mimeType ? (
+      ALLOWED_MIME_TYPES.includes(file.mimeType.toLowerCase()) || 
+      file.mimeType.startsWith('image/')
+    ) : isExtValid;
+
+    if (!isExtValid && !isMimeValid) {
+      Alert.alert(
+        "Unsupported File Type",
+        "Only images (PNG, JPG, screenshots), PDF, Word (.docx), and Excel (.xlsx) files are supported."
+      );
+      return false;
     }
-  ]);
+
+    if (file.size && file.size > 5 * 1024 * 1024) {
+      Alert.alert("File Too Large", "Attachments are limited to a maximum of 5MB.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const getFilePayload = async (uri: string) => {
+    try {
+      if (Platform.OS === 'web') {
+        const resp = await fetch(uri);
+        return await resp.blob();
+      }
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const binaryString = typeof atob !== 'undefined' 
+        ? atob(base64) 
+        : (typeof (globalThis as any).Buffer !== 'undefined') 
+          ? (globalThis as any).Buffer.from(base64, 'base64').toString('binary') 
+          : '';
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes;
+    } catch (e) {
+      console.warn("Fallback to fetch blob:", e);
+      const resp = await fetch(uri);
+      return await resp.blob();
+    }
+  };
+  
+  const sendRealtimeBroadcast = (event: string, payload: any) => {
+    try {
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.send({
+          type: 'broadcast',
+          event,
+          payload,
+        });
+      }
+    } catch (e) {
+      console.warn("Realtime broadcast error:", e);
+    }
+  };
+
+  useEffect(() => {
+    // Establish a global broadcast channel for sending updates to Admin
+    const ch = supabase.channel('system-updates', {
+      config: {
+        broadcast: { self: false },
+      },
+    });
+    ch.subscribe();
+    broadcastChannelRef.current = ch;
+    return () => {
+      if (broadcastChannelRef.current) supabase.removeChannel(broadcastChannelRef.current);
+    };
+  }, []);
+
+
+  useEffect(() => {
+    loadActiveTicket(false, ticketId);
+    return () => {
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
+    };
+  }, [ticketId]);
+
+  const loadActiveTicket = async (forceNew = false, specificTicketId?: string) => {
+    if (forceNew) {
+      setActiveTicket(null);
+      setMessages([{ id: '1', role: 'ai', text: "Mabuhay! I am your AI Support Assistant. Ask me anything about the equipment manuals or operations.", progressSteps: [], isStreaming: false }]);
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
+      return;
+    }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    
+    let tickets;
+    if (specificTicketId) {
+      const res = await supabase.from('tickets').select('*').eq('id', specificTicketId).single();
+      tickets = res.data ? [res.data] : [];
+    } else {
+      const res = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('employee_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      tickets = res.data;
+    }
+
+    if (tickets && tickets.length > 0) {
+      const ticket = tickets[0];
+      setActiveTicket(ticket);
+      
+      // Load comments
+      const { data: comments } = await supabase
+        .from('ticket_comments')
+        .select('*')
+        .eq('ticket_id', ticket.id)
+        .order('created_at', { ascending: true });
+        
+      // Reconstruct history
+      const history: any[] = [];
+      // 1. Original submission (only if no comments exist to prevent duplicating the form submission)
+      if ((!comments || comments.length === 0) && ticket.description && ticket.description !== 'User initiated an AI support chat.') {
+        history.push({
+          id: 'orig_' + ticket.id,
+          role: 'user',
+          text: ticket.description,
+          attachment_url: ticket.attachment_url,
+          attachment_type: ticket.attachment_type,
+          progressSteps: [],
+          isStreaming: false
+        });
+      }
+      
+      // 2. Comments
+      if (comments) {
+        comments.forEach(c => {
+          if (c.is_internal) return; // Skip internal
+          history.push({
+            id: c.id,
+            role: c.sender_role === 'system' ? 'system' : (c.sender_role === 'admin' || c.sender_role === 'ai') ? 'ai' : 'user',
+            text: c.content,
+            attachment_url: c.attachment_url,
+            attachment_type: c.attachment_type,
+            progressSteps: [],
+            isStreaming: false,
+            sender_role: c.sender_role
+          });
+        });
+      }
+      setMessages(history);
+
+      // Subscribe to new comments
+      // Also listen to ticket status changes
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
+      channelRef.current = supabase.channel(`mobile-chat-${ticket.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${ticket.id}` }, (payload) => {
+          setActiveTicket(payload.new);
+        })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${ticket.id}` }, (payload) => {
+          const c = payload.new;
+          if (c.is_internal) return;
+          setMessages(prev => {
+            // Deduplication Check 1: Already exists with exact ID
+            if (prev.some(m => m.id === c.id)) return prev;
+
+            // Deduplication Check 2: Reconcile optimistic user message if content and role match
+            const optUserIdx = prev.findIndex(m => 
+              m.role === 'user' && 
+              m.text === c.content && 
+              m.id !== c.id &&
+              (/^\d+$/.test(m.id) || m.id.includes('_u'))
+            );
+            if (optUserIdx !== -1) {
+              const next = [...prev];
+              next[optUserIdx] = {
+                ...next[optUserIdx],
+                id: c.id,
+                attachment_url: c.attachment_url || next[optUserIdx].attachment_url,
+                attachment_type: c.attachment_type || next[optUserIdx].attachment_type,
+                sender_role: c.sender_role
+              };
+              return next;
+            }
+
+            // Deduplication Check 3: Reconcile optimistic AI message if text matches or currently streaming
+            const optAiIdx = prev.findIndex(m => 
+              m.role === 'ai' && 
+              (m.id === c.id || m.text.trim() === (c.content || '').trim() || m.isStreaming)
+            );
+            if (optAiIdx !== -1) {
+              const next = [...prev];
+              next[optAiIdx] = {
+                ...next[optAiIdx],
+                id: c.id,
+                text: c.content,
+                isStreaming: false,
+                sender_role: c.sender_role
+              };
+              return next;
+            }
+
+            // Otherwise genuine new message (e.g. from HR Admin)
+            return [...prev, {
+              id: c.id,
+              role: c.sender_role === 'system' ? 'system' : (c.sender_role === 'admin' || c.sender_role === 'ai') ? 'ai' : 'user',
+              text: c.content,
+              attachment_url: c.attachment_url,
+              attachment_type: c.attachment_type,
+              progressSteps: [],
+              isStreaming: false,
+              sender_role: c.sender_role
+            }];
+          });
+        })
+        .subscribe();
+        
+    } else {
+      setMessages([
+        {
+          id: '1',
+          role: 'ai',
+          text: "Mabuhay! I am your AI Support Assistant. Select a category below to file a ticket, or ask me a question.",
+          progressSteps: [],
+          isStreaming: false
+        }
+      ]);
+    }
+  };
   const [inputText, setInputText] = useState('');
   const [attachedFile, setAttachedFile] = useState<any>(null);
   const [isTyping, setIsTyping] = useState(false);
 
   const [ticketModalVisible, setTicketModalVisible] = useState(false);
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const [pastTickets, setPastTickets] = useState<any[]>([]);
+  
   const [ticketTitle, setTicketTitle] = useState('');
   const [ticketDesc, setTicketDesc] = useState('');
   const [ticketDynamic, setTicketDynamic] = useState<any>({});
-  const [ticketCategory, setTicketCategory] = useState('Payroll Dispute');
+  const [formError, setFormError] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState('');
+  const [ticketCategory, setTicketCategory] = useState('Payroll Issue');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date'|'time'>('date');
+  const [dateTarget, setDateTarget] = useState('');
+  const [dateVal, setDateVal] = useState(new Date());
+
+  // 5-Second Rule UI Presets and Categories
+  const CATEGORY_ITEMS = [
+    { id: 'Payroll Issue', label: 'Payroll Issue', icon: 'card-outline', color: '#10B981', desc: 'Salary, OT & deductions' },
+    { id: 'Equipment Issue', label: 'Equipment Issue', icon: 'construct-outline', color: '#F59E0B', desc: 'Tools, damages & repairs' },
+    { id: 'DTR Issue', label: 'DTR / Time', icon: 'time-outline', color: '#6366F1', desc: 'Attendance & clock-in' },
+    { id: 'File Leave', label: 'File Leave', icon: 'calendar-outline', color: '#EF4444', desc: 'Sick, vacation & absence' },
+    { id: 'Others', label: 'Other Inquiry', icon: 'help-circle-outline', color: '#8B5CF6', desc: 'General reports & inquiries' },
+  ];
+
+  const TOOL_PRESETS = ['Makita Drill #4', 'Fluke Multimeter', 'Bosch Angle Grinder', 'Hilti Rotary Hammer', 'Other Tool'];
+  const ISSUE_TYPE_PRESETS = [
+    { label: 'Damaged / Broken', value: 'Damaged' },
+    { label: 'Malfunctioning', value: 'Malfunctioning' },
+    { label: 'Lost / Stolen', value: 'Lost' },
+  ];
+  const PAYROLL_PRESETS = [
+    'Missing Overtime Hours',
+    'Incorrect Tax / SSS Deduction',
+    'Unpaid Duty / Rest Day',
+    'Missing Allowance'
+  ];
+  const DTR_PRESETS = [
+    'Forgot Time-In',
+    'Forgot Time-Out',
+    'Biometrics Reader Offline',
+    'Shift Schedule Mismatch'
+  ];
+  const LEAVE_TYPES = ['Sick Leave', 'Vacation Leave', 'Emergency Leave', 'Unpaid Leave'];
+
+  const isFirstHalf = new Date().getDate() <= 15;
+  const currentMonth = new Date().toLocaleString('default', { month: 'short' });
+  const prevMonthDate = new Date();
+  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+  const prevMonth = prevMonthDate.toLocaleString('default', { month: 'short' });
+  const todayStr = new Date().toISOString().split('T')[0];
+  const yesterdayDate = new Date(Date.now() - 86400000);
+  const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+  const tomorrowDate = new Date(Date.now() + 86400000);
+  const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+
+  const applyCategoryDefaults = (cat: string) => {
+    setTicketDynamic((prev: any) => {
+      const updated = { ...prev };
+      if (cat === 'Payroll Issue') {
+        if (!updated.payPeriod) updated.payPeriod = `${isFirstHalf ? '1st - 15th' : '16th - End'} ${currentMonth}`;
+      } else if (cat === 'Equipment Issue') {
+        if (!updated.toolName) updated.toolName = 'Makita Drill #4';
+        if (!updated.issueType) updated.issueType = 'Damaged';
+      } else if (cat === 'DTR Issue') {
+        if (!updated.logDate) updated.logDate = todayStr;
+        if (!updated.expectedIn) updated.expectedIn = '08:00 AM';
+        if (!updated.expectedOut) updated.expectedOut = '05:00 PM';
+      } else if (cat === 'File Leave') {
+        if (!updated.leaveType) updated.leaveType = 'Sick Leave';
+        if (!updated.startDate) updated.startDate = tomorrowStr;
+        if (!updated.endDate) updated.endDate = tomorrowStr;
+      }
+      return updated;
+    });
+  };
+
+  const openTicketForm = (explicitCategory?: string) => {
+    let targetCategory = explicitCategory;
+    
+    // Auto-harvest context from recent user messages if category is not explicitly passed
+    const userMsgs = messages.filter(m => m.role === 'user');
+    const lastUserMsg = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].text : inputText;
+    const lower = (lastUserMsg || '').toLowerCase();
+
+    if (!targetCategory) {
+      if (/drill|grinder|hammer|multimeter|tool|equipment|machine|broken|damaged|stolen/i.test(lower)) {
+        targetCategory = 'Equipment Issue';
+      } else if (/payroll|salary|payslip|overtime|\bot\b|deduction|missing pay|wage/i.test(lower)) {
+        targetCategory = 'Payroll Issue';
+      } else if (/dtr|biometric|time in|time out|clock|attendance|log/i.test(lower)) {
+        targetCategory = 'DTR Issue';
+      } else if (/leave|vacation|sick|absent|emergency/i.test(lower)) {
+        targetCategory = 'File Leave';
+      } else {
+        targetCategory = 'Others';
+      }
+    }
+
+    setTicketCategory(targetCategory);
+    applyCategoryDefaults(targetCategory);
+
+    // Context Auto-Harvesting: Pre-fill description if empty and there's recent user text
+    if (!ticketDesc && lastUserMsg && lastUserMsg.trim() !== '') {
+      if (!lastUserMsg.includes('FORM SUBMITTED')) {
+        setTicketDesc(lastUserMsg.trim());
+        if (targetCategory === 'Others' && !ticketTitle) {
+          setTicketTitle(lastUserMsg.slice(0, 40).trim());
+        }
+      }
+    }
+
+    setFormError('');
+    setTicketModalVisible(true);
+  };
+
+  const pickModalAttachment = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ 
+        type: [
+          "image/*",
+          "application/pdf",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.ms-excel"
+        ], 
+        copyToCacheDirectory: true 
+      }); 
+      if (!res.canceled && res.assets && res.assets.length > 0) { 
+        const file = res.assets[0]; 
+        if (!validateAttachment(file)) return;
+        setAttachedFile({ uri: file.uri, mimeType: file.mimeType || 'application/octet-stream', name: file.name, size: file.size }); 
+      } 
+    } catch (err: any) {
+      Alert.alert("Error", "Failed to select document: " + err.message);
+    }
+  };
+
+  const openHistory = async () => {
+    setHistoryModalVisible(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const { data } = await supabase.from('tickets').select('*').eq('employee_id', session.user.id).order('created_at', { ascending: false });
+      if (data) setPastTickets(data);
+    }
+  };
   
   const submitTicket = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    
+    // Generate UUID synchronously
+    const currentIdempotencyKey = idempotencyKey || Crypto.randomUUID();
+    if (!idempotencyKey) setIdempotencyKey(currentIdempotencyKey);
+    if (ticketCategory === 'Payroll Issue' && (!ticketDynamic.payPeriod || !ticketDesc)) {
+      setFormError('Please fill in pay period and dispute details.'); setTimeout(() => setFormError(''), 3000);
+      setIsSubmitting(false);
+      return;
+    }
+    if (ticketCategory === 'Equipment Issue' && (!ticketDynamic.toolName || !ticketDynamic.issueType || !ticketDesc)) {
+      setFormError('Please specify tool, issue type, and details.'); setTimeout(() => setFormError(''), 3000);
+      setIsSubmitting(false);
+      return;
+    }
+    if (ticketCategory === 'DTR Issue' && (!ticketDynamic.logDate || !ticketDynamic.expectedIn || !ticketDynamic.expectedOut || !ticketDesc)) {
+      setFormError('Please specify date, shift times, and explanation.'); setTimeout(() => setFormError(''), 3000);
+      setIsSubmitting(false);
+      return;
+    }
+    if (ticketCategory === 'File Leave' && (!ticketDynamic.leaveType || !ticketDynamic.startDate || !ticketDynamic.endDate || !ticketDesc)) {
+      setFormError('Please select leave type, dates, and reason.'); setTimeout(() => setFormError(''), 3000);
+      setIsSubmitting(false);
+      return;
+    }
+    if (ticketCategory === 'Others' && (!ticketTitle.trim() || !ticketDesc.trim())) {
+      setFormError('Please enter both subject and description.'); setTimeout(() => setFormError(''), 3000);
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
       let uploadedUrl = null;
+      let uploadedType = null;
       if (attachedFile && attachedFile.uri) {
-        const filePath = `${session.user.id}/${Date.now()}_${attachedFile.name}`;
-        const response = await fetch(attachedFile.uri);
-        const blob = await response.blob();
+        const sanitizedName = attachedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filePath = `${session.user.id}/${Date.now()}_${sanitizedName}`;
+        const payload = await getFilePayload(attachedFile.uri);
         
-        const { error: uploadError } = await supabase.storage.from('ticket_attachments').upload(filePath, blob, {
-          contentType: attachedFile.mimeType
+        const { error: uploadError } = await supabase.storage.from('ticket_attachments').upload(filePath, payload, {
+          contentType: attachedFile.mimeType || 'application/octet-stream',
+          upsert: true
         });
         
         if (!uploadError) {
           const { data } = supabase.storage.from('ticket_attachments').getPublicUrl(filePath);
           uploadedUrl = data.publicUrl;
+          uploadedType = attachedFile.mimeType || 'application/octet-stream';
+        } else {
+          console.error("Form attachment upload error:", uploadError);
         }
       }
 
-      
       // Construct dynamic description
       let finalTitle = ticketTitle;
       let finalDesc = ticketDesc;
@@ -73,130 +507,268 @@ export default function SupportChatUI({ onClose, initialQuery }: { onClose: () =
          finalTitle = `Payroll Dispute: ${ticketDynamic.payPeriod || 'Unknown Period'}`;
          finalDesc = `Pay Period: ${ticketDynamic.payPeriod}\nReason: ${ticketDesc}`;
       } else if (ticketCategory === 'Equipment Issue') {
-         finalTitle = `Equipment: ${ticketDynamic.toolName || 'Unknown Tool'}`;
-         finalDesc = `Tool Name: ${ticketDynamic.toolName}\nIssue Type: ${ticketDynamic.issueType}\nDetails: ${ticketDesc}`;
+         const finalTool = ticketDynamic.toolName === 'Other Tool' ? (ticketDynamic.customTool || 'Other Equipment') : (ticketDynamic.toolName || 'Unknown Tool');
+         finalTitle = `Equipment: ${finalTool}`;
+         finalDesc = `Tool Name: ${finalTool}\nIssue Type: ${ticketDynamic.issueType}\nDetails: ${ticketDesc}`;
       } else if (ticketCategory === 'DTR Issue') {
          finalTitle = `DTR Dispute: ${ticketDynamic.logDate || 'Unknown Date'}`;
-         finalDesc = `Log Date: ${ticketDynamic.logDate}\nExpected Time: ${ticketDynamic.expectedTime}\nExplanation: ${ticketDesc}`;
+         finalDesc = `Log Date: ${ticketDynamic.logDate}\nExpected In: ${ticketDynamic.expectedIn}\nExpected Out: ${ticketDynamic.expectedOut}\nExplanation: ${ticketDesc}`;
       } else if (ticketCategory === 'File Leave') {
          finalTitle = `Leave Request: ${ticketDynamic.leaveType || 'General'}`;
          finalDesc = `Leave Type: ${ticketDynamic.leaveType}\nStart Date: ${ticketDynamic.startDate}\nEnd Date: ${ticketDynamic.endDate}\nReason: ${ticketDesc}`;
+      } else if (ticketCategory === 'Others') {
+         finalTitle = `Inquiry: ${ticketTitle.trim()}`;
+         finalDesc = ticketDesc.trim();
       }
 
-      const { error } = await supabase.from('tickets').insert({
-        employee_id: session.user.id,
-        title: finalTitle,
-        category: ticketCategory,
-        description: finalDesc,
-        attachment_url: uploadedUrl,
-        status: 'open',
-      });
+      let error;
+      let newTicket = activeTicket;
+      
+      if (activeTicket) {
+        // UPDATE existing ticket instead of creating new
+        const { error: updateError } = await supabase.from('tickets').update({
+          title: finalTitle,
+          category: ticketCategory,
+          description: finalDesc,
+          attachment_url: uploadedUrl || activeTicket.attachment_url,
+          attachment_type: uploadedType || activeTicket.attachment_type,
+          status: 'open',
+        }).eq('id', activeTicket.id);
+        error = updateError;
+        sendRealtimeBroadcast('ticket_update', { ticket_id: activeTicket.id });
+      } else {
+        // CREATE new ticket if none exists
+        const res = await supabase.from('tickets').insert({
+          employee_id: session.user.id,
+          title: finalTitle,
+          category: ticketCategory,
+          description: finalDesc,
+          attachment_url: uploadedUrl,
+          attachment_type: uploadedType,
+          status: 'open',
+          idempotency_key: currentIdempotencyKey,
+        }).select().single();
+        error = res.error;
+        newTicket = res.data;
+        if (newTicket) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setActiveTicket(newTicket);
+          sendRealtimeBroadcast('ticket_update', { ticket_id: newTicket.id });
+        }
+      }
 
-      
-      if (error) throw error;
-      
-      Alert.alert("Success", "Ticket submitted successfully!");
+      if (error) {
+          if (error.code === '23505') {
+            console.log('Idempotency prevented duplicate');
+            setIsSubmitting(false);
+            setTicketModalVisible(false);
+            setTimeout(() => loadActiveTicket(), 1000);
+            return;
+          }
+          throw error;
+      }
+
+      const ticketId = activeTicket ? activeTicket.id : newTicket?.id;
+      if (ticketId) {
+        const submissionContent = `📋 **[FORM SUBMITTED: ${ticketCategory.toUpperCase()}]**\n\n` +
+          `**Subject:** ${finalTitle}\n\n` +
+          `${finalDesc}`;
+          
+        await supabase.from('ticket_comments').insert({
+          ticket_id: ticketId,
+          sender_role: 'technician',
+          content: submissionContent,
+          author_id: session.user.id,
+          attachment_url: uploadedUrl,
+          attachment_type: uploadedType
+        });
+
+        await supabase.from('ticket_comments').insert({
+          ticket_id: ticketId,
+          sender_role: 'ai',
+          content: `✅ **Ticket Successfully Submitted to HR Desk**\n\n` +
+            `Your **${ticketCategory}** request is officially logged under Reference **#${ticketId.slice(0, 8).toUpperCase()}** with status **OPEN**.\n\n` +
+            `⏳ **Please stand by:** An HR Administrator has been notified and will review your submission. You will receive real-time updates and decisions (Approval, Refusal, or Remarks) directly in this chat thread.`,
+          author_id: session.user.id
+        });
+
+        sendRealtimeBroadcast('ticket_update', { ticket_id: ticketId });
+        sendRealtimeBroadcast('new_comment', { ticket_id: ticketId });
+      }
+
       setTicketModalVisible(false);
       setTicketTitle('');
       setTicketDesc('');
       setAttachedFile(null);
+      setIsSubmitting(false);
+
+      // Reload to connect the channel and display the newly inserted comments
+      setTimeout(() => loadActiveTicket(false, ticketId), 300);
     } catch (err: any) {
+      setIsSubmitting(false);
       Alert.alert("Error", err.message);
     }
   };
 
-  const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
-  const [activeAiMessageId, setActiveAiMessageId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const formScrollRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    if (!activeQueueId || !activeAiMessageId) return;
+  const isImageAttachment = (url?: string | null, type?: string | null) => {
+    if (!url) return false;
+    if (type && type.startsWith('image/')) return true;
+    const clean = url.toLowerCase().split('?')[0];
+    return clean.endsWith('.png') || clean.endsWith('.jpg') || clean.endsWith('.jpeg') || clean.endsWith('.webp') || clean.endsWith('.gif');
+  };
 
-    const channel = supabase
-      .channel(`queue_tracker_${activeQueueId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'ai_chat_queue',
-        filter: `id=eq.${activeQueueId}`
-      }, (payload) => {
-        if (payload.new.status === 'completed') {
-          setMessages(prev => prev.map(m => 
-            m.id === activeAiMessageId 
-              ? { ...m, text: payload.new.response, isStreaming: false, progressSteps: [...m.progressSteps, "Answer received from queue."] } 
-              : m
-          ));
-          setIsTyping(false);
-          setActiveQueueId(null);
-          setActiveAiMessageId(null);
-        } else if (payload.new.status === 'failed') {
-          setMessages(prev => prev.map(m => 
-            m.id === activeAiMessageId 
-              ? { ...m, text: "\n\n**Queue Error:** " + payload.new.response, isStreaming: false } 
-              : m
-          ));
-          setIsTyping(false);
-          setActiveQueueId(null);
-          setActiveAiMessageId(null);
-        }
-      })
-      .subscribe();
-
-    // Polling for queue position
-    const interval = setInterval(async () => {
-       const { data } = await supabase.from('ai_chat_queue').select('id').eq('id', activeQueueId).single();
-       if (!data) return;
-       const { count } = await supabase.from('ai_chat_queue').select('*', { count: 'exact', head: true })
-         .eq('status', 'waiting')
-         .lt('created_at', new Date().toISOString()); // Simplification, gets all waiting items
-         
-       if (count !== null) {
-          setMessages(prev => prev.map(m => 
-            m.id === activeAiMessageId 
-              ? { ...m, progressSteps: m.progressSteps.filter(s => !s.includes("You are #")).concat(`You are #${count + 1} in queue...`) }
-              : m
-          ));
-       }
-    }, 5000);
-
-  
-  return () => {
-      supabase.removeChannel(channel);
-      clearInterval(interval);
-    };
-  }, [activeQueueId, activeAiMessageId]);
+  const pickChatAttachment = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ 
+        type: [
+          "image/*",
+          "application/pdf",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.ms-excel"
+        ], 
+        copyToCacheDirectory: true 
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        const file = res.assets[0];
+        if (!validateAttachment(file)) return;
+        setChatAttachment({
+          uri: file.uri,
+          name: file.name,
+          mimeType: file.mimeType || 'application/octet-stream'
+        });
+      }
+    } catch (err: any) {
+      Alert.alert("Error", "Failed to select document: " + err.message);
+    }
+  };
 
   const sendMessage = async (overrideText?: string) => {
-    const textToSend = overrideText || inputText;
-    if (!textToSend.trim()) return;
+    if (activeTicket && (activeTicket.status === 'closed' || activeTicket.status === 'resolved')) {
+      Alert.alert(
+        "Ticket Finalized",
+        "This ticket has been completed by HR and is now read-only. Please start a new session or submit a new ticket.",
+        [
+          { text: "Start New Session", onPress: () => loadActiveTicket(true) },
+          { text: "OK", style: "cancel" }
+        ]
+      );
+      return;
+    }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      text: textToSend.trim(),
-      progressSteps: [],
-      isStreaming: false,
-      attachment: attachedFile ? { name: attachedFile.name, uri: attachedFile.uri } : undefined
-    };
+    const textToSend = (overrideText || inputText).trim();
+    if (!textToSend && !chatAttachment) return;
 
-    setMessages(prev => [...prev, userMessage]);
+    let localAccumulatedAiText = "";
+    const stagedAttachment = chatAttachment;
+    const optimisticUserId = Date.now().toString();
+    const aiMessageId = (Date.now() + 1).toString();
+    setChatAttachment(null);
     setInputText('');
     setIsTyping(true);
-
-    const aiMessageId = (Date.now() + 1).toString();
-    const aiMessage: Message = {
-      id: aiMessageId,
-      role: 'ai',
-      text: "",
-      progressSteps: [],
-      isStreaming: true
-    };
-    
-    setMessages(prev => [...prev, aiMessage]);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
+
+      let uploadedAttachmentUrl: string | null = null;
+      let uploadedAttachmentType: string | null = null;
+
+      if (stagedAttachment && stagedAttachment.uri) {
+        setIsUploadingChatAttachment(true);
+        try {
+          const sanitizedName = stagedAttachment.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const filePath = `${session.user.id}/${Date.now()}_${sanitizedName}`;
+          const payload = await getFilePayload(stagedAttachment.uri);
+          const { error: uploadErr } = await supabase.storage
+            .from('ticket_attachments')
+            .upload(filePath, payload, {
+              contentType: stagedAttachment.mimeType || 'application/octet-stream',
+              upsert: true
+            });
+
+          if (!uploadErr) {
+            const { data: publicData } = supabase.storage.from('ticket_attachments').getPublicUrl(filePath);
+            uploadedAttachmentUrl = publicData.publicUrl;
+            uploadedAttachmentType = stagedAttachment.mimeType || 'application/octet-stream';
+          } else {
+            console.error("Chat attachment upload error:", uploadErr);
+          }
+        } catch (uploadErr) {
+          console.error("Chat attachment fetch/upload error:", uploadErr);
+        } finally {
+          setIsUploadingChatAttachment(false);
+        }
+      }
+
+      const userMessage: Message = {
+        id: optimisticUserId,
+        role: 'user',
+        text: textToSend,
+        attachment_url: uploadedAttachmentUrl,
+        attachment_type: uploadedAttachmentType,
+        attachment: stagedAttachment ? { name: stagedAttachment.name, uri: stagedAttachment.uri } : undefined,
+        progressSteps: [],
+        isStreaming: false
+      };
+
+      setMessages(prev => [...prev, userMessage]);
+
+      const aiMessage: Message = {
+        id: aiMessageId,
+        role: 'ai',
+        text: "",
+        progressSteps: [],
+        isStreaming: true
+      };
+      
+      setMessages(prev => [...prev, aiMessage]);
+      
+      let currentTicket = activeTicket;
+      if (!currentTicket) {
+         const { data: newTicket } = await supabase.from('tickets').insert({
+            employee_id: session.user.id,
+            title: 'Support Conversation',
+            category: 'General Inquiry',
+            description: textToSend || 'User initiated an AI support chat.',
+            status: 'open',
+            handling_mode: 'AI',
+            attachment_url: uploadedAttachmentUrl,
+            attachment_type: uploadedAttachmentType,
+            idempotency_key: Crypto.randomUUID()
+         }).select().single();
+         if (newTicket) {
+            currentTicket = newTicket;
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setActiveTicket(newTicket);
+            sendRealtimeBroadcast('ticket_update', { ticket_id: newTicket.id });
+         }
+      }
+      if (currentTicket) {
+         const { data: insertedComment } = await supabase.from('ticket_comments').insert({
+             ticket_id: currentTicket.id,
+             sender_role: 'technician',
+             content: textToSend || (stagedAttachment ? `Attached: ${stagedAttachment.name}` : ''),
+             author_id: session.user.id,
+             attachment_url: uploadedAttachmentUrl,
+             attachment_type: uploadedAttachmentType
+         }).select().single();
+
+         if (insertedComment) {
+           setMessages(prev => prev.map(m => m.id === optimisticUserId ? { ...m, id: insertedComment.id } : m));
+         }
+
+         sendRealtimeBroadcast('new_comment', { ticket_id: currentTicket.id });
+         if (currentTicket.handling_mode === 'ADMIN') {
+             setIsTyping(false);
+             setMessages(prev => prev.filter(m => m.id !== aiMessageId));
+             return;
+         }
+      }
 
       // Replace with your actual edge function URL
       const EDGE_FUNCTION_URL = "https://ggknkdyuglzcnkwhvdak.supabase.co/functions/v1/chat-support";
@@ -229,6 +801,7 @@ export default function SupportChatUI({ onClose, initialQuery }: { onClose: () =
              }));
           } 
           else if (data.type === "text") {
+             localAccumulatedAiText += data.text;
              setMessages(prev => prev.map(m => {
                 if (m.id === aiMessageId) {
                   return { ...m, text: m.text + data.text };
@@ -238,24 +811,33 @@ export default function SupportChatUI({ onClose, initialQuery }: { onClose: () =
           }
           else if (data.type === "rate_limited") {
              es.close();
-             setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, progressSteps: [...m.progressSteps, "High traffic. Queuing your request..."] } : m));
-             supabase.from('ai_chat_queue').insert({
-               user_id: session.user.id,
-               query: userMessage.text,
-               history: chatHistory,
-               status: 'waiting'
-             }).select().single().then(({ data: queueItem }) => {
-                if (queueItem) {
-                   setActiveQueueId(queueItem.id);
-                   setActiveAiMessageId(aiMessageId);
-                }
-             });
+             setIsTyping(false);
+             setMessages(prev => prev.map(m => m.id === aiMessageId ? { 
+               ...m, 
+               isStreaming: false, 
+               text: "The AI service is currently busy. Please try asking your question again in a moment." 
+             } : m));
           }
           else if (data.type === "done" || data.type === "error") {
              if (data.type === "error") {
                setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: m.text + "\n\n**Error:** " + data.message, isStreaming: false } : m));
              } else {
                setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, isStreaming: false } : m));
+               
+               if (currentTicket) {
+                  supabase.from('ticket_comments').insert({
+                     ticket_id: currentTicket.id,
+                     sender_role: 'ai',
+                     content: localAccumulatedAiText,
+                     author_id: session.user.id
+                  }).select().single().then(({ data: insertedAi, error }) => {
+                     if (error) console.error("AI Insert Error:", error);
+                     if (insertedAi) {
+                        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, id: insertedAi.id } : m));
+                      }
+                      sendRealtimeBroadcast('new_comment', { ticket_id: currentTicket.id });
+                   });
+               }
              }
              setIsTyping(false);
              es.close();
@@ -321,7 +903,14 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>AI Support</Text>
-          <View style={{width: 24}}/>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <TouchableOpacity onPress={() => loadActiveTicket(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="add-circle-outline" size={24} color={BRAND.blue} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={openHistory} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="list" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <FlatList
@@ -331,30 +920,135 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           contentContainerStyle={styles.chatContainer}
           renderItem={({ item }) => {
+            if (item.role === 'system') {
+              return (
+                <View style={{ alignItems: 'center', marginVertical: 12 }}>
+                  <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '500' }}>{item.text}</Text>
+                  </View>
+                </View>
+              );
+            }
             const isUser = item.role === 'user';
+            const isAdmin = item.sender_role === 'admin';
+            const isApproved = item.text.includes('[TICKET APPROVED');
+            const isRefused = item.text.includes('[TICKET REFUSED');
+            const isDecision = isApproved || isRefused;
+            const isFormalSubmission = isUser && item.text.includes('[FORM SUBMITTED');
+
             return (
               <View style={[styles.messageRow, isUser ? styles.messageRowUser : styles.messageRowAI]}>
                 {!isUser && (
-                  <View style={styles.avatarAI}>
-                    <Ionicons name="hardware-chip" size={16} color="#FFF" />
+                  <View style={[
+                    styles.avatarAI,
+                    isApproved ? { backgroundColor: '#10B981' } :
+                    isRefused ? { backgroundColor: '#EF4444' } :
+                    isAdmin ? { backgroundColor: '#7C3AED' } :
+                    { backgroundColor: BRAND.blue }
+                  ]}>
+                    <Ionicons 
+                      name={
+                        isApproved ? "checkmark-circle" :
+                        isRefused ? "close-circle" :
+                        isAdmin ? "shield-checkmark" :
+                        "hardware-chip"
+                      } 
+                      size={16} 
+                      color="#FFF" 
+                    />
                   </View>
                 )}
                 
-                <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-                    {/* Render User Attachment if present */}
-                    {isUser && item.attachment && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', padding: 8, borderRadius: 8, marginBottom: item.text ? 8 : 0 }}>
-                        <Ionicons name="document-text" size={16} color="#FFF" style={{ marginRight: 6 }} />
-                        <Text style={{ color: '#FFF', fontSize: 12, flexShrink: 1 }} numberOfLines={1}>
-                          {item.attachment.name}
-                        </Text>
+                <View style={[
+                  styles.bubble, 
+                  isUser ? styles.bubbleUser : styles.bubbleAI,
+                  isApproved && { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', borderWidth: 1.5, borderTopLeftRadius: 4 },
+                  isRefused && { backgroundColor: '#FEF2F2', borderColor: '#FECACA', borderWidth: 1.5, borderTopLeftRadius: 4 },
+                  (isAdmin && !isDecision) && { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF', borderWidth: 1, borderTopLeftRadius: 4 },
+                  isFormalSubmission && { borderColor: '#60A5FA', borderWidth: 1.5 }
+                ]}>
+                    {/* Header Banner for Decision or Formal Messages */}
+                    {isApproved && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: '#A7F3D0' }}>
+                        <Ionicons name="checkmark-circle" size={14} color="#059669" style={{ marginRight: 5 }} />
+                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#059669', letterSpacing: 0.5 }}>HR DECISION • APPROVED</Text>
+                      </View>
+                    )}
+                    {isRefused && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: '#FECACA' }}>
+                        <Ionicons name="close-circle" size={14} color="#DC2626" style={{ marginRight: 5 }} />
+                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#DC2626', letterSpacing: 0.5 }}>HR DECISION • REFUSED</Text>
+                      </View>
+                    )}
+                    {(isAdmin && !isDecision) && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: '#E9D5FF' }}>
+                        <Ionicons name="shield-checkmark" size={13} color="#7C3AED" style={{ marginRight: 4 }} />
+                        <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#7C3AED', letterSpacing: 0.5 }}>HR ADMINISTRATOR</Text>
+                      </View>
+                    )}
+                    {isFormalSubmission && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.25)' }}>
+                        <Ionicons name="document-text" size={13} color="#93C5FD" style={{ marginRight: 4 }} />
+                        <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#93C5FD', letterSpacing: 0.5 }}>FORMAL TICKET SUBMISSION</Text>
                       </View>
                     )}
 
+                    {/* Render User / Comment Attachment if present */}
+                    {(item.attachment_url || item.attachment) && (
+                      isImageAttachment(item.attachment_url || item.attachment?.uri, item.attachment_type) ? (
+                        <TouchableOpacity 
+                          activeOpacity={0.88}
+                          onPress={() => setLightboxImage(item.attachment_url || item.attachment?.uri || null)}
+                          style={{ 
+                            marginTop: 4, 
+                            marginBottom: item.text ? 8 : 4, 
+                            borderRadius: 12, 
+                            overflow: 'hidden', 
+                            backgroundColor: isUser ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)',
+                            borderWidth: 1,
+                            borderColor: isUser ? 'rgba(255,255,255,0.2)' : '#E2E8F0'
+                          }}
+                        >
+                          <Image 
+                            source={{ uri: item.attachment_url || item.attachment?.uri }} 
+                            style={{ width: 220, height: 160, borderRadius: 12 }} 
+                            resizeMode="cover"
+                          />
+                          <View style={{ position: 'absolute', bottom: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="expand" size={11} color="#FFF" style={{ marginRight: 3 }} />
+                            <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>Tap to expand</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity 
+                          onPress={() => {
+                            const target = item.attachment_url || item.attachment?.uri;
+                            if (target) Linking.openURL(target).catch(e => Alert.alert("Cannot open file", e.message));
+                          }}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : '#F1F5F9',
+                            padding: 8,
+                            borderRadius: 8,
+                            marginBottom: item.text ? 8 : 4,
+                            borderWidth: isUser ? 0 : 1,
+                            borderColor: '#E2E8F0'
+                          }}
+                        >
+                          <Ionicons name="document-text" size={16} color={isUser ? "#FFF" : BRAND.blue} style={{ marginRight: 6 }} />
+                          <Text style={{ color: isUser ? '#FFF' : '#1E293B', fontSize: 12, flexShrink: 1, fontWeight: '500' }} numberOfLines={1}>
+                            {item.attachment?.name || 'Attached Document'}
+                          </Text>
+                          <Feather name="external-link" size={14} color={isUser ? "#FFF" : "#64748B"} style={{ marginLeft: 6 }} />
+                        </TouchableOpacity>
+                      )
+                    )}
+
                   {/* Render Progress Steps for AI */}
-                  {!isUser && item.progressSteps.some(step => step.toLowerCase().includes("queue") || step.toLowerCase().includes("traffic")) && (
+                  {!isUser && item.progressSteps.length > 0 && item.text.length === 0 && (
                     <View style={styles.progressContainer}>
-                      {item.progressSteps.filter(step => step.toLowerCase().includes("queue") || step.toLowerCase().includes("traffic")).map((step, idx) => (
+                      {item.progressSteps.map((step: string, idx: number) => (
                         <View key={idx} style={styles.progressStep}>
                           {(item.isStreaming && idx === item.progressSteps.length - 1) ? (
                             <ActivityIndicator size="small" color={BRAND.blue} />
@@ -367,17 +1061,25 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                     </View>
                   )}
                   
-                  
                   {item.text.length > 0 && (
                     isUser ? (
                       <Text style={[styles.messageText, styles.messageTextUser]}>{item.text}</Text>
                     ) : (
                       <>
-                        <MarkdownText text={item.text.replace('[ACTION:OPEN_TICKET_FORM]', '')} style={[styles.messageText, styles.messageTextAI]} />
+                        <MarkdownText 
+                          text={item.text.replace('[ACTION:OPEN_TICKET_FORM]', '')} 
+                          style={[
+                            styles.messageText, 
+                            styles.messageTextAI,
+                            isApproved && { color: '#064E3B' },
+                            isRefused && { color: '#7F1D1D' },
+                            (isAdmin && !isDecision) && { color: '#581C87' }
+                          ]} 
+                        />
                         {item.text.includes('[ACTION:OPEN_TICKET_FORM]') && (
                             <TouchableOpacity 
                               style={{ marginTop: 12, backgroundColor: BRAND.blue, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
-                              onPress={() => setTicketModalVisible(true)}
+                              onPress={() => openTicketForm()}
                             >
                               <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Open Support / Ticket Form</Text>
                             </TouchableOpacity>
@@ -392,26 +1094,236 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           }}
         />
 
-        <View style={{ paddingHorizontal: 16, paddingVertical: 4, backgroundColor: '#FFF', flexDirection: 'row' }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {['Report Payroll Issue', 'Report Equipment Issue', 'Report DTR Issue', 'File a Leave'].map((chip, idx) => (
-              <TouchableOpacity key={idx} style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => { setInputText(''); sendMessage(chip); }}>
-                <Text style={{ fontSize: 13, color: BRAND.blue }}>{chip}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        {/* Quick Suggestion Chips (Only on fresh sessions before an active ticket exists) */}
+        {!activeTicket && (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 6, backgroundColor: '#FFF', flexDirection: 'row' }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {['Report Payroll Issue', 'Report Equipment Issue', 'Report DTR Issue', 'File a Leave', 'Other Inquiry'].map((chip, idx) => (
+                <TouchableOpacity key={idx} style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => { 
+                  if (chip.includes('Payroll')) openTicketForm('Payroll Issue'); 
+                  else if (chip.includes('Equipment')) openTicketForm('Equipment Issue'); 
+                  else if (chip.includes('DTR')) openTicketForm('DTR Issue'); 
+                  else if (chip.includes('Leave')) openTicketForm('File Leave'); 
+                  else if (chip.includes('Other')) openTicketForm('Others');
+                }}>
+                  <Text style={{ fontSize: 13, color: BRAND.blue, fontWeight: '500' }}>{chip}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
-        <View style={styles.inputContainer}>
-        <TextInput style={styles.input} placeholder="Ask about procedures, manuals..." value={inputText} onChangeText={setInputText} onSubmitEditing={() => sendMessage()} multiline={true} placeholderTextColor='#94A3B8' />
+        {/* Post-Resolution / Post-Refusal Conversation Locking Card */}
+        {activeTicket?.status === 'closed' || activeTicket?.status === 'resolved' ? (
+          <View style={{ 
+            padding: 14, 
+            backgroundColor: activeTicket.status === 'resolved' ? '#F0FDF4' : '#FEF2F2', 
+            borderTopWidth: 1, 
+            borderColor: activeTicket.status === 'resolved' ? '#BBF7D0' : '#FECACA' 
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <Ionicons 
+                name={activeTicket.status === 'resolved' ? "checkmark-circle" : "close-circle"} 
+                size={18} 
+                color={activeTicket.status === 'resolved' ? "#16A34A" : "#DC2626"} 
+                style={{ marginRight: 6 }} 
+              />
+              <Text style={{ 
+                fontWeight: 'bold', 
+                fontSize: 13, 
+                color: activeTicket.status === 'resolved' ? "#166534" : "#991B1B" 
+              }}>
+                {activeTicket.status === 'resolved' ? "Ticket Approved & Resolved" : "Request Refused & Closed"}
+              </Text>
+            </View>
+
+            <Text style={{ 
+              fontSize: 12, 
+              color: activeTicket.status === 'resolved' ? "#15803D" : "#B91C1C", 
+              lineHeight: 16, 
+              marginBottom: 10 
+            }}>
+              {activeTicket.status === 'resolved' 
+                ? "This ticket has been completed by HR. The thread is archived as read-only."
+                : "HR has finalized this request. You may appeal or open a new ticket with updated details."}
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {activeTicket.status === 'closed' ? (
+                <TouchableOpacity 
+                  style={{ flex: 1, backgroundColor: '#DC2626', paddingVertical: 9, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                  onPress={() => {
+                    loadActiveTicket(true);
+                    openTicketForm();
+                  }}
+                >
+                  <Ionicons name="document-text-outline" size={15} color="#FFF" style={{ marginRight: 6 }} />
+                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>Submit Appeal / New Ticket</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  style={{ flex: 1, backgroundColor: BRAND.blue, paddingVertical: 9, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                  onPress={() => loadActiveTicket(true)}
+                >
+                  <Ionicons name="add-circle-outline" size={15} color="#FFF" style={{ marginRight: 6 }} />
+                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>Start New Support Chat</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        ) : (
+          <View style={{ backgroundColor: '#FFF', borderTopWidth: 1, borderColor: '#E2E8F0' }}>
+            {chatAttachment && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#DBEAFE', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                  <Ionicons name="attach" size={16} color={BRAND.blue} style={{ marginRight: 6 }} />
+                  <Text style={{ color: BRAND.blue, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                    {chatAttachment.name}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setChatAttachment(null)}>
+                  <Feather name="x-circle" size={16} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.inputContainer}>
+              <TouchableOpacity 
+                style={{ padding: 8, justifyContent: 'center', alignItems: 'center' }}
+                onPress={pickChatAttachment}
+                disabled={isUploadingChatAttachment || isTyping}
+              >
+                <Ionicons name="attach" size={22} color={chatAttachment ? BRAND.blue : "#64748B"} />
+              </TouchableOpacity>
+
+              <TextInput 
+                style={styles.input} 
+                placeholder="Ask about procedures, manuals..." 
+                value={inputText} 
+                onChangeText={setInputText} 
+                onSubmitEditing={() => sendMessage()} 
+                multiline={true} 
+                placeholderTextColor='#94A3B8' 
+              />
+              
+              <TouchableOpacity 
+                style={[styles.sendBtn, (!inputText.trim() && !chatAttachment) && { opacity: 0.5 }]} 
+                onPress={() => sendMessage()}
+                disabled={(!inputText.trim() && !chatAttachment) || isTyping || isUploadingChatAttachment}
+              >
+                {isUploadingChatAttachment ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Ionicons name="send" size={20} color="#FFF" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+      <Modal 
+        isVisible={historyModalVisible} 
+        onBackdropPress={() => setHistoryModalVisible(false)}
+        style={{ margin: 0, justifyContent: 'flex-end' }}
+      >
+        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '85%' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: BRAND.blue }}>Ticket History</Text>
+            <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
+              <Feather name="x" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity 
-            style={[styles.sendBtn, !inputText.trim() && { opacity: 0.5 }]} 
-            onPress={() => sendMessage()}
-            disabled={!inputText.trim() || isTyping}
+            style={{ backgroundColor: BRAND.blue, padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 16 }} 
+            onPress={() => { setHistoryModalVisible(false); loadActiveTicket(true); }}
           >
-            <Ionicons name="send" size={20} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>+ Start New Ticket</Text>
           </TouchableOpacity>
+          <FlatList
+            data={pastTickets}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            ListEmptyComponent={
+              <View style={{ padding: 32, alignItems: 'center' }}>
+                <Ionicons name="folder-open-outline" size={36} color="#94A3B8" />
+                <Text style={{ color: '#64748B', fontSize: 13, marginTop: 8, fontWeight: '500' }}>No previous tickets found.</Text>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const isActive = activeTicket?.id === item.id;
+              const catColor = getCatColor(item.category);
+              const statusBg = item.status === 'resolved' ? '#DCFCE7' : item.status === 'open' ? '#FEF3C7' : '#E0E7FF';
+              const statusTextColor = item.status === 'resolved' ? '#166534' : item.status === 'open' ? '#92400E' : '#3730A3';
+
+              return (
+                <TouchableOpacity 
+                  style={{ 
+                    padding: 14, 
+                    borderWidth: isActive ? 2 : 1, 
+                    borderColor: isActive ? BRAND.blue : '#E2E8F0', 
+                    borderRadius: 12, 
+                    marginBottom: 10,
+                    backgroundColor: isActive ? '#F8FAFC' : '#FFF',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: 0.05,
+                    shadowRadius: 2,
+                    elevation: 1
+                  }}
+                  onPress={() => {
+                    setHistoryModalVisible(false);
+                    loadActiveTicket(false, item.id);
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{ backgroundColor: catColor + '18', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: catColor + '30', marginRight: 6 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: catColor }}>{item.category || 'General'}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', color: '#94A3B8', fontWeight: '600' }}>
+                        #{item.id.slice(0, 8).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      {isActive && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#DBEAFE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 6 }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND.blue, marginRight: 4 }} />
+                          <Text style={{ fontSize: 9, fontWeight: 'bold', color: BRAND.blue }}>ACTIVE</Text>
+                        </View>
+                      )}
+                      <View style={{ backgroundColor: statusBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: statusTextColor, textTransform: 'uppercase' }}>
+                          {item.status}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <Text style={{ fontWeight: '700', fontSize: 14, color: '#0F172A', marginBottom: 4 }} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 16 }} numberOfLines={2}>
+                    {item.description}
+                  </Text>
+                  
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+                    <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                      {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: item.handling_mode === 'ADMIN' ? '#7C3AED' : BRAND.blue, marginRight: 2 }}>
+                        {item.handling_mode === 'ADMIN' ? 'HR Staff' : 'AI Handled'}
+                      </Text>
+                      <Feather name="chevron-right" size={12} color="#94A3B8" />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
         </View>
+      </Modal>
+
       <Modal 
         isVisible={ticketModalVisible} 
         onBackdropPress={() => setTicketModalVisible(false)} 
@@ -421,103 +1333,650 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         swipeThreshold={50}
         style={{ justifyContent: 'flex-end', margin: 0 }}
       >
-        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: '60%' }}>
-          <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#E2E8F0', alignSelf: 'center', marginBottom: 16 }} />
+        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 30 : 16, maxHeight: '90%', flex: 1 }}>
+          {/* Sheet Drag Handle */}
+          <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: '#CBD5E1', alignSelf: 'center', marginBottom: 12 }} />
           
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: BRAND.blue }}>Submit a Ticket / Report</Text>
-            <TouchableOpacity onPress={() => setTicketModalVisible(false)}>
-              <Feather name="x" size={24} color="#333" />
+          {/* Modal Header */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: getCatColor(ticketCategory) + '20', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <Ionicons 
+                  name={
+                    ticketCategory === 'Payroll Issue' ? 'card' :
+                    ticketCategory === 'Equipment Issue' ? 'construct' :
+                    ticketCategory === 'DTR Issue' ? 'time' :
+                    ticketCategory === 'File Leave' ? 'calendar' : 'help-circle'
+                  } 
+                  size={18} 
+                  color={getCatColor(ticketCategory)} 
+                />
+              </View>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>Quick Ticket Form</Text>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>5-Second Submission • HR Dispatch</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => setTicketModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Feather name="x" size={22} color="#64748B" />
             </TouchableOpacity>
           </View>
-          
-          <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Category</Text>
-          <View style={{ flexDirection: 'row', marginBottom: 16 }}>
-            {['Payroll Issue', 'Equipment Issue', 'DTR Issue', 'File Leave'].map((cat) => (
-              <TouchableOpacity key={cat} onPress={() => setTicketCategory(cat)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: ticketCategory === cat ? BRAND.blue : '#F1F5F9', marginRight: 8 }}>
-                <Text style={{ fontSize: 12, color: ticketCategory === cat ? '#FFF' : '#475569' }}>{cat}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
 
-          
-          {ticketCategory === 'Payroll Issue' && (
-            <>
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Pay Period</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.payPeriod || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, payPeriod: t})} placeholder="E.g., Aug 1 - Aug 15" />
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Dispute Reason</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 100, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Explain the missing amount or deduction..." />
-            </>
-          )}
-
-          {ticketCategory === 'Equipment Issue' && (
-            <>
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Tool Name / ID</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.toolName || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, toolName: t})} placeholder="E.g., Makita Drill #4" />
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Issue Type</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.issueType || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, issueType: t})} placeholder="Damaged, Malfunction, Lost..." />
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Description</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 80, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="How did it happen?" />
-            </>
-          )}
-
-          {ticketCategory === 'DTR Issue' && (
-            <>
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Log Date</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.logDate || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, logDate: t})} placeholder="YYYY-MM-DD" />
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Expected Time</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.expectedTime || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, expectedTime: t})} placeholder="E.g., 8:00 AM - 5:00 PM" />
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Explanation</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 80, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Forgot to clock in, system error..." />
-            </>
-          )}
-
-          {ticketCategory === 'File Leave' && (
-            <>
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Leave Type</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.leaveType || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, leaveType: t})} placeholder="Vacation, Sick, Unpaid..." />
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Start Date</Text>
-                  <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.startDate || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, startDate: t})} placeholder="YYYY-MM-DD" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>End Date</Text>
-                  <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16 }} value={ticketDynamic.endDate || ''} onChangeText={(t) => setTicketDynamic({...ticketDynamic, endDate: t})} placeholder="YYYY-MM-DD" />
-                </View>
+          {/* Form Body ScrollView */}
+          <ScrollView ref={formScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            
+            {/* Step 1: Category Selection with Instant Auto-Cascade */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                1. Select Category
+              </Text>
+              <View style={{ backgroundColor: getCatColor(ticketCategory) + '18', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: getCatColor(ticketCategory) }}>
+                  {ticketCategory} Selected
+                </Text>
               </View>
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Reason</Text>
-              <TextInput style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 16, height: 80, textAlignVertical: 'top' }} value={ticketDesc} onChangeText={setTicketDesc} multiline placeholder="Provide reason for leave..." />
-            </>
-          )}
+            </View>
 
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 }}>
+              {CATEGORY_ITEMS.map((cat, idx) => {
+                const isSelected = ticketCategory === cat.id;
+                const isWide = idx === 4;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setTicketCategory(cat.id);
+                      applyCategoryDefaults(cat.id);
+                      setTimeout(() => {
+                        formScrollRef.current?.scrollTo({ y: 150, animated: true });
+                      }, 120);
+                    }}
+                    style={{
+                      width: isWide ? '100%' : '48.5%',
+                      marginBottom: 8,
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 12,
+                      borderWidth: isSelected ? 2 : 1,
+                      borderColor: isSelected ? cat.color : '#E2E8F0',
+                      backgroundColor: isSelected ? cat.color + '14' : '#F8FAFC',
+                      flexDirection: isWide ? 'row' : 'column',
+                      alignItems: isWide ? 'center' : 'flex-start',
+                      justifyContent: isWide ? 'space-between' : 'flex-start',
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 7,
+                        backgroundColor: isSelected ? cat.color : cat.color + '22',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: isWide ? 10 : 0,
+                        marginBottom: isWide ? 0 : 6
+                      }}>
+                        <Ionicons name={cat.icon as any} size={15} color={isSelected ? '#FFF' : cat.color} />
+                      </View>
+                      <View>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: isSelected ? cat.color : '#1E293B' }}>
+                          {cat.label}
+                        </Text>
+                        {isWide && (
+                          <Text style={{ fontSize: 11, color: '#64748B' }}>{cat.desc}</Text>
+                        )}
+                      </View>
+                    </View>
+                    {isSelected && (
+                      <Ionicons 
+                        name="checkmark-circle" 
+                        size={16} 
+                        color={cat.color} 
+                        style={{ position: isWide ? 'relative' : 'absolute', top: isWide ? 0 : 8, right: isWide ? 0 : 8 }} 
+                      />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-          <Text style={{ fontSize: 14, color: '#475569', marginBottom: 4, fontWeight: '500' }}>Proof / Attachment</Text>
-          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, marginBottom: 20 }} 
-            onPress={async () => { 
-              const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true }); 
-              if(!res.canceled) { 
-                const file = res.assets[0]; 
-                if (file.size && file.size > 5 * 1024 * 1024) {
-                  Alert.alert("File Too Large", "Attachments are limited to a maximum of 5MB.");
-                  return;
-                }
-                setAttachedFile({ uri: file.uri, mimeType: file.mimeType, name: file.name }); 
-              } 
-            }}> 
-            <Feather name="paperclip" size={20} color={attachedFile ? BRAND.blue : "#64748B"} style={{marginRight: 8}} /> 
-            <Text style={{ color: attachedFile ? BRAND.blue : '#94A3B8', flex: 1 }} numberOfLines={1}>{attachedFile ? attachedFile.name : "Attach a file (optional)"}</Text>
-            {attachedFile && (
-              <TouchableOpacity onPress={() => setAttachedFile(null)}>
-                <Feather name="x" size={20} color="#EF4444" />
+            {/* Date Time Picker Modal */}
+            {showDatePicker && (
+              <DateTimePicker
+                value={dateVal}
+                mode={pickerMode}
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowDatePicker(false);
+                  if (selectedDate) {
+                    const formatted = pickerMode === 'time' 
+                      ? selectedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                      : selectedDate.toISOString().split('T')[0];
+                    setTicketDynamic((prev: any) => ({ ...prev, [dateTarget]: formatted }));
+                  }
+                }}
+              />
+            )}
+
+            {/* Step 2: Category-Specific Dynamic Form Cards (1-Tap Chips) */}
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+              2. Specific Details
+            </Text>
+
+            {/* Payroll Issue Form */}
+            {ticketCategory === 'Payroll Issue' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Pay Period Cutoff</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                  {[
+                    `${isFirstHalf ? '1st - 15th' : '16th - End'} ${currentMonth}`,
+                    `${isFirstHalf ? '16th - End' : '1st - 15th'} ${isFirstHalf ? prevMonth : currentMonth}`,
+                    'Custom Date...'
+                  ].map((preset, idx) => {
+                    const isSelected = ticketDynamic.payPeriod === preset || (idx === 2 && ticketDynamic.payPeriod && !preset.includes(ticketDynamic.payPeriod));
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => {
+                          if (idx === 2) {
+                            setDateTarget('payPeriod');
+                            setDateVal(new Date());
+                            setPickerMode('date');
+                            setShowDatePicker(true);
+                          } else {
+                            setTicketDynamic((prev: any) => ({ ...prev, payPeriod: preset }));
+                          }
+                        }}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: isSelected ? '#10B981' : '#CBD5E1',
+                          backgroundColor: isSelected ? '#ECFDF5' : '#FFF'
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#047857' : '#475569' }}>
+                          {idx === 2 && ticketDynamic.payPeriod && !ticketDynamic.payPeriod.includes('Cutoff') && !ticketDynamic.payPeriod.includes(currentMonth) ? ticketDynamic.payPeriod : preset}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Common Discrepancies (1-Tap Preset)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                  {PAYROLL_PRESETS.map((chip, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      onPress={() => {
+                        setTicketDesc((prev: string) => prev.trim() ? (prev.includes(chip) ? prev : `${prev}, ${chip}`) : chip);
+                      }}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                        backgroundColor: ticketDesc.includes(chip) ? '#D1FAE5' : '#FFF',
+                        borderWidth: 1,
+                        borderColor: ticketDesc.includes(chip) ? '#10B981' : '#CBD5E1'
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: ticketDesc.includes(chip) ? '700' : '500', color: ticketDesc.includes(chip) ? '#065F46' : '#475569' }}>
+                        + {chip}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Dispute Details / Explanation</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 75, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  value={ticketDesc}
+                  onChangeText={setTicketDesc}
+                  multiline
+                  placeholder="State the missing amount, hours, or deductions..."
+                />
+              </View>
+            )}
+
+            {/* Equipment Issue Form */}
+            {ticketCategory === 'Equipment Issue' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Select Tool / Equipment</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                  {TOOL_PRESETS.map((tool, idx) => {
+                    const isSelected = ticketDynamic.toolName === tool;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => setTicketDynamic((prev: any) => ({ ...prev, toolName: tool }))}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: isSelected ? '#F59E0B' : '#CBD5E1',
+                          backgroundColor: isSelected ? '#FEF3C7' : '#FFF'
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#92400E' : '#475569' }}>
+                          {tool}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {ticketDynamic.toolName === 'Other Tool' && (
+                  <TextInput
+                    style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, marginBottom: 10, backgroundColor: '#FFF', fontSize: 13 }}
+                    placeholder="Enter custom tool name or serial ID..."
+                    value={ticketDynamic.customTool || ''}
+                    onChangeText={(val) => setTicketDynamic((prev: any) => ({ ...prev, customTool: val }))}
+                  />
+                )}
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Issue Classification</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  {ISSUE_TYPE_PRESETS.map((item, idx) => {
+                    const isSelected = ticketDynamic.issueType === item.value;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => setTicketDynamic((prev: any) => ({ ...prev, issueType: item.value }))}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          alignItems: 'center',
+                          borderColor: isSelected ? '#F59E0B' : '#CBD5E1',
+                          backgroundColor: isSelected ? '#FEF3C7' : '#FFF'
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#92400E' : '#475569' }}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Damage / Defect Details</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 75, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  value={ticketDesc}
+                  onChangeText={setTicketDesc}
+                  multiline
+                  placeholder="How did the damage or failure occur? Location..."
+                />
+              </View>
+            )}
+
+            {/* DTR / Attendance Issue Form */}
+            {ticketCategory === 'DTR Issue' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Log Date</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+                  {[
+                    { label: 'Today', val: todayStr },
+                    { label: 'Yesterday', val: yesterdayStr },
+                    { label: 'Pick Date...', val: 'custom' }
+                  ].map((item, idx) => {
+                    const isSelected = ticketDynamic.logDate === item.val || (item.val === 'custom' && ticketDynamic.logDate && ticketDynamic.logDate !== todayStr && ticketDynamic.logDate !== yesterdayStr);
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => {
+                          if (item.val === 'custom') {
+                            setDateTarget('logDate');
+                            setDateVal(new Date());
+                            setPickerMode('date');
+                            setShowDatePicker(true);
+                          } else {
+                            setTicketDynamic((prev: any) => ({ ...prev, logDate: item.val }));
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 7,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          alignItems: 'center',
+                          borderColor: isSelected ? '#6366F1' : '#CBD5E1',
+                          backgroundColor: isSelected ? '#EEF2FF' : '#FFF'
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#4338CA' : '#475569' }}>
+                          {item.val === 'custom' && ticketDynamic.logDate && ticketDynamic.logDate !== todayStr && ticketDynamic.logDate !== yesterdayStr ? ticketDynamic.logDate : item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Dispute Preset (1-Tap)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                  {DTR_PRESETS.map((preset, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      onPress={() => {
+                        setTicketDesc((prev: string) => prev.trim() ? (prev.includes(preset) ? prev : `${prev}, ${preset}`) : preset);
+                      }}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                        backgroundColor: ticketDesc.includes(preset) ? '#E0E7FF' : '#FFF',
+                        borderWidth: 1,
+                        borderColor: ticketDesc.includes(preset) ? '#6366F1' : '#CBD5E1'
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: ticketDesc.includes(preset) ? '700' : '500', color: ticketDesc.includes(preset) ? '#3730A3' : '#475569' }}>
+                        + {preset}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Expected In</Text>
+                    <TouchableOpacity
+                      onPress={() => { setDateTarget('expectedIn'); setDateVal(new Date()); setPickerMode('time'); setShowDatePicker(true); }}
+                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 12, color: ticketDynamic.expectedIn ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
+                        {ticketDynamic.expectedIn || '08:00 AM'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Expected Out</Text>
+                    <TouchableOpacity
+                      onPress={() => { setDateTarget('expectedOut'); setDateVal(new Date()); setPickerMode('time'); setShowDatePicker(true); }}
+                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 12, color: ticketDynamic.expectedOut ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
+                        {ticketDynamic.expectedOut || '05:00 PM'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Explanation</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 70, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  value={ticketDesc}
+                  onChangeText={setTicketDesc}
+                  multiline
+                  placeholder="Reason for missing time log or dispute..."
+                />
+              </View>
+            )}
+
+            {/* File Leave Form */}
+            {ticketCategory === 'File Leave' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Leave Type</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                  {LEAVE_TYPES.map((leave, idx) => {
+                    const isSelected = ticketDynamic.leaveType === leave;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => setTicketDynamic((prev: any) => ({ ...prev, leaveType: leave }))}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: isSelected ? '#EF4444' : '#CBD5E1',
+                          backgroundColor: isSelected ? '#FEE2E2' : '#FFF'
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#991B1B' : '#475569' }}>
+                          {leave}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Start Date</Text>
+                    <TouchableOpacity
+                      onPress={() => { setDateTarget('startDate'); setDateVal(new Date()); setPickerMode('date'); setShowDatePicker(true); }}
+                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 12, color: ticketDynamic.startDate ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
+                        {ticketDynamic.startDate || tomorrowStr}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>End Date</Text>
+                    <TouchableOpacity
+                      onPress={() => { setDateTarget('endDate'); setDateVal(new Date()); setPickerMode('date'); setShowDatePicker(true); }}
+                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 12, color: ticketDynamic.endDate ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
+                        {ticketDynamic.endDate || tomorrowStr}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Reason for Leave</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 70, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  value={ticketDesc}
+                  onChangeText={setTicketDesc}
+                  multiline
+                  placeholder="Medical appointment, family emergency, etc."
+                />
+              </View>
+            )}
+
+            {/* Others / General Form */}
+            {ticketCategory === 'Others' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Subject / Concern</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: '#FFF', fontSize: 13 }}
+                  value={ticketTitle}
+                  onChangeText={setTicketTitle}
+                  placeholder="Brief summary of your concern..."
+                />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Detailed Description</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 85, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  value={ticketDesc}
+                  onChangeText={setTicketDesc}
+                  multiline
+                  placeholder="Explain the details of your inquiry or report to HR..."
+                />
+              </View>
+            )}
+
+            {/* Step 3: Modern Attachment Card */}
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+              3. Proof / Attachment (Optional)
+            </Text>
+            {attachedFile ? (
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: '#F0FDF4',
+                borderWidth: 1,
+                borderColor: '#86EFAC',
+                borderRadius: 12,
+                padding: 10,
+                marginBottom: 14
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
+                    <Ionicons name="document-attach" size={18} color="#16A34A" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#166534' }} numberOfLines={1}>
+                      {attachedFile.name}
+                    </Text>
+                    <Text style={{ fontSize: 10, color: '#15803D' }}>Ready for upload • 1 file attached</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setAttachedFile(null)} style={{ padding: 4 }}>
+                  <Feather name="trash-2" size={18} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={pickModalAttachment}
+                style={{
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: '#CBD5E1',
+                  borderRadius: 12,
+                  backgroundColor: '#F8FAFC',
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 14
+                }}
+              >
+                <View style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: '#EEF2F6', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                  <Feather name="paperclip" size={18} color="#64748B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Tap to upload attachment</Text>
+                  <Text style={{ fontSize: 11, color: '#94A3B8' }}>Images, PDF, Word, Excel (Max 5MB)</Text>
+                </View>
+                <Feather name="upload-cloud" size={18} color="#64748B" />
               </TouchableOpacity>
             )}
-          </TouchableOpacity>
 
-          <TouchableOpacity style={{ backgroundColor: BRAND.blue, padding: 14, borderRadius: 8, alignItems: 'center' }} onPress={submitTicket}>
-            <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Submit Ticket</Text>
-          </TouchableOpacity>
+            {/* Step 3: Inline Live Verification & Summary Card */}
+            <View style={{
+              backgroundColor: '#F8FAFC',
+              borderWidth: 1,
+              borderColor: '#CBD5E1',
+              borderRadius: 14,
+              padding: 12,
+              marginBottom: 12,
+              borderLeftWidth: 4,
+              borderLeftColor: getCatColor(ticketCategory)
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="shield-checkmark" size={15} color={getCatColor(ticketCategory)} style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
+                    3. Live Verification & Summary
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: getCatColor(ticketCategory) + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: getCatColor(ticketCategory) }}>
+                    Ready to Dispatch
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: '#475569' }}>
+                  <Text style={{ fontWeight: '700', color: '#1E293B' }}>Target / Scope: </Text>
+                  {ticketCategory === 'Payroll Issue' ? (ticketDynamic.payPeriod || 'Current Cutoff') :
+                   ticketCategory === 'Equipment Issue' ? `${ticketDynamic.toolName === 'Other Tool' ? (ticketDynamic.customTool || 'Other Equipment') : (ticketDynamic.toolName || 'Makita Drill #4')} • ${ticketDynamic.issueType || 'Damaged'}` :
+                   ticketCategory === 'DTR Issue' ? `${ticketDynamic.logDate || todayStr} • ${ticketDynamic.expectedIn || '08:00 AM'} - ${ticketDynamic.expectedOut || '05:00 PM'}` :
+                   ticketCategory === 'File Leave' ? `${ticketDynamic.leaveType || 'Sick Leave'} (${ticketDynamic.startDate || tomorrowStr} to ${ticketDynamic.endDate || tomorrowStr})` :
+                   (ticketTitle.trim() || 'General Concern')}
+                </Text>
+
+                <Text style={{ fontSize: 11, color: '#475569' }} numberOfLines={2}>
+                  <Text style={{ fontWeight: '700', color: '#1E293B' }}>Reason / Notes: </Text>
+                  {ticketDesc.trim() || '(No extra notes entered)'}
+                </Text>
+
+                <Text style={{ fontSize: 10, color: attachedFile ? '#16A34A' : '#94A3B8', fontWeight: attachedFile ? '600' : '400' }}>
+                  📎 Attachment: {attachedFile ? attachedFile.name : 'None attached (Optional)'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Error Message */}
+            {formError ? (
+              <View style={{ backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA', padding: 10, borderRadius: 10, marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="alert-circle" size={16} color="#DC2626" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600', flex: 1 }}>{formError}</Text>
+              </View>
+            ) : null}
+
+          </ScrollView>
+
+          {/* Sticky Thumb-Zone Submit Bar (Fitts' Law) */}
+          <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+            <TouchableOpacity 
+              disabled={isSubmitting} 
+              activeOpacity={0.85}
+              style={{ 
+                backgroundColor: isSubmitting ? '#94A3B8' : getCatColor(ticketCategory), 
+                paddingVertical: 14, 
+                borderRadius: 14, 
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+                shadowColor: getCatColor(ticketCategory),
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.25,
+                shadowRadius: 6,
+                elevation: 3
+              }} 
+              onPress={submitTicket}
+            >
+              {isSubmitting ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 8 }} />
+                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 15 }}>Submitting Ticket...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="paper-plane" size={18} color="#FFF" style={{ marginRight: 8 }} />
+                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 15 }}>
+                    Confirm & Dispatch {ticketCategory === 'Others' ? 'Inquiry' : ticketCategory}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
+      </Modal>
+
+      {/* Fullscreen Image Lightbox Modal */}
+      <Modal
+        isVisible={!!lightboxImage}
+        onBackdropPress={() => setLightboxImage(null)}
+        onBackButtonPress={() => setLightboxImage(null)}
+        style={{ margin: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.92)' }}
+      >
+        <SafeAreaView style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={{ position: 'absolute', top: 44, right: 20, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.25)', padding: 8, borderRadius: 20 }}
+            onPress={() => setLightboxImage(null)}
+          >
+            <Feather name="x" size={22} color="#FFF" />
+          </TouchableOpacity>
+          {lightboxImage && (
+            <Image 
+              source={{ uri: lightboxImage }} 
+              style={{ width: '92%', height: '78%' }} 
+              resizeMode="contain" 
+            />
+          )}
+        </SafeAreaView>
       </Modal>
 
       </KeyboardAvoidingView>
@@ -645,7 +2104,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-
-
-
-

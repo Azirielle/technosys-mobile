@@ -8,6 +8,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDistance } from 'geolib';
 import MapView, { Marker, Circle, Polyline } from '../../components/MapWrapper';
 import { supabase } from '../../lib/supabase';
@@ -15,10 +16,23 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SupportChatUI from '../../components/SupportChatUI';
+import * as Notifications from 'expo-notifications';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
 import * as Sharing from 'expo-sharing';
 import ViewShot from 'react-native-view-shot';
 
 const { width, height } = Dimensions.get('window');
+
+interface NotificationItem {
+  id: string;
+  type: 'dispatch' | 'hr' | 'tool' | 'admin' | 'help';
+  title: string;
+  desc: string;
+  time: string;
+  read: boolean;
+  ticketId?: string;
+  timestamp: number;
+}
 
 // TECHONOSYS PRO BRAND COLORS
 const BRAND = {
@@ -101,6 +115,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 };
 export default function HomeScreen() {
   const router = useRouter();
+  const pushNotificationState = usePushNotifications();
   const [language, setLanguage] = useState<'en' | 'tl' | 'ja'>('en');
   const [darkMode, setDarkMode] = useState(false);
   
@@ -111,7 +126,31 @@ export default function HomeScreen() {
   const activeFontBold = language === 'ja' ? 'System' : 'DMSans-Bold';
   
   const [menuVisible, setMenuVisible] = useState(false);
-  const [clockInModal, setClockInModal] = useState(false);
+  
+    const [clockInModal, setClockInModal] = useState(false);
+    
+    // Aura pulsing animation
+    const auraAnim = useRef(new Animated.Value(1)).current;
+    
+    useEffect(() => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(auraAnim, {
+            toValue: 1.15,
+            duration: 1000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: Platform.OS !== 'web',
+          }),
+          Animated.timing(auraAnim, {
+            toValue: 1,
+            duration: 1000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: Platform.OS !== 'web',
+          })
+        ])
+      ).start();
+    }, []);
+
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   
@@ -135,15 +174,164 @@ export default function HomeScreen() {
   const notifAnim = useRef(new Animated.Value(width)).current;
   const [dispatchVisible, setDispatchVisible] = useState(false);
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, type: 'dispatch', title: 'New Direct Dispatch', desc: 'Assigned to Makati HQ for Maintenance.', time: '10m ago', read: false },
-    { id: 2, type: 'hr', title: 'Photo Override Approved', desc: 'Your clock-in at 8:05 AM was verified by HR.', time: '1h ago', read: false },
-    { id: 3, type: 'tool', title: 'Tool Checkout', desc: 'Heavy Drill #442 assigned to you.', time: '2h ago', read: true },
-    { id: 4, type: 'admin', title: 'Payslip Available', desc: 'Your payslip for Aug 15 is now ready for viewing.', time: '1d ago', read: true },
-    { id: 5, type: 'help', title: 'Ticket Updated', desc: 'IT Support replied to Ticket #1042.', time: '2d ago', read: true },
-  ]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedNotif, setSelectedNotif] = useState<any>(null);
+  const [selectedChatTicketId, setSelectedChatTicketId] = useState<string | null>(null);
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  const formatNotifTime = (dateStr: string) => {
+    try {
+      const diffMs = Date.now() - new Date(dateStr).getTime();
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'Just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}d ago`;
+      return new Date(dateStr).toLocaleDateString();
+    } catch (e) {
+      return 'Recently';
+    }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const rawReadIds = await AsyncStorage.getItem(`READ_NOTIFS_${user.id}`);
+      const readSet = new Set<string>(rawReadIds ? JSON.parse(rawReadIds) : []);
+
+      const items: NotificationItem[] = [];
+
+      // 1. Fetch Technician Tickets
+      const { data: userTickets } = await supabase
+        .from('tickets')
+        .select('id, title, category, status, created_at, updated_at')
+        .eq('employee_id', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(10);
+
+      if (userTickets && userTickets.length > 0) {
+        const ticketIds = userTickets.map(t => t.id);
+        const ticketMap = new Map(userTickets.map(t => [t.id, t]));
+
+        // Fetch recent Admin comments or system decision comments
+        const { data: comments } = await supabase
+          .from('ticket_comments')
+          .select('id, ticket_id, content, created_at, sender_role, is_internal')
+          .in('ticket_id', ticketIds)
+          .in('sender_role', ['admin', 'system'])
+          .eq('is_internal', false)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (comments) {
+          comments.forEach(c => {
+            const t = ticketMap.get(c.ticket_id);
+            const isApproved = c.content.includes('[DECISION: APPROVED');
+            const isRefused = c.content.includes('[DECISION: REFUSED');
+            
+            let title = 'HR Ticket Message';
+            let type: 'hr' | 'help' | 'admin' = 'admin';
+            let desc = c.content;
+
+            if (isApproved) {
+              type = 'hr';
+              title = `Ticket Approved (${t?.category || 'HR'})`;
+              desc = c.content.replace(/\[DECISION: APPROVED & RESOLVED\]\s*/i, '').replace(/Resolution Note:\s*/i, '');
+            } else if (isRefused) {
+              type = 'help';
+              title = `Ticket Refused (${t?.category || 'HR'})`;
+              desc = c.content.replace(/\[DECISION: REFUSED\]\s*/i, '').replace(/Reason:\s*/i, '');
+            } else {
+              title = `HR Comment (${t?.category || 'Support'})`;
+            }
+
+            items.push({
+              id: `tc_${c.id}`,
+              type,
+              title,
+              desc: desc.trim(),
+              time: formatNotifTime(c.created_at),
+              read: readSet.has(`tc_${c.id}`),
+              ticketId: c.ticket_id,
+              timestamp: new Date(c.created_at).getTime()
+            });
+          });
+        }
+      }
+
+      // 2. Fetch Recent Company Announcements
+      const { data: announcementsData } = await supabase
+        .from('announcements')
+        .select('id, title, content, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (announcementsData) {
+        announcementsData.forEach(a => {
+          items.push({
+            id: `ann_${a.id}`,
+            type: 'admin',
+            title: a.title,
+            desc: a.content || 'Company announcement posted.',
+            time: formatNotifTime(a.created_at),
+            read: readSet.has(`ann_${a.id}`),
+            timestamp: new Date(a.created_at).getTime()
+          });
+        });
+      }
+
+      // Sort newest first
+      items.sort((a, b) => b.timestamp - a.timestamp);
+
+      if (items.length === 0) {
+        items.push({
+          id: 'welcome_init',
+          type: 'hr',
+          title: 'Welcome to TechnoSys',
+          desc: 'Operational alerts and HR ticket updates will appear here in real time.',
+          time: 'Active',
+          read: true,
+          timestamp: Date.now()
+        });
+      }
+
+      setNotifications(items);
+    } catch (err) {
+      console.warn('Error fetching notifications:', err);
+    }
+  };
+
+  const markNotificationRead = async (notifId: string) => {
+    setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const raw = await AsyncStorage.getItem(`READ_NOTIFS_${user.id}`);
+        const set = new Set<string>(raw ? JSON.parse(raw) : []);
+        set.add(notifId);
+        await AsyncStorage.setItem(`READ_NOTIFS_${user.id}`, JSON.stringify(Array.from(set)));
+      }
+    } catch (e) {
+      console.warn("Could not persist read notification", e);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const allIds = notifications.map(n => n.id);
+        await AsyncStorage.setItem(`READ_NOTIFS_${user.id}`, JSON.stringify(allIds));
+      }
+    } catch (e) {
+      console.warn("Could not persist all read notifications", e);
+    }
+  };
 
   // Chunk 15: Equipment Menu
   const [equipModalVisible, setEquipModalVisible] = useState(false);
@@ -241,6 +429,7 @@ export default function HomeScreen() {
   const [updatesModalVisible, setUpdatesModalVisible] = useState(false);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+    const [unreadAnnouncement, setUnreadAnnouncement] = useState<any>(null);
   const [expandedUpdates, setExpandedUpdates] = useState<{[key: string]: boolean}>({});
   const [selectedUpdate, setSelectedUpdate] = useState<any>(null);
 
@@ -517,8 +706,45 @@ export default function HomeScreen() {
       if (todaysLog && todaysLog.length > 0) {
         setHasClockedInToday(true);
       }
+
+      fetchNotifications();
     }
     loadData();
+
+    // In-App Notification Center Realtime Listener
+    const notifChannel = supabase.channel('mobile-notifications-hub')
+      .on('broadcast', { event: 'new_comment' }, () => {
+        fetchNotifications();
+      })
+      .on('broadcast', { event: 'ticket_update' }, () => {
+        fetchNotifications();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments' }, (payload: any) => {
+        if (payload.new?.sender_role === 'admin' || payload.new?.sender_role === 'system') {
+          fetchNotifications();
+          try {
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'TechnoSys HR Update',
+                body: (payload.new.content || '').replace(/\[DECISION:.*?\]\s*/i, '').slice(0, 100),
+                data: { ticketId: payload.new.ticket_id },
+              },
+              trigger: null,
+            });
+          } catch (e) {}
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets' }, () => {
+        fetchNotifications();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, () => {
+        fetchNotifications();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(notifChannel);
+    };
   }, []);
 
   const openMenu = () => { setMenuVisible(true); };
@@ -755,7 +981,12 @@ export default function HomeScreen() {
                 </ScrollView>
                 <View style={styles.bottomCloseContainer}>
                    <TouchableOpacity style={styles.flowerCloseBtn} onPress={closeMenu} activeOpacity={0.8}>
-                      <View style={styles.flowerRing1}><View style={styles.flowerRing2}><Text style={styles.flowerText}>Tap to{"\n"}close</Text></View></View>
+                      <View style={{ width: 80, height: 80, justifyContent: 'center', alignItems: 'center' }}>
+                          <Animated.View style={[styles.flowerRing1, { position: 'absolute', transform: [{ scale: auraAnim }] }]} />
+                          <View style={[styles.flowerRing2, { position: 'absolute' }]}>
+                             <Text style={styles.flowerText}>Tap to{"\n"}close</Text>
+                          </View>
+                       </View>
                    </TouchableOpacity>
                 </View>
               </SafeAreaView>
@@ -1046,9 +1277,7 @@ export default function HomeScreen() {
               </View>
               
               <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <TouchableOpacity onPress={() => {
-                  setNotifications(notifications.map(n => ({ ...n, read: true })));
-                }}>
+                <TouchableOpacity onPress={markAllNotificationsRead}>
                   <Text style={styles.notifMarkRead}>Mark all read</Text>
                 </TouchableOpacity>
               </View>
@@ -1071,8 +1300,14 @@ export default function HomeScreen() {
                     <TouchableOpacity 
                       style={[styles.notifItem, !notif.read && styles.notifItemUnread]}
                       onPress={() => {
-                        setNotifications(notifications.map(n => n.id === notif.id ? { ...n, read: true } : n));
-                        setSelectedNotif(notif);
+                        markNotificationRead(notif.id);
+                        if (notif.ticketId) {
+                          setSelectedChatTicketId(notif.ticketId);
+                          setNotifVisible(false);
+                          setSupportModalVisible(true);
+                        } else {
+                          setSelectedNotif(notif);
+                        }
                       }}
                     >
                       <View style={[styles.notifIconCircle, { backgroundColor: bgColor }]}>
@@ -1100,7 +1335,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* PRIORITY DISPATCH MODAL */}
-        <RNModal isVisible={dispatchVisible}   onBackdropPress={() => setDispatchVisible(false)} onBackButtonPress={() => setDispatchVisible(false)} onSwipeComplete={() => setDispatchVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal isVisible={dispatchVisible}   onBackdropPress={() => setDispatchVisible(false)} onBackButtonPress={() => setDispatchVisible(false)} onSwipeComplete={() => setDispatchVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
               <TouchableOpacity onPress={() => setDispatchVisible(false)} style={{ padding: 8, marginLeft: -8 }}>
@@ -1168,7 +1403,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* NOTIFICATION DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <RNModal isVisible={!!selectedNotif}   onBackdropPress={() => setSelectedNotif(null)} onBackButtonPress={() => setSelectedNotif(null)} onSwipeComplete={() => setSelectedNotif(null)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal isVisible={!!selectedNotif}   onBackdropPress={() => setSelectedNotif(null)} onBackButtonPress={() => setSelectedNotif(null)} onSwipeComplete={() => setSelectedNotif(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {selectedNotif && (
               <>
@@ -1280,10 +1515,10 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* SUPPORT MODAL */}
-        <RNModal isVisible={supportModalVisible}   onBackdropPress={() => setSupportModalVisible(false)} onBackButtonPress={() => setSupportModalVisible(false)} onSwipeComplete={() => setSupportModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}><SupportChatUI onClose={() => setSupportModalVisible(false)} initialQuery={aiInitialQuery} /></RNModal>
+        <RNModal isVisible={supportModalVisible}   onBackdropPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} onBackButtonPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} onSwipeComplete={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}><SupportChatUI onClose={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} initialQuery={aiInitialQuery} ticketId={selectedChatTicketId || undefined} /></RNModal>
 
         {/* SUPPORT TICKET DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <RNModal isVisible={!!selectedTicket}   onBackdropPress={() => setSelectedTicket(null)} onBackButtonPress={() => setSelectedTicket(null)} onSwipeComplete={() => setSelectedTicket(null)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal isVisible={!!selectedTicket}   onBackdropPress={() => setSelectedTicket(null)} onBackButtonPress={() => setSelectedTicket(null)} onSwipeComplete={() => setSelectedTicket(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: TICKET --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1364,7 +1599,7 @@ export default function HomeScreen() {
                             {new Date(item.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </Text>
                         </View>
-                        <TouchableOpacity onPress={() => Alert.alert("Options", "What would you like to do?", [{text: "Report to HR", onPress: () => safeAlert("Reported", "This announcement has been flagged for review.")}, {text: "Cancel", style: "cancel"}])}>
+                        <TouchableOpacity hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} onPress={() => safeAlert("Options", "You can report this announcement if you have concerns.")}>
                           <Feather name="more-horizontal" size={20} color="#94A3B8" />
                         </TouchableOpacity>
                       </View>
@@ -1516,7 +1751,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* SCHEDULES DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <RNModal isVisible={!!selectedSchedule}   onBackdropPress={() => setSelectedSchedule(null)} onBackButtonPress={() => setSelectedSchedule(null)} onSwipeComplete={() => setSelectedSchedule(null)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal isVisible={!!selectedSchedule}   onBackdropPress={() => setSelectedSchedule(null)} onBackButtonPress={() => setSelectedSchedule(null)} onSwipeComplete={() => setSelectedSchedule(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: SCHEDULE --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1588,7 +1823,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* TIMESHEETS MODAL */}
-        <RNModal isVisible={timesheetModalVisible} onBackdropPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onBackButtonPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onSwipeComplete={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal isVisible={timesheetModalVisible} onBackdropPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onBackButtonPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onSwipeComplete={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} swipeDirection={selectedTimeLog ? undefined : ['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           {selectedTimeLog ? (
             <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
               {/* --- DETAILED VIEW: TIMESHEET --- */}
@@ -1901,7 +2136,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* PAYSLIPS MODAL */}
-        <RNModal isVisible={payslipsModalVisible} onBackdropPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} onBackButtonPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} onSwipeComplete={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal isVisible={payslipsModalVisible} onBackdropPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} onBackButtonPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} onSwipeComplete={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} swipeDirection={selectedPayslip ? undefined : ['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           {selectedPayslip ? (
             <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>              {/* --- DETAILED VIEW: MODERN BANKING RECEIPT --- */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -2037,7 +2272,8 @@ export default function HomeScreen() {
             <View style={styles.profileOverlay}>
               <View style={[styles.profileSheet, { height: '85%' }]}>
                 <View style={styles.sheetHandle} />
-                <>                  {/* --- LIST VIEW --- */}
+                <>
+                  {/* --- LIST VIEW --- */}
                   <View style={styles.modalHeaderRow}>
                     <Text style={styles.modalTitle}>My Payslips</Text>
                     <TouchableOpacity onPress={() => { setPayslipsModalVisible(false); setSelectedPayslip(null); }}>
@@ -2148,9 +2384,9 @@ const styles = StyleSheet.create({
   menuHeaderText: { fontFamily: 'DMSans-Bold', fontSize: 20, color: '#fff' },
   closeBtnTop: { padding: 8 },
   menuScroll: { paddingHorizontal: 24 },
-  categoryTitle: { fontFamily: 'DMSans-Bold', fontSize: 22, color: '#fff', marginTop: 24, marginBottom: 20 },
+  categoryTitle: { fontFamily: 'DMSans-Bold', fontSize: 22, color: '#fff', marginTop: 12, marginBottom: 12 },
   menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', paddingTop: 8, paddingBottom: 8 },
-  gridItem: { width: '33.33%', alignItems: 'center', marginBottom: 24, marginTop: 8 },
+  gridItem: { width: '33.33%', alignItems: 'center', marginBottom: 12, marginTop: 4 },
   gridIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   gridItemText: { fontFamily: 'DMSans-Medium', fontSize: 13, color: '#fff', textAlign: 'center' },
   bottomCloseContainer: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
