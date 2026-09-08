@@ -1,32 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Alert } from 'react-native';
 import { useRouter as useExpoRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  TouchableOpacity, 
+  SafeAreaView, 
+  TextInput, 
+  Alert, 
+  ActivityIndicator, 
+  Image 
+} from 'react-native';
+import { Feather } from '@expo/vector-icons';
 
-// TECHONOSYS PRO BRAND COLORS
 const BRAND = {
-  blue: '#1E3A8A',    
-  yellow: '#FBBF24',  
-  green: '#10B981',   
-  red: '#EF4444',     
-  lightBg: '#F8FAFC',
+  blue: '#1E3A8A',
+  yellow: '#FBBF24',
+  green: '#10B981',
+  lightBg: '#F8FAFC'
 };
 
-export default function LoginScreen() {
+export default function RootLoginScreen() {
   const router = useExpoRouter();
   const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('+639');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        router.replace('/(tabs)' as any);
+        router.replace('/(tabs)');
       } else {
         setLoading(false);
       }
@@ -34,7 +42,7 @@ export default function LoginScreen() {
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        router.replace('/(tabs)' as any);
+        router.replace('/(tabs)');
       }
     });
     
@@ -44,28 +52,25 @@ export default function LoginScreen() {
   }, []);
 
   const handlePhoneLogin = async () => {
+    setLoginError(null);
     if (!phoneNumber || phoneNumber.length < 10) {
-      Alert.alert('Error', 'Please enter a valid mobile number.');
+      setLoginError('Please enter a valid mobile number.');
       return;
     }
     setLoading(true);
     
-    // TEMPORARY MOCK FOR PHONE LOGIN:
-    // Because we need a real Supabase session for RLS to work, but we don't have SMS OTP yet,
-    // we use an RPC to find the email attached to this phone, then use a default password.
     try {
       const { data: emailAttached, error: rpcError } = await supabase.rpc('get_email_from_contact', { p_contact: phoneNumber });
       
       if (rpcError || !emailAttached) {
-         Alert.alert('Access Denied', 'Number not found in the database. Please contact HR.');
+         setLoginError('Number not found. Please contact HR.');
          setLoading(false);
          return;
       }
       
-      // Attempt login with a universal default password for testing phase
       const { error: authError } = await supabase.auth.signInWithPassword({
         email: emailAttached,
-        password: 'password123', // Assumption for testing
+        password: 'password123',
       });
 
       if (authError) {
@@ -79,8 +84,9 @@ export default function LoginScreen() {
   };
 
   const handleEmailLogin = async () => {
+    setLoginError(null);
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password.');
+      setLoginError('Please enter both email and password.');
       return;
     }
     setLoading(true);
@@ -90,7 +96,7 @@ export default function LoginScreen() {
     });
 
     if (error) {
-      Alert.alert('Login Failed', error.message);
+      setLoginError(error.message);
       setLoading(false);
     }
   };
@@ -124,6 +130,7 @@ export default function LoginScreen() {
             {loginMethod === 'phone' ? (
               <>
                 <Text style={styles.methodTitle}>Mobile Access</Text>
+                {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
                 <View style={styles.inputWrapper}>
                   <Feather name="phone" size={20} color="#64748B" style={styles.inputIcon} />
                   <TextInput
@@ -147,6 +154,7 @@ export default function LoginScreen() {
             ) : (
               <>
                 <Text style={styles.methodTitle}>Email Access</Text>
+                {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
                 <View style={styles.inputWrapper}>
                   <Feather name="mail" size={20} color="#64748B" style={styles.inputIcon} />
                   <TextInput
@@ -291,4 +299,3 @@ const styles = StyleSheet.create({
     color: BRAND.blue,
   }
 });
-

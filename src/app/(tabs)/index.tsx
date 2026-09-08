@@ -1,18 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, Animated, Easing, ActivityIndicator, ScrollView, Image, Alert, Platform, FlatList, TextInput } from 'react-native';
+import RNModal from 'react-native-modal';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Animated, Easing, ActivityIndicator, ScrollView, Image, Alert, Platform, FlatList, TextInput, Linking } from 'react-native';
+import * as Updates from 'expo-updates';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDistance } from 'geolib';
-import MapView, { Marker, Circle } from '../../components/MapWrapper';
+import MapView, { Marker, Circle, Polyline } from '../../components/MapWrapper';
 import { supabase } from '../../lib/supabase';
+import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import SupportChatUI from '../../components/SupportChatUI';
+import * as Notifications from 'expo-notifications';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
+import * as Sharing from 'expo-sharing';
+import ViewShot from 'react-native-view-shot';
 
 const { width, height } = Dimensions.get('window');
+
+interface NotificationItem {
+  id: string;
+  type: 'dispatch' | 'hr' | 'tool' | 'admin' | 'help';
+  title: string;
+  desc: string;
+  time: string;
+  read: boolean;
+  ticketId?: string;
+  timestamp: number;
+}
 
 // TECHONOSYS PRO BRAND COLORS
 const BRAND = {
@@ -95,6 +115,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 };
 export default function HomeScreen() {
   const router = useRouter();
+  const pushNotificationState = usePushNotifications();
   const [language, setLanguage] = useState<'en' | 'tl' | 'ja'>('en');
   const [darkMode, setDarkMode] = useState(false);
   
@@ -105,7 +126,31 @@ export default function HomeScreen() {
   const activeFontBold = language === 'ja' ? 'System' : 'DMSans-Bold';
   
   const [menuVisible, setMenuVisible] = useState(false);
-  const [clockInModal, setClockInModal] = useState(false);
+  
+    const [clockInModal, setClockInModal] = useState(false);
+    
+    // Aura pulsing animation
+    const auraAnim = useRef(new Animated.Value(1)).current;
+    
+    useEffect(() => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(auraAnim, {
+            toValue: 1.15,
+            duration: 1000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: Platform.OS !== 'web',
+          }),
+          Animated.timing(auraAnim, {
+            toValue: 1,
+            duration: 1000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: Platform.OS !== 'web',
+          })
+        ])
+      ).start();
+    }, []);
+
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   
@@ -129,15 +174,164 @@ export default function HomeScreen() {
   const notifAnim = useRef(new Animated.Value(width)).current;
   const [dispatchVisible, setDispatchVisible] = useState(false);
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, type: 'dispatch', title: 'New Direct Dispatch', desc: 'Assigned to Makati HQ for Maintenance.', time: '10m ago', read: false },
-    { id: 2, type: 'hr', title: 'Photo Override Approved', desc: 'Your clock-in at 8:05 AM was verified by HR.', time: '1h ago', read: false },
-    { id: 3, type: 'tool', title: 'Tool Checkout', desc: 'Heavy Drill #442 assigned to you.', time: '2h ago', read: true },
-    { id: 4, type: 'admin', title: 'Payslip Available', desc: 'Your payslip for Aug 15 is now ready for viewing.', time: '1d ago', read: true },
-    { id: 5, type: 'help', title: 'Ticket Updated', desc: 'IT Support replied to Ticket #1042.', time: '2d ago', read: true },
-  ]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedNotif, setSelectedNotif] = useState<any>(null);
+  const [selectedChatTicketId, setSelectedChatTicketId] = useState<string | null>(null);
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  const formatNotifTime = (dateStr: string) => {
+    try {
+      const diffMs = Date.now() - new Date(dateStr).getTime();
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'Just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}d ago`;
+      return new Date(dateStr).toLocaleDateString();
+    } catch (e) {
+      return 'Recently';
+    }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const rawReadIds = await AsyncStorage.getItem(`READ_NOTIFS_${user.id}`);
+      const readSet = new Set<string>(rawReadIds ? JSON.parse(rawReadIds) : []);
+
+      const items: NotificationItem[] = [];
+
+      // 1. Fetch Technician Tickets
+      const { data: userTickets } = await supabase
+        .from('tickets')
+        .select('id, title, category, status, created_at, updated_at')
+        .eq('employee_id', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(10);
+
+      if (userTickets && userTickets.length > 0) {
+        const ticketIds = userTickets.map(t => t.id);
+        const ticketMap = new Map(userTickets.map(t => [t.id, t]));
+
+        // Fetch recent Admin comments or system decision comments
+        const { data: comments } = await supabase
+          .from('ticket_comments')
+          .select('id, ticket_id, content, created_at, sender_role, is_internal')
+          .in('ticket_id', ticketIds)
+          .in('sender_role', ['admin', 'system'])
+          .eq('is_internal', false)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (comments) {
+          comments.forEach(c => {
+            const t = ticketMap.get(c.ticket_id);
+            const isApproved = c.content.includes('[DECISION: APPROVED');
+            const isRefused = c.content.includes('[DECISION: REFUSED');
+            
+            let title = 'HR Ticket Message';
+            let type: 'hr' | 'help' | 'admin' = 'admin';
+            let desc = c.content;
+
+            if (isApproved) {
+              type = 'hr';
+              title = `Ticket Approved (${t?.category || 'HR'})`;
+              desc = c.content.replace(/\[DECISION: APPROVED & RESOLVED\]\s*/i, '').replace(/Resolution Note:\s*/i, '');
+            } else if (isRefused) {
+              type = 'help';
+              title = `Ticket Refused (${t?.category || 'HR'})`;
+              desc = c.content.replace(/\[DECISION: REFUSED\]\s*/i, '').replace(/Reason:\s*/i, '');
+            } else {
+              title = `HR Comment (${t?.category || 'Support'})`;
+            }
+
+            items.push({
+              id: `tc_${c.id}`,
+              type,
+              title,
+              desc: desc.trim(),
+              time: formatNotifTime(c.created_at),
+              read: readSet.has(`tc_${c.id}`),
+              ticketId: c.ticket_id,
+              timestamp: new Date(c.created_at).getTime()
+            });
+          });
+        }
+      }
+
+      // 2. Fetch Recent Company Announcements
+      const { data: announcementsData } = await supabase
+        .from('announcements')
+        .select('id, title, content, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (announcementsData) {
+        announcementsData.forEach(a => {
+          items.push({
+            id: `ann_${a.id}`,
+            type: 'admin',
+            title: a.title,
+            desc: a.content || 'Company announcement posted.',
+            time: formatNotifTime(a.created_at),
+            read: readSet.has(`ann_${a.id}`),
+            timestamp: new Date(a.created_at).getTime()
+          });
+        });
+      }
+
+      // Sort newest first
+      items.sort((a, b) => b.timestamp - a.timestamp);
+
+      if (items.length === 0) {
+        items.push({
+          id: 'welcome_init',
+          type: 'hr',
+          title: 'Welcome to TechnoSys',
+          desc: 'Operational alerts and HR ticket updates will appear here in real time.',
+          time: 'Active',
+          read: true,
+          timestamp: Date.now()
+        });
+      }
+
+      setNotifications(items);
+    } catch (err) {
+      console.warn('Error fetching notifications:', err);
+    }
+  };
+
+  const markNotificationRead = async (notifId: string) => {
+    setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const raw = await AsyncStorage.getItem(`READ_NOTIFS_${user.id}`);
+        const set = new Set<string>(raw ? JSON.parse(raw) : []);
+        set.add(notifId);
+        await AsyncStorage.setItem(`READ_NOTIFS_${user.id}`, JSON.stringify(Array.from(set)));
+      }
+    } catch (e) {
+      console.warn("Could not persist read notification", e);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const allIds = notifications.map(n => n.id);
+        await AsyncStorage.setItem(`READ_NOTIFS_${user.id}`, JSON.stringify(allIds));
+      }
+    } catch (e) {
+      console.warn("Could not persist all read notifications", e);
+    }
+  };
 
   // Chunk 15: Equipment Menu
   const [equipModalVisible, setEquipModalVisible] = useState(false);
@@ -150,9 +344,7 @@ export default function HomeScreen() {
     if (user) {
       const { data } = await supabase
         .from('tool_assignments')
-        .select(
-          'id, quantity, borrowed_at, returned_at, status, notes, tool_catalog ( id, name, image_url )'
-        )
+        .select('id, quantity, borrowed_at, returned_at, status, notes, tool_catalog ( id, name, image_url )')
         .eq('technician_id', user.id)
         .order('borrowed_at', { ascending: false });
       
@@ -188,6 +380,22 @@ export default function HomeScreen() {
     setTicketsLoading(false);
   };
 
+  
+  const downloadPayslip = async () => {
+    if (!payslipViewRef.current) return;
+    try {
+      const uri = await payslipViewRef.current.capture();
+      const Sharing = require('expo-sharing');
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+      } else {
+        safeAlert('Error', 'Sharing is not available on this device');
+      }
+    } catch (err) {
+      safeAlert('Error', 'Failed to save image');
+    }
+  };
+
   const submitTicket = async () => {
     if (!ticketForm.title || !ticketForm.description) {
       safeAlert('Error', 'Please fill in all fields.');
@@ -221,6 +429,7 @@ export default function HomeScreen() {
   const [updatesModalVisible, setUpdatesModalVisible] = useState(false);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+    const [unreadAnnouncement, setUnreadAnnouncement] = useState<any>(null);
   const [expandedUpdates, setExpandedUpdates] = useState<{[key: string]: boolean}>({});
   const [selectedUpdate, setSelectedUpdate] = useState<any>(null);
 
@@ -255,6 +464,8 @@ export default function HomeScreen() {
   const [payslips, setPayslips] = useState<any[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
+  const payslipViewRef = useRef<any>(null);
+  const [aiInitialQuery, setAiInitialQuery] = useState('');
 
   // File Leave Feature
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
@@ -265,11 +476,13 @@ export default function HomeScreen() {
   const [newLeaveStartDate, setNewLeaveStartDate] = useState('');
   const [newLeaveEndDate, setNewLeaveEndDate] = useState('');
   const [newLeaveReason, setNewLeaveReason] = useState('');
+    const [leaveFile, setLeaveFile] = useState<any>(null);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   // Timesheets Feature
   const [timesheetModalVisible, setTimesheetModalVisible] = useState(false);
+    const [hasClockedInToday, setHasClockedInToday] = useState(false);
   const [timeLogs, setTimeLogs] = useState<any[]>([]);
   const [selectedTimeLog, setSelectedTimeLog] = useState<any>(null);
   const [timesheetLoading, setTimesheetLoading] = useState(false);
@@ -316,7 +529,20 @@ export default function HomeScreen() {
   };
 
   const submitLeaveRequest = async () => {
-    if (!newLeaveStartDate || !newLeaveEndDate || !newLeaveReason) {
+      if (!newLeaveStartDate || !newLeaveEndDate || !newLeaveReason.trim()) {
+        safeAlert('Error', 'Please fill in all required fields (Start Date, End Date, Reason).');
+        return;
+      }
+      if (newLeaveType === 'sick' && !leaveFile) {
+        safeAlert('Error', 'Medical Certificate is required for Sick Leave.');
+        return;
+      }
+      if (leaveFile && leaveFile.size > 5 * 1024 * 1024) {
+        safeAlert('Error', 'Medical Certificate must be less than 5MB.');
+        return;
+      }
+
+      if (!newLeaveStartDate || !newLeaveEndDate || !newLeaveReason) {
       safeAlert('Error', 'Please fill in all fields (Start Date, End Date, Reason).');
       return;
     }
@@ -342,6 +568,7 @@ export default function HomeScreen() {
         setNewLeaveEndDate('');
         setNewLeaveReason('');
         setNewLeaveType('vacation');
+          setLeaveFile(null);
         fetchLeaveRequests();
       }
     }
@@ -429,7 +656,7 @@ export default function HomeScreen() {
       if (Platform.OS === 'web') {
         window.location.href = '/';
       } else {
-        router.replace('/');
+        try { await Updates.reloadAsync(); } catch (e) { router.replace('/'); }
       }
     } catch (err) {
       console.error(err);
@@ -448,6 +675,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     async function loadData() {
+        (async () => { try { const { status } = await Location.requestForegroundPermissionsAsync(); if (status === 'granted') { const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }); setUserLoc({ lat: loc.coords.latitude, lon: loc.coords.longitude }); } } catch (e) {} })();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
@@ -463,14 +691,63 @@ export default function HomeScreen() {
         .single();
       
       if (scheduleData) setSchedule(scheduleData);
+
+      // Check if user clocked in today
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const { data: todaysLog } = await supabase
+        .from('time_logs')
+        .select('id, app_time_out')
+        .eq('technician_id', user.id)
+        .gte('created_at', startOfDay.toISOString())
+        .limit(1);
+
+      if (todaysLog && todaysLog.length > 0) {
+        setHasClockedInToday(true);
+      }
+
+      fetchNotifications();
     }
     loadData();
+
+    // In-App Notification Center Realtime Listener
+    const notifChannel = supabase.channel('mobile-notifications-hub')
+      .on('broadcast', { event: 'new_comment' }, () => {
+        fetchNotifications();
+      })
+      .on('broadcast', { event: 'ticket_update' }, () => {
+        fetchNotifications();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments' }, (payload: any) => {
+        if (payload.new?.sender_role === 'admin' || payload.new?.sender_role === 'system') {
+          fetchNotifications();
+          try {
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'TechnoSys HR Update',
+                body: (payload.new.content || '').replace(/\[DECISION:.*?\]\s*/i, '').slice(0, 100),
+                data: { ticketId: payload.new.ticket_id },
+              },
+              trigger: null,
+            });
+          } catch (e) {}
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets' }, () => {
+        fetchNotifications();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, () => {
+        fetchNotifications();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(notifChannel);
+    };
   }, []);
 
-  const openMenu = () => {
-    setMenuVisible(true);
-    Animated.timing(menuAnim, { toValue: 1, duration: 300, easing: Easing.out(Easing.poly(4)), useNativeDriver: true }).start();
-  };
+  const openMenu = () => { setMenuVisible(true); };
 
   const closeMenu = () => {
     Animated.timing(menuAnim, { toValue: 0, duration: 250, easing: Easing.in(Easing.poly(4)), useNativeDriver: true }).start(() => setMenuVisible(false));
@@ -511,6 +788,7 @@ export default function HomeScreen() {
           geofence_status: 'inside'
         });
         setLocationStatus('success');
+        setHasClockedInToday(true);
         setTimeout(() => setClockInModal(false), 2000);
       } else {
         // Fallback due to distance
@@ -557,6 +835,7 @@ export default function HomeScreen() {
 
         Alert.alert('Override Submitted', 'Your photo has been sent to HR for review.');
         setClockInModal(false);
+        setHasClockedInToday(true);
       } catch (err) {
         console.error(err);
         Alert.alert('Upload Failed', 'There was an issue uploading your photo.');
@@ -586,16 +865,28 @@ export default function HomeScreen() {
 
         {/* MAIN CONTENT */}
         <View style={styles.mainContent}>
-          <TouchableOpacity style={styles.clockInCard} activeOpacity={0.8} onPress={handleClockIn}>
-            <View style={styles.clockInIconContainer}>
-              <Ionicons name="scan-outline" size={32} color={BRAND.blue} />
+          {hasClockedInToday ? (
+            <View style={[styles.clockInCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1 }]} >
+              <View style={[styles.clockInIconContainer, { backgroundColor: '#BBF7D0' }]}>
+                <Feather name="check" size={32} color={BRAND.green} />
+              </View>
+              <View style={styles.clockInTextContainer}>
+                <Text style={[styles.clockInTitle, { color: BRAND.green }]}>Clock In Done</Text>
+                <Text style={styles.clockInSub}>Wait for admin to process clock-out</Text>
+              </View>
             </View>
-            <View style={styles.clockInTextContainer}>
-              <Text style={styles.clockInTitle}>Clock In</Text>
-              <Text style={styles.clockInSub}>Tap to verify location presence</Text>
-            </View>
-            <Feather name="arrow-right" size={24} color={BRAND.blue} />
-          </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.clockInCard} activeOpacity={0.8} onPress={handleClockIn}>
+              <View style={styles.clockInIconContainer}>
+                <Ionicons name="scan-outline" size={32} color={BRAND.blue} />
+              </View>
+              <View style={styles.clockInTextContainer}>
+                <Text style={styles.clockInTitle}>{t('clock_in')}</Text>
+                <Text style={styles.clockInSub}>{t('tap_to_verify')}</Text>
+              </View>
+              <Feather name="arrow-right" size={24} color={BRAND.blue} />
+            </TouchableOpacity>
+          )}
 
           <View style={styles.bubbleRow}>
             <TouchableOpacity style={styles.bubbleBtn} onPress={() => { fetchEquipment(); setEquipModalVisible(true); }}>
@@ -656,9 +947,9 @@ export default function HomeScreen() {
         </View>
 
         {/* MENU OVERLAY */}
-        <Modal visible={menuVisible} transparent={true} animationType="none">
-          <Animated.View style={[styles.menuOverlay, { opacity: menuAnim }]}>
-            <Animated.View style={[styles.menuContent, { transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }] }]}>
+        <RNModal isVisible={menuVisible}   onBackdropPress={() => setMenuVisible(false)} onBackButtonPress={() => setMenuVisible(false)} onSwipeComplete={() => setMenuVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+          <View style={[styles.menuOverlay, { opacity: 1 }]}>
+            <View style={styles.menuContent}>
               <SafeAreaView style={{flex: 1}}>
                 <View style={styles.menuHeaderRow}>
                   <View style={{width: 32}}/>
@@ -677,7 +968,7 @@ export default function HomeScreen() {
                   <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>My HR & Pay</Text>
                   <View style={styles.menuGrid}>
                     <MenuGridItem icon="dollar-sign" label={t('payslips')} fontFamily={activeFontBold} color={BRAND.green} onPress={() => { fetchPayslips(); setPayslipsModalVisible(true); }} />
-                    <MenuGridItem icon="sun" label={t('file_leave')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { fetchLeaveRequests(); setLeaveModalVisible(true); }} />
+                    <MenuGridItem icon="sun" label={t('file_leave')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { setMenuVisible(false); setAiInitialQuery('I would like to file a leave of absence.'); setTimeout(() => setSupportModalVisible(true), 500); }} />
                     <MenuGridItem icon="clock" label={t('timesheets')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { fetchTimeLogs(); setTimesheetModalVisible(true); }} />
                   </View>
                   <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>Company & Support</Text>
@@ -685,22 +976,26 @@ export default function HomeScreen() {
                     <MenuGridItem icon="bell" label={t('announcements')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { fetchAnnouncements(); setUpdatesModalVisible(true); }} />
                     <MenuGridItem icon="help-circle" label={t('support')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { fetchTickets(); setSupportModalVisible(true); }} />
                     <MenuGridItem icon="settings" label={t('preferences')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { setMenuVisible(false); setPreferencesModalVisible(true); }} />
-                    <MenuGridItem icon="user" label={t('settings')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { setMenuVisible(false); setProfileModalVisible(true); }} />
                   </View>
-                  <View style={{height: 120}} />
+                  <View style={{height: 180}} />
                 </ScrollView>
                 <View style={styles.bottomCloseContainer}>
                    <TouchableOpacity style={styles.flowerCloseBtn} onPress={closeMenu} activeOpacity={0.8}>
-                      <View style={styles.flowerRing1}><View style={styles.flowerRing2}><Text style={styles.flowerText}>Tap to{"\n"}close</Text></View></View>
+                      <View style={{ width: 80, height: 80, justifyContent: 'center', alignItems: 'center' }}>
+                          <Animated.View style={[styles.flowerRing1, { position: 'absolute', transform: [{ scale: auraAnim }] }]} />
+                          <View style={[styles.flowerRing2, { position: 'absolute' }]}>
+                             <Text style={styles.flowerText}>Tap to{"\n"}close</Text>
+                          </View>
+                       </View>
                    </TouchableOpacity>
                 </View>
               </SafeAreaView>
-            </Animated.View>
-          </Animated.View>
-        </Modal>
+              </View>
+            </View>
+        </RNModal>
 
         {/* VERIFICATION MODAL */}
-        <Modal visible={clockInModal} transparent={true} animationType="fade">
+        <RNModal isVisible={clockInModal}   onBackdropPress={() => setClockInModal(false)} onBackButtonPress={() => setClockInModal(false)} onSwipeComplete={() => setClockInModal(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.verificationOverlay}>
             <View style={styles.verificationCard}>
               {locationStatus === 'verifying' ? (
@@ -724,7 +1019,7 @@ export default function HomeScreen() {
                   <Text style={styles.fallbackSub}>You are outside the target green zone.</Text>
                   <View style={styles.mapContainer}>
                     {userLoc && schedule && (
-                      <MapView style={styles.map} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: 0.005, longitudeDelta: 0.005 }}>
+                      <MapView provider={'google'} style={styles.map} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: 0.005, longitudeDelta: 0.005 }}>
                         <Circle center={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} radius={schedule.geofence_radius} strokeColor="rgba(16, 185, 129, 0.5)" fillColor="rgba(16, 185, 129, 0.2)" />
                         <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} />
                       </MapView>
@@ -741,10 +1036,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* PROFILE MODAL (Bottom Sheet) */}
-        <Modal visible={profileModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={profileModalVisible}   onBackdropPress={() => setProfileModalVisible(false)} onBackButtonPress={() => setProfileModalVisible(false)} onSwipeComplete={() => setProfileModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={styles.profileSheet}>
               {/* Handle */}
@@ -813,10 +1108,10 @@ export default function HomeScreen() {
 
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* DTR MODAL */}
-        <Modal visible={dtrModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={dtrModalVisible}   onBackdropPress={() => setDtrModalVisible(false)} onBackButtonPress={() => setDtrModalVisible(false)} onSwipeComplete={() => setDtrModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -844,10 +1139,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* FORMS MODAL */}
-        <Modal visible={formsModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={formsModalVisible}   onBackdropPress={() => setFormsModalVisible(false)} onBackButtonPress={() => setFormsModalVisible(false)} onSwipeComplete={() => setFormsModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '60%' }]}>
               <View style={styles.sheetHandle} />
@@ -866,10 +1161,10 @@ export default function HomeScreen() {
               </ScrollView>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* LANGUAGE MODAL */}
-        <Modal visible={langModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={langModalVisible}   onBackdropPress={() => setLangModalVisible(false)} onBackButtonPress={() => setLangModalVisible(false)} onSwipeComplete={() => setLangModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '50%' }]}>
               <View style={styles.sheetHandle} />
@@ -887,10 +1182,10 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* PREFERENCES MODAL */}
-        <Modal visible={preferencesModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={preferencesModalVisible}   onBackdropPress={() => setPreferencesModalVisible(false)} onBackButtonPress={() => setPreferencesModalVisible(false)} onSwipeComplete={() => setPreferencesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: 400 }]}>
               <View style={styles.sheetHandle} />
@@ -945,10 +1240,10 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* LOGOUT CONFIRMATION MODAL */}
-        <Modal visible={logoutModalVisible} transparent={true} animationType="fade">
+        <RNModal isVisible={logoutModalVisible}   onBackdropPress={() => setLogoutModalVisible(false)} onBackButtonPress={() => setLogoutModalVisible(false)} onSwipeComplete={() => setLogoutModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.verificationOverlay}>
             <View style={[styles.verificationCard, { padding: 32, alignItems: 'center' }]}>
               <View style={[styles.gridIconCircle, { backgroundColor: '#FEE2E2', width: 64, height: 64, borderRadius: 32, marginBottom: 16 }]}>
@@ -967,10 +1262,10 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </RNModal>
         {/* NOTIFICATION DRAWER */}
         {/* NOTIFICATION DRAWER */}
-        <Modal visible={notifVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={notifVisible}   onBackdropPress={() => setNotifVisible(false)} onBackButtonPress={() => setNotifVisible(false)} onSwipeComplete={() => setNotifVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -982,9 +1277,7 @@ export default function HomeScreen() {
               </View>
               
               <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <TouchableOpacity onPress={() => {
-                  setNotifications(notifications.map(n => ({ ...n, read: true })));
-                }}>
+                <TouchableOpacity onPress={markAllNotificationsRead}>
                   <Text style={styles.notifMarkRead}>Mark all read</Text>
                 </TouchableOpacity>
               </View>
@@ -1007,8 +1300,14 @@ export default function HomeScreen() {
                     <TouchableOpacity 
                       style={[styles.notifItem, !notif.read && styles.notifItemUnread]}
                       onPress={() => {
-                        setNotifications(notifications.map(n => n.id === notif.id ? { ...n, read: true } : n));
-                        setSelectedNotif(notif);
+                        markNotificationRead(notif.id);
+                        if (notif.ticketId) {
+                          setSelectedChatTicketId(notif.ticketId);
+                          setNotifVisible(false);
+                          setSupportModalVisible(true);
+                        } else {
+                          setSelectedNotif(notif);
+                        }
                       }}
                     >
                       <View style={[styles.notifIconCircle, { backgroundColor: bgColor }]}>
@@ -1033,10 +1332,10 @@ export default function HomeScreen() {
               />
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* PRIORITY DISPATCH MODAL */}
-        <Modal visible={dispatchVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={dispatchVisible}   onBackdropPress={() => setDispatchVisible(false)} onBackButtonPress={() => setDispatchVisible(false)} onSwipeComplete={() => setDispatchVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
               <TouchableOpacity onPress={() => setDispatchVisible(false)} style={{ padding: 8, marginLeft: -8 }}>
@@ -1075,30 +1374,36 @@ export default function HomeScreen() {
 
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 24 }}>
                 <Feather name="info" size={16} color="#64748B" style={{ marginTop: 2, marginRight: 8 }} />
-                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: '#475569', lineHeight: 22, flex: 1 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: '#475569', lineHeight: 22, flex: 1 }}>
                   {schedule?.remarks || 'Perform standard maintenance checks on network rack cooling systems.'}
                 </Text>
               </View>
 
               <View style={styles.payslipDivider} />
 
+              {schedule && userLoc && (
+                <View style={{ height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                  <MapView provider={'google'} style={{ flex: 1 }} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: Math.abs(schedule.geofence_lat - userLoc.lat) * 2.5 || 0.05, longitudeDelta: Math.abs(schedule.geofence_lon - userLoc.lon) * 2.5 || 0.05 }}>
+                    <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} pinColor='blue' />
+                    <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} pinColor='red' />
+                    <Polyline coordinates={[{latitude: userLoc.lat, longitude: userLoc.lon}, {latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}]} strokeColor='#3B82F6' strokeWidth={4} lineDashPattern={[10, 10]} />
+                  </MapView>
+                </View>
+              )}
+
               <View style={{ flexDirection: 'row', marginTop: 16 }}>
-                <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginRight: 12 }]} onPress={() => setDispatchVisible(false)}>
-                  <Text style={[styles.submitBtnText, { color: '#64748B' }]}>Decline</Text>
-                </TouchableOpacity>
+                
                 <TouchableOpacity style={[styles.submitBtn, { flex: 2, backgroundColor: '#3B82F6' }]} onPress={() => {
-                  safeAlert('Navigating', 'Opening GPS mapping system...');
-                  setDispatchVisible(false);
-                }}>
+                  Linking.openURL('https://www.google.com/maps'); setDispatchVisible(false); }}>
                   <Text style={styles.submitBtnText}>Acknowledge & Go</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* NOTIFICATION DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedNotif} transparent={true} animationType="slide">
+        <RNModal isVisible={!!selectedNotif}   onBackdropPress={() => setSelectedNotif(null)} onBackButtonPress={() => setSelectedNotif(null)} onSwipeComplete={() => setSelectedNotif(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {selectedNotif && (
               <>
@@ -1149,10 +1454,10 @@ export default function HomeScreen() {
               </>
             )}
           </View>
-        </Modal>
+        </RNModal>
 
         {/* EQUIPMENT MODAL */}
-        <Modal visible={equipModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={equipModalVisible}   onBackdropPress={() => setEquipModalVisible(false)} onBackButtonPress={() => setEquipModalVisible(false)} onSwipeComplete={() => setEquipModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%' }]}>
               <View style={styles.sheetHandle} />
@@ -1207,123 +1512,13 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* SUPPORT MODAL */}
-        <Modal visible={supportModalVisible} transparent={true} animationType="slide">
-          <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '90%' }]}>
-              <View style={styles.sheetHandle} />
-              
-              <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>{createTicketMode ? 'New Ticket' : 'Help & Support'}</Text>
-                <TouchableOpacity onPress={() => {
-                  if (createTicketMode) {
-                    setCreateTicketMode(false);
-                  } else {
-                    setSupportModalVisible(false);
-                  }
-                }}>
-                  <Feather name={createTicketMode ? "arrow-left" : "x"} size={24} color="#64748B" />
-                </TouchableOpacity>
-              </View>
-
-              {createTicketMode ? (
-                /* CREATE TICKET MODE */
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 16 }}>
-                  <Text style={styles.inputLabel}>Title</Text>
-                  <TextInput 
-                    style={styles.inputField}
-                    placeholder="Briefly describe the issue..."
-                    placeholderTextColor="#94A3B8"
-                    value={ticketForm.title}
-                    onChangeText={(text) => setTicketForm({...ticketForm, title: text})}
-                  />
-                  
-                  <Text style={styles.inputLabel}>Category</Text>
-                  <View style={styles.categoryPills}>
-                    {TICKET_CATEGORIES.map(cat => (
-                      <TouchableOpacity 
-                        key={cat}
-                        style={[styles.categoryPill, ticketForm.category === cat && styles.categoryPillActive]}
-                        onPress={() => setTicketForm({...ticketForm, category: cat})}
-                      >
-                        <Text style={[styles.categoryPillText, ticketForm.category === cat && styles.categoryPillTextActive]}>{cat}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <Text style={styles.inputLabel}>Description</Text>
-                  <TextInput 
-                    style={[styles.inputField, { height: 120, textAlignVertical: 'top' }]}
-                    placeholder="Provide detailed information..."
-                    placeholderTextColor="#94A3B8"
-                    multiline
-                    value={ticketForm.description}
-                    onChangeText={(text) => setTicketForm({...ticketForm, description: text})}
-                  />
-
-                  <TouchableOpacity 
-                    style={[styles.submitBtn, isSubmittingTicket && { opacity: 0.7 }]}
-                    onPress={submitTicket}
-                    disabled={isSubmittingTicket}
-                  >
-                    {isSubmittingTicket ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.submitBtnText}>Submit Ticket</Text>
-                    )}
-                  </TouchableOpacity>
-                </ScrollView>
-              ) : (
-                /* LIST TICKETS MODE */
-                <>
-                  <TouchableOpacity style={styles.newTicketBtn} onPress={() => setCreateTicketMode(true)}>
-                    <Feather name="plus" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.newTicketBtnText}>Create New Ticket</Text>
-                  </TouchableOpacity>
-
-                  {ticketsLoading ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                      <ActivityIndicator size="large" color={BRAND.blue} />
-                    </View>
-                  ) : (
-                    <FlatList
-                      data={tickets}
-                      keyExtractor={(item) => item.id}
-                      showsVerticalScrollIndicator={false}
-                      contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
-                      ListEmptyComponent={() => (
-                        <View style={{ padding: 32, alignItems: 'center' }}>
-                          <Feather name="check-circle" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
-                            You have no open support tickets!
-                          </Text>
-                        </View>
-                      )}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity style={styles.ticketItem} onPress={() => setSelectedTicket(item)} activeOpacity={0.7}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.ticketTitle}>{item.title}</Text>
-                            <Text style={styles.ticketSub}>{item.category} • {new Date(item.created_at).toLocaleDateString()}</Text>
-                          </View>
-                          <View style={[styles.ticketBadge, item.status === 'open' ? styles.badgeOpen : styles.badgeResolved]}>
-                            <Text style={[styles.ticketBadgeText, item.status === 'open' ? styles.badgeTextOpen : styles.badgeTextResolved]}>
-                              {item.status.toUpperCase()}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      )}
-                    />
-                  )}
-                </>
-              )}
-            </View>
-          </View>
-        </Modal>
+        <RNModal isVisible={supportModalVisible}   onBackdropPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} onBackButtonPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} onSwipeComplete={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}><SupportChatUI onClose={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} initialQuery={aiInitialQuery} ticketId={selectedChatTicketId || undefined} /></RNModal>
 
         {/* SUPPORT TICKET DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedTicket} transparent={true} animationType="slide">
+        <RNModal isVisible={!!selectedTicket}   onBackdropPress={() => setSelectedTicket(null)} onBackButtonPress={() => setSelectedTicket(null)} onSwipeComplete={() => setSelectedTicket(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: TICKET --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1360,10 +1555,10 @@ export default function HomeScreen() {
               </ScrollView>
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* UPDATES MODAL */}
-        <Modal visible={updatesModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={updatesModalVisible}   onBackdropPress={() => setUpdatesModalVisible(false)} onBackButtonPress={() => setUpdatesModalVisible(false)} onSwipeComplete={() => setUpdatesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1393,70 +1588,37 @@ export default function HomeScreen() {
                     </View>
                   )}
                   renderItem={({ item }) => (
-                    <TouchableOpacity 
-                      style={styles.updateItem}
-                      activeOpacity={0.7}
-                      onPress={() => setSelectedUpdate(item)}
-                    >
-                      <View style={styles.updateIconWrap}>
-                        <Feather name="radio" size={20} color={BRAND.blue} />
+                    <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                          <Feather name="user" size={20} color={BRAND.blue} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: '#0F172A' }}>{item.profiles?.full_name || 'Admin'}</Text>
+                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: '#64748B' }}>
+                            {new Date(item.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        </View>
+                        <TouchableOpacity hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} onPress={() => safeAlert("Options", "You can report this announcement if you have concerns.")}>
+                          <Feather name="more-horizontal" size={20} color="#94A3B8" />
+                        </TouchableOpacity>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.updateTitle}>{item.title}</Text>
-                        <Text style={styles.updateSub}>
-                          {item.profiles?.full_name || 'Admin'} • {new Date(item.created_at).toLocaleDateString()}
-                        </Text>
-                        <Text style={styles.updateContent} numberOfLines={2}>
-                          {item.content}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A', marginBottom: 4 }}>{item.title}</Text>
+                      <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 14, color: '#334155', lineHeight: 22, marginBottom: 16 }}>
+                        {item.content}
+                      </Text>
+                    </View>
                   )}
                 />
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
-        {/* UPDATES DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedUpdate} transparent={true} animationType="slide">
-          <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
-            {/* --- DETAILED VIEW: UPDATE --- */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
-              <TouchableOpacity onPress={() => setSelectedUpdate(null)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="arrow-left" size={24} color="#0F172A" />
-              </TouchableOpacity>
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginLeft: 8 }}>Announcement</Text>
-            </View>
-            
-            <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#E2E8F0', flex: 1, marginBottom: 40 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                <View style={[styles.updateIconWrap, { backgroundColor: '#EFF6FF', marginRight: 16 }]}>
-                  <Feather name="radio" size={24} color={BRAND.blue} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A', marginBottom: 4 }}>
-                    {selectedUpdate?.title}
-                  </Text>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B' }}>
-                    {selectedUpdate?.profiles?.full_name || 'Admin'} • {selectedUpdate?.created_at ? new Date(selectedUpdate.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.payslipDivider} />
-              
-              <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
-                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 16, color: '#334155', lineHeight: 24 }}>
-                  {selectedUpdate?.content}
-                </Text>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        
 
         {/* WORK ORDERS MODAL */}
-        <Modal visible={workOrdersModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={workOrdersModalVisible}   onBackdropPress={() => setWorkOrdersModalVisible(false)} onBackButtonPress={() => setWorkOrdersModalVisible(false)} onSwipeComplete={() => setWorkOrdersModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1509,10 +1671,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* SCHEDULES MODAL (LIST VIEW) */}
-        <Modal visible={schedulesModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={schedulesModalVisible}   onBackdropPress={() => setSchedulesModalVisible(false)} onBackButtonPress={() => setSchedulesModalVisible(false)} onSwipeComplete={() => setSchedulesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1586,10 +1748,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* SCHEDULES DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <Modal visible={!!selectedSchedule} transparent={true} animationType="slide">
+        <RNModal isVisible={!!selectedSchedule}   onBackdropPress={() => setSelectedSchedule(null)} onBackButtonPress={() => setSelectedSchedule(null)} onSwipeComplete={() => setSelectedSchedule(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: SCHEDULE --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1658,10 +1820,10 @@ export default function HomeScreen() {
             </TouchableOpacity>
             
           </View>
-        </Modal>
+        </RNModal>
 
         {/* TIMESHEETS MODAL */}
-        <Modal visible={timesheetModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={timesheetModalVisible} onBackdropPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onBackButtonPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onSwipeComplete={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} swipeDirection={selectedTimeLog ? undefined : ['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           {selectedTimeLog ? (
             <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
               {/* --- DETAILED VIEW: TIMESHEET --- */}
@@ -1734,7 +1896,7 @@ export default function HomeScreen() {
                 
               </View>
               
-              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 24, flexDirection: 'row', justifyContent: 'center' }]} onPress={() => safeAlert('Dispute Logged', 'HR has been notified to review your timesheets.')}>
+              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 24, flexDirection: 'row', justifyContent: 'center' }]} onPress={() => { setTimesheetModalVisible(false); setAiInitialQuery('I would like to dispute my time log for ' + selectedTimeLog.clock_in); setTimeout(() => setSupportModalVisible(true), 500); }}>
                 <Feather name="alert-circle" size={20} color={BRAND.red} style={{ marginRight: 8 }} />
                 <Text style={[styles.submitBtnText, { color: BRAND.red }]}>Dispute This Entry</Text>
               </TouchableOpacity>
@@ -1752,7 +1914,7 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16, flexDirection: 'row', justifyContent: 'center' }]} onPress={() => safeAlert('Dispute Logged', 'HR has been notified to review your timesheets.')}>
+                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16, flexDirection: 'row', justifyContent: 'center' }]} onPress={() => { setTimesheetModalVisible(false); setAiInitialQuery('I would like to dispute my time log for ' + selectedTimeLog.clock_in); setTimeout(() => setSupportModalVisible(true), 500); }}>
                   <Feather name="alert-circle" size={20} color={BRAND.red} style={{ marginRight: 8 }} />
                   <Text style={[styles.submitBtnText, { color: BRAND.red }]}>Dispute Time Log</Text>
                 </TouchableOpacity>
@@ -1813,10 +1975,10 @@ export default function HomeScreen() {
               </View>
             </View>
           )}
-        </Modal>
+        </RNModal>
 
         {/* LEAVE MODAL */}
-        <Modal visible={leaveModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={leaveModalVisible}   onBackdropPress={() => setLeaveModalVisible(false)} onBackButtonPress={() => setLeaveModalVisible(false)} onSwipeComplete={() => setLeaveModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%' }]}>
               <View style={styles.sheetHandle} />
@@ -1857,8 +2019,7 @@ export default function HomeScreen() {
                       </Text>
                     </TouchableOpacity>
                     {showStartDatePicker && (
-                      <DateTimePicker
-                        value={newLeaveStartDate ? new Date(newLeaveStartDate) : new Date()}
+                      <DateTimePicker value={newLeaveStartDate ? new Date(newLeaveStartDate) : new Date()} minimumDate={new Date()}
                         mode="date"
                         display="default"
                         onChange={(event, selectedDate) => {
@@ -1901,10 +2062,19 @@ export default function HomeScreen() {
                       placeholderTextColor="#94A3B8"
                       multiline
                       value={newLeaveReason}
-                      onChangeText={setNewLeaveReason}
-                    />
+                      onChangeText={setNewLeaveReason} />
 
-                    <TouchableOpacity style={[styles.submitBtn, { backgroundColor: BRAND.blue }]} onPress={submitLeaveRequest}>
+                      {newLeaveType === 'sick' && (
+                        <View style={{ marginBottom: 16 }}>
+                          <Text style={styles.inputLabel}>Medical Certificate (Max 5MB) *</Text>
+                          <TouchableOpacity style={[styles.textInput, { justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }]} onPress={async () => { const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true }); if(!res.canceled) setLeaveFile(res.assets[0]); }}>
+                            <Feather name='upload-cloud' size={20} color='#94A3B8' style={{ marginRight: 8 }} />
+                            <Text style={{ fontFamily: 'DMSans-Medium', color: leaveFile ? '#0F172A' : '#94A3B8' }}>{leaveFile ? leaveFile.name : 'Tap to upload certificate'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                      <TouchableOpacity style={[styles.submitBtn, { backgroundColor: BRAND.blue }]} onPress={submitLeaveRequest}>
                       <Text style={styles.submitBtnText}>Submit Leave Request</Text>
                     </TouchableOpacity>
                   </ScrollView>
@@ -1963,10 +2133,10 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </Modal>
+        </RNModal>
 
         {/* PAYSLIPS MODAL */}
-        <Modal visible={payslipsModalVisible} transparent={true} animationType="slide">
+        <RNModal isVisible={payslipsModalVisible} onBackdropPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} onBackButtonPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} onSwipeComplete={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} swipeDirection={selectedPayslip ? undefined : ['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           {selectedPayslip ? (
             <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>              {/* --- DETAILED VIEW: MODERN BANKING RECEIPT --- */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -1977,6 +2147,7 @@ export default function HomeScreen() {
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+                <ViewShot ref={payslipViewRef} options={{ format: 'jpg', quality: 0.9 }} style={{ backgroundColor: '#F8FAFC' }}>
                 
                 {/* Technocycle Branding */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
@@ -2071,15 +2242,26 @@ export default function HomeScreen() {
                   </View>
                 </View>
 
+                </ViewShot>
+
                 {/* Footer */}
                 <View style={{ marginTop: 24, alignItems: 'center', paddingHorizontal: 24 }}>
                   <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 18 }}>
                     I acknowledge receiving the amount stated above and have no further claims for services rendered to TECHNOCYCLE CORPORATION.
                   </Text>
-                  
                   <TouchableOpacity 
-                    style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 32, width: '100%' }]}
-                    onPress={() => safeAlert('Dispute Logged', 'HR has been notified of your payslip dispute.')}
+                    style={[styles.submitBtn, { backgroundColor: BRAND.blue, marginTop: 32, width: '100%' }]}
+                    onPress={downloadPayslip}
+                  >
+                    <Text style={[styles.submitBtnText, { color: '#FFF' }]}>Download Payslip</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 16, width: '100%' }]}
+                    onPress={() => {
+                      setPayslipsModalVisible(false);
+                      setTimeout(() => setSupportModalVisible(true), 500);
+                    }}
                   >
                     <Text style={[styles.submitBtnText, { color: BRAND.red }]}>Dispute Payslip</Text>
                   </TouchableOpacity>
@@ -2090,7 +2272,8 @@ export default function HomeScreen() {
             <View style={styles.profileOverlay}>
               <View style={[styles.profileSheet, { height: '85%' }]}>
                 <View style={styles.sheetHandle} />
-                <>                  {/* --- LIST VIEW --- */}
+                <>
+                  {/* --- LIST VIEW --- */}
                   <View style={styles.modalHeaderRow}>
                     <Text style={styles.modalTitle}>My Payslips</Text>
                     <TouchableOpacity onPress={() => { setPayslipsModalVisible(false); setSelectedPayslip(null); }}>
@@ -2145,7 +2328,7 @@ export default function HomeScreen() {
               </View>
             </View>
           )}
-        </Modal>
+        </RNModal>
 
       </SafeAreaView>
     </View>
@@ -2201,15 +2384,15 @@ const styles = StyleSheet.create({
   menuHeaderText: { fontFamily: 'DMSans-Bold', fontSize: 20, color: '#fff' },
   closeBtnTop: { padding: 8 },
   menuScroll: { paddingHorizontal: 24 },
-  categoryTitle: { fontFamily: 'DMSans-Bold', fontSize: 22, color: '#fff', marginTop: 24, marginBottom: 20 },
+  categoryTitle: { fontFamily: 'DMSans-Bold', fontSize: 22, color: '#fff', marginTop: 12, marginBottom: 12 },
   menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', paddingTop: 8, paddingBottom: 8 },
-  gridItem: { width: '33.33%', alignItems: 'center', marginBottom: 24, marginTop: 8 },
+  gridItem: { width: '33.33%', alignItems: 'center', marginBottom: 12, marginTop: 4 },
   gridIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   gridItemText: { fontFamily: 'DMSans-Medium', fontSize: 13, color: '#fff', textAlign: 'center' },
   bottomCloseContainer: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
   flowerCloseBtn: { alignItems: 'center', justifyContent: 'center' },
-  flowerRing1: { width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(251, 191, 36, 0.15)', justifyContent: 'center', alignItems: 'center' },
-  flowerRing2: { width: 100, height: 100, borderRadius: 50, backgroundColor: BRAND.blue, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: BRAND.yellow },
+  flowerRing1: { width: 96, height: 96, borderRadius: 48, backgroundColor: 'rgba(251, 191, 36, 0.15)', justifyContent: 'center', alignItems: 'center' },
+  flowerRing2: { width: 76, height: 76, borderRadius: 38, backgroundColor: BRAND.blue, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: BRAND.yellow },
   flowerText: { fontFamily: 'DMSans-Bold', fontSize: 12, color: BRAND.yellow, textAlign: 'center', lineHeight: 16 },
   verificationOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   verificationCard: { backgroundColor: '#fff', borderRadius: 24, width: '100%', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
@@ -2320,5 +2503,20 @@ const styles = StyleSheet.create({
   payslipSectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   payslipLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

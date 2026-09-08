@@ -3,11 +3,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CopilotProvider } from 'react-native-copilot';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { BackHandler, Alert, View } from 'react-native';
+import { BackHandler, Alert, View, LogBox } from 'react-native';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import * as SplashScreen from 'expo-splash-screen';
 
 SplashScreen.preventAutoHideAsync();
+LogBox.ignoreLogs(['Accessing element.ref was removed']);
 
 export default function RootLayout() {
   const router = useRouter();
