@@ -291,7 +291,7 @@ export default function HomeScreen() {
         items.push({
           id: 'welcome_init',
           type: 'hr',
-          title: 'Welcome to TechnoSys',
+          title: 'Welcome to TechnoCycle',
           desc: 'Operational alerts and HR ticket updates will appear here in real time.',
           time: 'Active',
           read: true,
@@ -725,7 +725,7 @@ export default function HomeScreen() {
           try {
             Notifications.scheduleNotificationAsync({
               content: {
-                title: 'TechnoSys HR Update',
+                title: 'TechnoCycle HR Update',
                 body: (payload.new.content || '').replace(/\[DECISION:.*?\]\s*/i, '').slice(0, 100),
                 data: { ticketId: payload.new.ticket_id },
               },
@@ -855,7 +855,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Image source={require('../../../assets/logo.png')} style={{ width: 45, height: 45, resizeMode: 'contain' }} />
-            <Text style={styles.headerTitle}>{profile ? profile.full_name : 'TechnoSys'}</Text>
+            <Text style={styles.headerTitle}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
           </View>
           <TouchableOpacity style={styles.headerBtnOutline} onPress={() => setNotifVisible(true)}>
             <Feather name="bell" size={24} color="#0F172A" />
@@ -1051,7 +1051,7 @@ export default function HomeScreen() {
                   <Feather name="user" size={32} color={BRAND.blue} />
                 </View>
                 <View style={styles.profileInfo}>
-                  <Text style={styles.profileName}>{profile ? profile.full_name : 'TechnoSys'}</Text>
+                  <Text style={styles.profileName}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
                   <Text style={styles.profileRole}>{profile ? profile.role.toUpperCase() : 'TECHNICIAN'}</Text>
                 </View>
                 <View style={styles.statusBadge}>

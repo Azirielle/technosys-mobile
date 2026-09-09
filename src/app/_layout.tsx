@@ -19,11 +19,13 @@ export default function RootLayout() {
     'DMSans-Bold': DMSans_700Bold,
   });
 
+  // 4-second maximum safety fallback so splash screen never locks under an unexpected network freeze
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const onBackPress = () => {
@@ -32,7 +34,7 @@ export default function RootLayout() {
         return true;
       } else {
         // At root (Home or Login)
-        Alert.alert('Exit App', 'Are you sure you want to exit TechnoSys Mobile?', [
+        Alert.alert('Exit App', 'Are you sure you want to exit TechnoCycle?', [
           {
             text: 'Cancel',
             onPress: () => null,
