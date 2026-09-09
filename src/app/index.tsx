@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter as useExpoRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as SplashScreen from 'expo-splash-screen';
 import { 
   StyleSheet, 
   Text, 
@@ -35,14 +36,20 @@ export default function RootLoginScreen() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         router.replace('/(tabs)');
+        // Allow tabs to mount before dismissing splash screen
+        setTimeout(() => {
+          SplashScreen.hideAsync().catch(() => {});
+        }, 120);
       } else {
         setLoading(false);
+        SplashScreen.hideAsync().catch(() => {});
       }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         router.replace('/(tabs)');
+        SplashScreen.hideAsync().catch(() => {});
       }
     });
     
@@ -102,11 +109,7 @@ export default function RootLoginScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={BRAND.blue} />
-      </View>
-    );
+    return null;
   }
 
   return (
@@ -122,8 +125,8 @@ export default function RootLoginScreen() {
             source={require('../../assets/logo.png')} 
             style={styles.logo}
           />
-          <Text style={styles.title}>TechnoSys Pro</Text>
-          <Text style={styles.subtitle}>Technician Action Kiosk</Text>
+          <Text style={styles.title}>TechnoCycle</Text>
+          <Text style={styles.subtitle}>Field Service Operations</Text>
 
           <View style={styles.inputCard}>
             
