@@ -726,6 +726,7 @@ export default function HomeScreen() {
         .from('schedules')
         .select('*')
         .eq('technician_id', user.id)
+        .neq('status', 'cancelled')
         .order('start_time', { ascending: false });
       
       if (data) setSchedulesList(data);
@@ -815,11 +816,12 @@ export default function HomeScreen() {
         .from('schedules')
         .select('*')
         .eq('technician_id', user.id)
+        .neq('status', 'cancelled')
         .order('start_time', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
       
-      if (scheduleData) setSchedule(scheduleData);
+      setSchedule(scheduleData || null);
 
       // Check today's attendance logs
       const startOfDay = new Date();
@@ -880,6 +882,10 @@ export default function HomeScreen() {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, () => {
         fetchNotifications();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => {
+        loadData();
+        fetchSchedulesList();
       })
       .subscribe();
 
