@@ -559,6 +559,14 @@ export default function HomeScreen() {
   const [schedulesList, setSchedulesList] = useState<any[]>([]);
   const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
   const [schedulesLoading, setSchedulesLoading] = useState(false);
+  const [activeCrew, setActiveCrew] = useState<{
+    id: string;
+    name: string;
+    role: string;
+    phone?: string;
+    type: 'lead' | 'helper' | 'casual';
+  }[]>([]);
+  const [loadingCrew, setLoadingCrew] = useState(false);
 
   // Preferences Feature
   const [preferencesModalVisible, setPreferencesModalVisible] = useState(false);
@@ -724,7 +732,14 @@ export default function HomeScreen() {
     if (user) {
       const { data } = await supabase
         .from('schedules')
-        .select('*')
+        .select(`
+          *,
+          senior_partner:profiles!senior_partner_id(id, full_name, contact_number),
+          schedule_casual_helpers(
+            id,
+            casual_helpers(id, full_name, contact_number, daily_rate)
+          )
+        `)
         .eq('technician_id', user.id)
         .neq('status', 'cancelled')
         .order('start_time', { ascending: false });
@@ -814,7 +829,14 @@ export default function HomeScreen() {
 
       const { data: scheduleData } = await supabase
         .from('schedules')
-        .select('*')
+        .select(`
+          *,
+          senior_partner:profiles!senior_partner_id(id, full_name, contact_number),
+          schedule_casual_helpers(
+            id,
+            casual_helpers(id, full_name, contact_number, daily_rate)
+          )
+        `)
         .eq('technician_id', user.id)
         .neq('status', 'cancelled')
         .order('start_time', { ascending: false })
@@ -893,6 +915,176 @@ export default function HomeScreen() {
       supabase.removeChannel(notifChannel);
     };
   }, []);
+
+  // Crew Members Resolver for Active Dispatch / Selected Schedule
+  useEffect(() => {
+    const targetSched = selectedSchedule || (dispatchVisible ? schedule : null);
+    if (!targetSched) {
+      setActiveCrew([]);
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingCrew(true);
+
+    (async () => {
+      try {
+        const members: {
+          id: string;
+          name: string;
+          role: string;
+          phone?: string;
+          type: 'lead' | 'helper' | 'casual';
+        }[] = [];
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (targetSched.senior_partner_id) {
+          // CURRENT USER IS ASSIGNED AS A HELPER
+          // 1. Lead Technician from foreign key
+          if (targetSched.senior_partner) {
+            members.push({
+              id: targetSched.senior_partner_id,
+              name: targetSched.senior_partner.full_name || 'Lead Technician',
+              role: 'Lead Technician',
+              phone: targetSched.senior_partner.contact_number,
+              type: 'lead',
+            });
+          }
+
+          // 2. Accompanying Company Helpers sharing this dispatch
+          const { data: coHelpers } = await supabase
+            .from('schedules')
+            .select('technician_id, profiles!technician_id(id, full_name, contact_number, role)')
+            .eq('senior_partner_id', targetSched.senior_partner_id)
+            .eq('start_time', targetSched.start_time)
+            .neq('status', 'cancelled');
+
+          if (coHelpers) {
+            coHelpers.forEach((h: any) => {
+              if (h.profiles) {
+                const isMe = user && h.technician_id === user.id;
+                members.push({
+                  id: h.technician_id,
+                  name: isMe ? `${h.profiles.full_name} (You)` : h.profiles.full_name,
+                  role: 'Company Helper',
+                  phone: h.profiles.contact_number,
+                  type: 'helper',
+                });
+              }
+            });
+          }
+
+          // 3. Casual helpers attached to the lead technician's schedule
+          const { data: leadSched } = await supabase
+            .from('schedules')
+            .select('id, schedule_casual_helpers(id, casual_helpers(id, full_name, contact_number, daily_rate))')
+            .eq('technician_id', targetSched.senior_partner_id)
+            .eq('start_time', targetSched.start_time)
+            .maybeSingle();
+
+          if (leadSched?.schedule_casual_helpers) {
+            leadSched.schedule_casual_helpers.forEach((item: any) => {
+              if (item.casual_helpers) {
+                members.push({
+                  id: item.casual_helpers.id,
+                  name: item.casual_helpers.full_name,
+                  role: 'Casual Helper',
+                  phone: item.casual_helpers.contact_number,
+                  type: 'casual',
+                });
+              }
+            });
+          }
+        } else {
+          // CURRENT USER IS LEAD TECHNICIAN
+          // 1. Current user as Lead
+          if (profile) {
+            members.push({
+              id: profile.id,
+              name: `${profile.full_name} (You - Lead)`,
+              role: 'Lead Technician',
+              phone: profile.contact_number,
+              type: 'lead',
+            });
+          }
+
+          // 2. Assigned regular company helpers
+          if (user) {
+            const { data: helpers } = await supabase
+              .from('schedules')
+              .select('technician_id, profiles!technician_id(id, full_name, contact_number, role)')
+              .eq('senior_partner_id', user.id)
+              .eq('start_time', targetSched.start_time)
+              .neq('status', 'cancelled');
+
+            if (helpers) {
+              helpers.forEach((h: any) => {
+                if (h.profiles) {
+                  members.push({
+                    id: h.technician_id,
+                    name: h.profiles.full_name,
+                    role: 'Company Helper',
+                    phone: h.profiles.contact_number,
+                    type: 'helper',
+                  });
+                }
+              });
+            }
+          }
+
+          // 3. Casual helpers on this schedule
+          if (targetSched.schedule_casual_helpers && targetSched.schedule_casual_helpers.length > 0) {
+            targetSched.schedule_casual_helpers.forEach((item: any) => {
+              if (item.casual_helpers) {
+                members.push({
+                  id: item.casual_helpers.id,
+                  name: item.casual_helpers.full_name,
+                  role: 'Casual Helper',
+                  phone: item.casual_helpers.contact_number,
+                  type: 'casual',
+                });
+              }
+            });
+          } else if (targetSched.id) {
+            const { data: chList } = await supabase
+              .from('schedule_casual_helpers')
+              .select('id, casual_helpers(id, full_name, contact_number, daily_rate)')
+              .eq('schedule_id', targetSched.id);
+            if (chList) {
+              chList.forEach((item: any) => {
+                if (item.casual_helpers) {
+                  members.push({
+                    id: item.casual_helpers.id,
+                    name: item.casual_helpers.full_name,
+                    role: 'Casual Helper',
+                    phone: item.casual_helpers.contact_number,
+                    type: 'casual',
+                  });
+                }
+              });
+            }
+          }
+        }
+
+        if (isMounted) {
+          const seen = new Set<string>();
+          const deduped = members.filter(m => {
+            const key = `${m.id}_${m.type}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setActiveCrew(deduped);
+        }
+      } catch (err) {
+        console.warn('Error loading active crew:', err);
+      } finally {
+        if (isMounted) setLoadingCrew(false);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [selectedSchedule, dispatchVisible, schedule, profile]);
 
   const openMenu = () => { setMenuVisible(true); };
 
@@ -1993,69 +2185,197 @@ export default function HomeScreen() {
 
         {/* PRIORITY DISPATCH MODAL */}
         <RNModal isVisible={dispatchVisible}   onBackdropPress={() => setDispatchVisible(false)} onBackButtonPress={() => setDispatchVisible(false)} onSwipeComplete={() => setDispatchVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 24 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+          <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
               <TouchableOpacity onPress={() => setDispatchVisible(false)} style={{ padding: 8, marginLeft: -8 }}>
                 <Feather name="arrow-left" size={24} color={colors.text} />
               </TouchableOpacity>
               <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginLeft: 8 }}>Dispatch Details</Text>
             </View>
             
-            <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 24, borderWidth: 1, borderColor: colors.cardBorder }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                <View style={[styles.notifIconCircle, { backgroundColor: isDark ? '#1E293B' : '#DBEAFE', marginRight: 16 }]}>
-                  <Feather name="navigation" size={24} color="#3B82F6" />
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+              <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.cardBorder }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                  <View style={[styles.notifIconCircle, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE', marginRight: 16 }]}>
+                    <Feather name="navigation" size={24} color={colors.brandBlue} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.brandBlue, letterSpacing: 1, marginBottom: 4 }}>
+                      ACTIVE TICKET
+                    </Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textSubtle }}>
+                      Assigned Field Dispatch
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#3B82F6', letterSpacing: 1, marginBottom: 4 }}>
-                    ACTIVE TICKET
-                  </Text>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textSubtle }}>
-                    Assigned 10m ago
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.payslipDivider} />
-              
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 8, marginTop: 8 }}>
-                {schedule?.client_name || 'N/A'}
-              </Text>
-              
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
-                <Feather name="map-pin" size={16} color={colors.textMuted} style={{ marginTop: 2, marginRight: 8 }} />
-                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22, flex: 1 }}>
-                  {schedule?.location || 'N/A'}
-                </Text>
-              </View>
-
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 24 }}>
-                <Feather name="info" size={16} color={colors.textMuted} style={{ marginTop: 2, marginRight: 8 }} />
-                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22, flex: 1 }}>
-                  {schedule?.remarks || 'Perform standard maintenance checks on network rack cooling systems.'}
-                </Text>
-              </View>
-
-              <View style={styles.payslipDivider} />
-
-              {schedule && userLoc && (
-                <View style={{ height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
-                  <MapView provider={'google'} style={{ flex: 1 }} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: Math.abs(schedule.geofence_lat - userLoc.lat) * 2.5 || 0.05, longitudeDelta: Math.abs(schedule.geofence_lon - userLoc.lon) * 2.5 || 0.05 }}>
-                    <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} pinColor='blue' />
-                    <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} pinColor='red' />
-                    <Polyline coordinates={[{latitude: userLoc.lat, longitude: userLoc.lon}, {latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}]} strokeColor='#3B82F6' strokeWidth={4} lineDashPattern={[10, 10]} />
-                  </MapView>
-                </View>
-              )}
-
-              <View style={{ flexDirection: 'row', marginTop: 16 }}>
                 
-                <TouchableOpacity style={[styles.submitBtn, { flex: 2, backgroundColor: '#3B82F6' }]} onPress={() => {
-                  Linking.openURL('https://www.google.com/maps'); setDispatchVisible(false); }}>
+                <View style={styles.payslipDivider} />
+                
+                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 8, marginTop: 8 }}>
+                  {schedule?.client_name || 'N/A'}
+                </Text>
+                
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
+                  <Feather name="map-pin" size={16} color={colors.textMuted} style={{ marginTop: 2, marginRight: 8 }} />
+                  <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22, flex: 1 }}>
+                    {schedule?.location || 'N/A'}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 }}>
+                  <Feather name="info" size={16} color={colors.textMuted} style={{ marginTop: 2, marginRight: 8 }} />
+                  <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22, flex: 1 }}>
+                    {schedule?.remarks || 'Perform standard maintenance checks on site.'}
+                  </Text>
+                </View>
+
+                {/* ASSIGNED FIELD CREW SECTION */}
+                <View style={{ paddingTop: 16, borderTopWidth: 1, borderTopColor: isDark ? colors.border : '#F1F5F9', marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Feather name="users" size={16} color={colors.brandBlue} style={{ marginRight: 6 }} />
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text }}>
+                        Assigned Field Crew
+                      </Text>
+                    </View>
+                    <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>
+                        {activeCrew.length} {activeCrew.length === 1 ? 'Worker' : 'Workers'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {loadingCrew ? (
+                    <ActivityIndicator size="small" color={colors.brandBlue} style={{ marginVertical: 12 }} />
+                  ) : activeCrew.length === 0 ? (
+                    <View style={{ padding: 12, borderRadius: 12, backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderWidth: 1, borderColor: colors.cardBorder }}>
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
+                        Solo dispatch • No additional crew assigned
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {activeCrew.map((member) => (
+                        <View
+                          key={member.id + member.type}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: 12,
+                            borderRadius: 12,
+                            backgroundColor: isDark ? colors.subCard : '#F8FAFC',
+                            borderWidth: 1,
+                            borderColor: colors.cardBorder,
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <View
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 18,
+                                backgroundColor:
+                                  member.type === 'lead'
+                                    ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7')
+                                    : member.type === 'helper'
+                                    ? (isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF')
+                                    : (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5'),
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginRight: 10,
+                              }}
+                            >
+                              <Feather
+                                name={member.type === 'lead' ? 'award' : member.type === 'helper' ? 'user-check' : 'briefcase'}
+                                size={16}
+                                color={member.type === 'lead' ? BRAND.yellow : member.type === 'helper' ? BRAND.blue : BRAND.green}
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 13, color: colors.text }} numberOfLines={1}>
+                                  {member.name}
+                                </Text>
+                                <View
+                                  style={{
+                                    backgroundColor:
+                                      member.type === 'lead'
+                                        ? BRAND.yellow
+                                        : member.type === 'helper'
+                                        ? BRAND.blue
+                                        : BRAND.green,
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 1.5,
+                                    borderRadius: 6,
+                                  }}
+                                >
+                                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: '#fff' }}>
+                                    {member.type === 'lead' ? 'LEAD' : member.type === 'helper' ? 'HELPER' : 'CASUAL'}
+                                  </Text>
+                                </View>
+                              </View>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                                {member.phone || 'No phone registered'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {member.phone ? (
+                            <TouchableOpacity
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 18,
+                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: BRAND.green + '40',
+                                marginLeft: 8,
+                              }}
+                              onPress={() => Linking.openURL(`tel:${member.phone?.replace(/[^0-9+]/g, '')}`)}
+                              activeOpacity={0.7}
+                            >
+                              <Feather name="phone" size={16} color={BRAND.green} />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {schedule && userLoc && (
+                  <View style={{ height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
+                    <MapView provider={'google'} style={{ flex: 1 }} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: Math.abs((schedule.geofence_lat || userLoc.lat) - userLoc.lat) * 2.5 || 0.05, longitudeDelta: Math.abs((schedule.geofence_lon || userLoc.lon) - userLoc.lon) * 2.5 || 0.05 }}>
+                      <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} pinColor='blue' />
+                      {schedule.geofence_lat && schedule.geofence_lon && (
+                        <>
+                          <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} pinColor='red' />
+                          <Polyline coordinates={[{latitude: userLoc.lat, longitude: userLoc.lon}, {latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}]} strokeColor={colors.brandBlue} strokeWidth={4} lineDashPattern={[10, 10]} />
+                        </>
+                      )}
+                    </MapView>
+                  </View>
+                )}
+
+                <TouchableOpacity 
+                  style={[styles.submitBtn, { backgroundColor: colors.brandBlue, marginTop: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} 
+                  onPress={() => {
+                    if (schedule?.location) {
+                      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(schedule.location)}`);
+                    } else {
+                      Linking.openURL('https://www.google.com/maps');
+                    }
+                    setDispatchVisible(false);
+                  }}
+                >
+                  <Feather name="navigation" size={20} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={styles.submitBtnText}>Acknowledge & Go</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
           </View>
         </RNModal>
 
@@ -2450,19 +2770,19 @@ export default function HomeScreen() {
         {/* SCHEDULES MODAL (LIST VIEW) */}
         <RNModal isVisible={schedulesModalVisible}   onBackdropPress={() => setSchedulesModalVisible(false)} onBackButtonPress={() => setSchedulesModalVisible(false)} onSwipeComplete={() => setSchedulesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '85%' }]}>
-              <View style={styles.sheetHandle} />
+            <View style={[styles.profileSheet, { height: '85%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               
               <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>My Schedules</Text>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>My Schedules</Text>
                 <TouchableOpacity onPress={() => setSchedulesModalVisible(false)}>
-                  <Feather name="x" size={24} color="#64748B" />
+                  <Feather name="x" size={24} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
 
               {schedulesLoading ? (
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color={BRAND.blue} />
+                  <ActivityIndicator size="large" color={colors.brandBlue} />
                 </View>
               ) : (
                 <FlatList
@@ -2472,8 +2792,8 @@ export default function HomeScreen() {
                   contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
                   ListEmptyComponent={() => (
                     <View style={{ padding: 32, alignItems: 'center' }}>
-                      <Feather name="calendar" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
+                      <Feather name="calendar" size={48} color={isDark ? '#334155' : '#CBD5E1'} style={{ marginBottom: 16 }} />
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: colors.textSubtle, textAlign: 'center' }}>
                         You have no upcoming schedules.
                       </Text>
                     </View>
@@ -2501,20 +2821,20 @@ export default function HomeScreen() {
                           </Text>
                           
                           <View style={{ flexDirection: 'row', marginTop: 12 }}>
-                            <View style={{ backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 8, flexDirection: 'row', alignItems: 'center' }}>
-                              <Feather name="clock" size={12} color={BRAND.blue} style={{ marginRight: 4 }} />
-                              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: BRAND.blue }}>
+                            <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 8, flexDirection: 'row', alignItems: 'center' }}>
+                              <Feather name="clock" size={12} color={colors.brandBlue} style={{ marginRight: 4 }} />
+                              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>
                                 {item.start_time ? new Date(item.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
                               </Text>
                             </View>
-                            <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 8 }}>
-                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: '#64748B' }}>
+                            <View style={{ backgroundColor: isDark ? colors.subCard : '#F8FAFC', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 8 }}>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>
                                 {item.start_time ? new Date(item.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '---'}
                               </Text>
                             </View>
                           </View>
                         </View>
-                        <Feather name="chevron-right" size={20} color="#CBD5E1" />
+                        <Feather name="chevron-right" size={20} color={isDark ? '#475569' : '#CBD5E1'} />
                       </View>
                     </TouchableOpacity>
                   )}
@@ -2526,73 +2846,200 @@ export default function HomeScreen() {
 
         {/* SCHEDULES DETAILS MODAL (SEPARATED FOR ANIMATION) */}
         <RNModal isVisible={!!selectedSchedule}   onBackdropPress={() => setSelectedSchedule(null)} onBackButtonPress={() => setSelectedSchedule(null)} onSwipeComplete={() => setSelectedSchedule(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
+          <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 20 }}>
             {/* --- DETAILED VIEW: SCHEDULE --- */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
               <TouchableOpacity onPress={() => setSelectedSchedule(null)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="arrow-left" size={24} color="#0F172A" />
+                <Feather name="arrow-left" size={24} color={colors.text} />
               </TouchableOpacity>
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginLeft: 8 }}>Schedule Details</Text>
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginLeft: 8 }}>Schedule Details</Text>
             </View>
             
-            <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#E2E8F0' }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A', marginBottom: 4 }}>
-                    {selectedSchedule?.client_name}
-                  </Text>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 14, color: '#64748B' }}>
-                    {selectedSchedule?.location}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+              <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.cardBorder }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 4 }}>
+                      {selectedSchedule?.client_name}
+                    </Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 14, color: colors.textMuted }}>
+                      {selectedSchedule?.location}
+                    </Text>
+                  </View>
+                  {selectedSchedule?.is_vip_hook && (
+                    <View style={{ backgroundColor: BRAND.yellow, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: '#fff' }}>VIP</Text>
+                    </View>
+                  )}
+                </View>
+                
+                <View style={styles.payslipDivider} />
+                
+                <View style={styles.payslipLine}>
+                  <Text style={styles.payslipLineLabel}>Start Time</Text>
+                  <Text style={styles.payslipLineValue}>
+                    {selectedSchedule?.start_time ? new Date(selectedSchedule.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}
                   </Text>
                 </View>
-                {selectedSchedule?.is_vip_hook && (
-                  <View style={{ backgroundColor: BRAND.yellow, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: '#fff' }}>VIP</Text>
+                
+                <View style={styles.payslipLine}>
+                  <Text style={styles.payslipLineLabel}>End Time</Text>
+                  <Text style={styles.payslipLineValue}>
+                    {selectedSchedule?.end_time ? new Date(selectedSchedule.end_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}
+                  </Text>
+                </View>
+                
+                <View style={styles.payslipDivider} />
+                
+                <View style={styles.payslipLine}>
+                  <Text style={styles.payslipLineLabel}>Attendance Mode</Text>
+                  <Text style={styles.payslipLineValue}>
+                    {selectedSchedule?.attendance_mode ? selectedSchedule.attendance_mode.toUpperCase() : 'STANDARD'}
+                  </Text>
+                </View>
+
+                {selectedSchedule?.attendance_tracking_mode && (
+                  <View style={styles.payslipLine}>
+                    <Text style={styles.payslipLineLabel}>Tracking</Text>
+                    <Text style={styles.payslipLineValue}>
+                      {selectedSchedule.attendance_tracking_mode.replace('_', ' ').toUpperCase()}
+                    </Text>
                   </View>
                 )}
-              </View>
-              
-              <View style={styles.payslipDivider} />
-              
-              <View style={styles.payslipLine}>
-                <Text style={styles.payslipLineLabel}>Start Time</Text>
-                <Text style={styles.payslipLineValue}>
-                  {selectedSchedule?.start_time ? new Date(selectedSchedule.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}
-                </Text>
-              </View>
-              
-              <View style={styles.payslipLine}>
-                <Text style={styles.payslipLineLabel}>End Time</Text>
-                <Text style={styles.payslipLineValue}>
-                  {selectedSchedule?.end_time ? new Date(selectedSchedule.end_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}
-                </Text>
-              </View>
-              
-              <View style={styles.payslipDivider} />
-              
-              <View style={styles.payslipLine}>
-                <Text style={styles.payslipLineLabel}>Attendance Mode</Text>
-                <Text style={styles.payslipLineValue}>
-                  {selectedSchedule?.attendance_mode ? selectedSchedule.attendance_mode.toUpperCase() : 'STANDARD'}
-                </Text>
-              </View>
 
-              {selectedSchedule?.attendance_tracking_mode && (
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>Tracking</Text>
-                  <Text style={styles.payslipLineValue}>
-                    {selectedSchedule.attendance_tracking_mode.replace('_', ' ').toUpperCase()}
-                  </Text>
+                {/* ASSIGNED FIELD CREW SECTION */}
+                <View style={{ marginTop: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: isDark ? colors.border : '#F1F5F9' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Feather name="users" size={16} color={colors.brandBlue} style={{ marginRight: 6 }} />
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text }}>
+                        Assigned Field Crew
+                      </Text>
+                    </View>
+                    <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>
+                        {activeCrew.length} {activeCrew.length === 1 ? 'Worker' : 'Workers'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {loadingCrew ? (
+                    <ActivityIndicator size="small" color={colors.brandBlue} style={{ marginVertical: 12 }} />
+                  ) : activeCrew.length === 0 ? (
+                    <View style={{ padding: 12, borderRadius: 12, backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderWidth: 1, borderColor: colors.cardBorder }}>
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
+                        Solo dispatch • No additional crew assigned
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {activeCrew.map((member) => (
+                        <View
+                          key={member.id + member.type}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: 12,
+                            borderRadius: 12,
+                            backgroundColor: isDark ? colors.subCard : '#F8FAFC',
+                            borderWidth: 1,
+                            borderColor: colors.cardBorder,
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <View
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 18,
+                                backgroundColor:
+                                  member.type === 'lead'
+                                    ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7')
+                                    : member.type === 'helper'
+                                    ? (isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF')
+                                    : (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5'),
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginRight: 10,
+                              }}
+                            >
+                              <Feather
+                                name={member.type === 'lead' ? 'award' : member.type === 'helper' ? 'user-check' : 'briefcase'}
+                                size={16}
+                                color={member.type === 'lead' ? BRAND.yellow : member.type === 'helper' ? BRAND.blue : BRAND.green}
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 13, color: colors.text }} numberOfLines={1}>
+                                  {member.name}
+                                </Text>
+                                <View
+                                  style={{
+                                    backgroundColor:
+                                      member.type === 'lead'
+                                        ? BRAND.yellow
+                                        : member.type === 'helper'
+                                        ? BRAND.blue
+                                        : BRAND.green,
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 1.5,
+                                    borderRadius: 6,
+                                  }}
+                                >
+                                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: '#fff' }}>
+                                    {member.type === 'lead' ? 'LEAD' : member.type === 'helper' ? 'HELPER' : 'CASUAL'}
+                                  </Text>
+                                </View>
+                              </View>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                                {member.phone || 'No phone registered'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {member.phone ? (
+                            <TouchableOpacity
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 18,
+                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: BRAND.green + '40',
+                                marginLeft: 8,
+                              }}
+                              onPress={() => Linking.openURL(`tel:${member.phone?.replace(/[^0-9+]/g, '')}`)}
+                              activeOpacity={0.7}
+                            >
+                              <Feather name="phone" size={16} color={BRAND.green} />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
-              )}
+                
+              </View>
               
-            </View>
-            
-            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: BRAND.blue, marginTop: 24, flexDirection: 'row', justifyContent: 'center' }]} onPress={() => safeAlert('Navigating', 'Opening Maps...')}>
-              <Feather name="navigation" size={20} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={styles.submitBtnText}>Navigate to Site</Text>
-            </TouchableOpacity>
-            
+              <TouchableOpacity 
+                style={[styles.submitBtn, { backgroundColor: colors.brandBlue, marginTop: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} 
+                onPress={() => {
+                  if (selectedSchedule?.location) {
+                    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedSchedule.location)}`);
+                  } else {
+                    safeAlert('Notice', 'No location specified for this schedule.');
+                  }
+                }}
+              >
+                <Feather name="navigation" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.submitBtnText}>Navigate to Site</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </RNModal>
 
