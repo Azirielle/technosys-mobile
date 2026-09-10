@@ -2,12 +2,10 @@ import { Slot, useRouter } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CopilotProvider } from 'react-native-copilot';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { BackHandler, Alert, LogBox } from 'react-native';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import * as SplashScreen from 'expo-splash-screen';
-import { supabase } from '../lib/supabase';
-import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
 import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 
 SplashScreen.preventAutoHideAsync();
@@ -20,8 +18,6 @@ function RootStatusBar() {
 
 export default function RootLayout() {
   const router = useRouter();
-  const [showSplashOverlay, setShowSplashOverlay] = useState(true);
-  const [authReady, setAuthReady] = useState(false);
 
   const [fontsLoaded, fontError] = useFonts({
     'DMSans-Regular': DMSans_400Regular,
@@ -29,27 +25,11 @@ export default function RootLayout() {
     'DMSans-Bold': DMSans_700Bold,
   });
 
-  useEffect(() => {
-    supabase.auth.getSession().then(() => {
-      setAuthReady(true);
-    }).catch(() => {
-      setAuthReady(true);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      // Hide native OS splash so the Reanimated hero splash seamlessly takes over
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [fontsLoaded, fontError]);
-
-  // Safety fallback timeout
+  // Safety fallback timeout to ensure native splash never freezes
   useEffect(() => {
     const timer = setTimeout(() => {
-      setShowSplashOverlay(false);
       SplashScreen.hideAsync().catch(() => {});
-    }, 4000);
+    }, 3500);
     return () => clearTimeout(timer);
   }, []);
 
@@ -87,13 +67,6 @@ export default function RootLayout() {
         <CopilotProvider tooltipStyle={{ backgroundColor: '#ffffff', borderRadius: 16 }} stepNumberComponent={() => null}>
           <Slot />
         </CopilotProvider>
-
-        {showSplashOverlay && (
-          <AnimatedSplashScreen
-            isReady={authReady}
-            onAnimationComplete={() => setShowSplashOverlay(false)}
-          />
-        )}
       </SafeAreaProvider>
     </ThemeProvider>
   );
