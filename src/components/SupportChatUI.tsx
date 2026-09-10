@@ -515,10 +515,22 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
       setIsSubmitting(false);
       return;
     }
-    if (ticketCategory === 'File Leave' && (!ticketDynamic.leaveType || !ticketDynamic.startDate || !ticketDynamic.endDate || !ticketDesc)) {
-      setFormError('Please select leave type, dates, and reason.'); setTimeout(() => setFormError(''), 3000);
-      setIsSubmitting(false);
-      return;
+    if (ticketCategory === 'File Leave') {
+      if (!ticketDynamic.leaveType || !ticketDynamic.startDate || !ticketDynamic.endDate || !ticketDesc.trim()) {
+        setFormError('Please select leave type, dates, and reason.'); setTimeout(() => setFormError(''), 3000);
+        setIsSubmitting(false);
+        return;
+      }
+      if (ticketDynamic.endDate < ticketDynamic.startDate) {
+        setFormError('End date cannot be earlier than start date.'); setTimeout(() => setFormError(''), 3000);
+        setIsSubmitting(false);
+        return;
+      }
+      if (ticketDynamic.leaveType === 'Vacation Leave' && ticketDynamic.startDate < todayStr) {
+        setFormError('Vacation leaves must be scheduled in advance.'); setTimeout(() => setFormError(''), 3000);
+        setIsSubmitting(false);
+        return;
+      }
     }
     if (ticketCategory === 'Others' && (!ticketTitle.trim() || !ticketDesc.trim())) {
       setFormError('Please enter both subject and description.'); setTimeout(() => setFormError(''), 3000);
@@ -528,7 +540,60 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        setIsSubmitting(false);
+        return;
+      }
+
+      // --- Anti-Spam Guard: Check for duplicate open tickets ---
+      if (!activeTicket) {
+        const { data: openTickets } = await supabase
+          .from('tickets')
+          .select('id, title, category, description, created_at')
+          .eq('employee_id', session.user.id)
+          .eq('status', 'open')
+          .eq('category', ticketCategory);
+
+        if (openTickets && openTickets.length > 0) {
+          let conflictTicket: any = null;
+
+          if (ticketCategory === 'DTR Issue' && ticketDynamic.logDate) {
+            conflictTicket = openTickets.find(t => 
+              (t.description && t.description.includes(ticketDynamic.logDate)) ||
+              (t.title && t.title.includes(ticketDynamic.logDate))
+            );
+          } else if (ticketCategory === 'Payroll Issue' && ticketDynamic.payPeriod) {
+            conflictTicket = openTickets.find(t => 
+              (t.description && t.description.includes(ticketDynamic.payPeriod)) ||
+              (t.title && t.title.includes(ticketDynamic.payPeriod))
+            );
+          } else if (ticketCategory === 'File Leave' && ticketDynamic.startDate) {
+            conflictTicket = openTickets.find(t => 
+              (t.description && t.description.includes(ticketDynamic.startDate)) ||
+              (t.title && t.title.includes(ticketDynamic.startDate))
+            );
+          }
+
+          if (conflictTicket) {
+            setIsSubmitting(false);
+            Alert.alert(
+              "Active Request in Progress",
+              `You already have an open ticket (#${conflictTicket.id.slice(0, 8).toUpperCase()}) for this ${ticketCategory === 'Payroll Issue' ? 'pay period' : 'date'}. An HR coordinator is reviewing it. Would you like to view that thread?`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Open Existing Ticket",
+                  onPress: () => {
+                    setTicketModalVisible(false);
+                    loadActiveTicket(false, conflictTicket.id);
+                  }
+                }
+              ]
+            );
+            return;
+          }
+        }
+      }
       
       let uploadedUrl = null;
       let uploadedType = null;
@@ -556,20 +621,20 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
       let finalDesc = ticketDesc;
       
       if (ticketCategory === 'Payroll Issue') {
-         finalTitle = `Payroll Dispute: ${ticketDynamic.payPeriod || 'Unknown Period'}`;
-         finalDesc = `Pay Period: ${ticketDynamic.payPeriod}\nReason: ${ticketDesc}`;
+         finalTitle = `Payroll Concern: ${ticketDynamic.payPeriod || 'Current Cutoff'}`;
+         finalDesc = `Pay Period: ${ticketDynamic.payPeriod}\nDetails: ${ticketDesc}`;
       } else if (ticketCategory === 'Equipment Issue') {
          const finalTool = ticketDynamic.toolName === 'Other Tool' ? (ticketDynamic.customTool || 'Other Equipment') : (ticketDynamic.toolName || 'Unknown Tool');
          finalTitle = `Equipment: ${finalTool}`;
-         finalDesc = `Tool Name: ${finalTool}\nIssue Type: ${ticketDynamic.issueType}\nDetails: ${ticketDesc}`;
+         finalDesc = `Tool / Item: ${finalTool}\nReported Condition: ${ticketDynamic.issueType}\nNotes: ${ticketDesc}`;
       } else if (ticketCategory === 'DTR Issue') {
-         finalTitle = `DTR Dispute: ${ticketDynamic.logDate || 'Unknown Date'}`;
-         finalDesc = `Log Date: ${ticketDynamic.logDate}\nExpected In: ${ticketDynamic.expectedIn}\nExpected Out: ${ticketDynamic.expectedOut}\nExplanation: ${ticketDesc}`;
+         finalTitle = `DTR Adjustment: ${ticketDynamic.logDate || 'Selected Shift'}`;
+         finalDesc = `Target Shift: ${ticketDynamic.logDate}\nRequested Times: In at ${ticketDynamic.expectedIn}, Out at ${ticketDynamic.expectedOut}\nExplanation: ${ticketDesc}`;
       } else if (ticketCategory === 'File Leave') {
-         finalTitle = `Leave Request: ${ticketDynamic.leaveType || 'General'}`;
-         finalDesc = `Leave Type: ${ticketDynamic.leaveType}\nStart Date: ${ticketDynamic.startDate}\nEnd Date: ${ticketDynamic.endDate}\nReason: ${ticketDesc}`;
+         finalTitle = `Leave Filing: ${ticketDynamic.leaveType || 'General'}`;
+         finalDesc = `Leave Type: ${ticketDynamic.leaveType}\nRequested Schedule: ${ticketDynamic.startDate} to ${ticketDynamic.endDate}\nReason: ${ticketDesc}`;
       } else if (ticketCategory === 'Others') {
-         finalTitle = `Inquiry: ${ticketTitle.trim()}`;
+         finalTitle = ticketTitle.trim();
          finalDesc = ticketDesc.trim();
       }
 
@@ -622,9 +687,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
 
       const ticketId = activeTicket ? activeTicket.id : newTicket?.id;
       if (ticketId) {
-        const submissionContent = `📋 **[FORM SUBMITTED: ${ticketCategory.toUpperCase()}]**\n\n` +
-          `**Subject:** ${finalTitle}\n\n` +
-          `${finalDesc}`;
+        const submissionContent = `📋 Form Submitted: ${ticketCategory}\nSubject: ${finalTitle}\n\n${finalDesc}`;
           
         await supabase.from('ticket_comments').insert({
           ticket_id: ticketId,
@@ -638,9 +701,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
         await supabase.from('ticket_comments').insert({
           ticket_id: ticketId,
           sender_role: 'ai',
-          content: `✅ **Ticket Successfully Submitted to HR Desk**\n\n` +
-            `Your **${ticketCategory}** request is officially logged under Reference **#${ticketId.slice(0, 8).toUpperCase()}** with status **OPEN**.\n\n` +
-            `⏳ **Please stand by:** An HR Administrator has been notified and will review your submission. You will receive real-time updates and decisions (Approval, Refusal, or Remarks) directly in this chat thread.`,
+          content: `✅ Your ${ticketCategory} request has been submitted to HR (Reference #${ticketId.slice(0, 8).toUpperCase()}).\n\nAn HR coordinator has been notified and will review your details. Any updates or decisions will appear directly in this chat thread.`,
           author_id: session.user.id
         });
 
@@ -1535,13 +1596,28 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 value={dateVal}
                 mode={pickerMode}
                 display="default"
+                minimumDate={
+                  pickerMode === 'time'
+                    ? undefined
+                    : ticketCategory === 'File Leave'
+                    ? (ticketDynamic.leaveType === 'Vacation Leave'
+                        ? new Date()
+                        : new Date(Date.now() - 3 * 86400000))
+                    : undefined
+                }
                 onChange={(event, selectedDate) => {
                   setShowDatePicker(false);
                   if (selectedDate) {
                     const formatted = pickerMode === 'time' 
                       ? selectedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
                       : selectedDate.toISOString().split('T')[0];
-                    setTicketDynamic((prev: any) => ({ ...prev, [dateTarget]: formatted }));
+                    setTicketDynamic((prev: any) => {
+                      const next = { ...prev, [dateTarget]: formatted };
+                      if (dateTarget === 'startDate' && prev.endDate && prev.endDate < formatted) {
+                        next.endDate = formatted;
+                      }
+                      return next;
+                    });
                   }
                 }}
               />
@@ -1948,7 +2024,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
               </TouchableOpacity>
             )}
 
-            {/* Step 3: Inline Live Verification & Summary Card */}
+            {/* Step 4: Request Overview Card */}
             <View style={{
               backgroundColor: '#F8FAFC',
               borderWidth: 1,
@@ -1961,14 +2037,14 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="shield-checkmark" size={15} color={getCatColor(ticketCategory)} style={{ marginRight: 6 }} />
+                  <Ionicons name="document-text-outline" size={16} color={getCatColor(ticketCategory)} style={{ marginRight: 6 }} />
                   <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
-                    3. Live Verification & Summary
+                    4. Request Overview
                   </Text>
                 </View>
-                <View style={{ backgroundColor: getCatColor(ticketCategory) + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: getCatColor(ticketCategory) }}>
-                    Ready to Dispatch
+                <View style={{ backgroundColor: getCatColor(ticketCategory) + '15', paddingHorizontal: 7, paddingVertical: 2.5, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: getCatColor(ticketCategory) }}>
+                    Review Details
                   </Text>
                 </View>
               </View>
@@ -2027,13 +2103,13 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
               {isSubmitting ? (
                 <>
                   <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 15 }}>Submitting Ticket...</Text>
+                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 15 }}>Submitting Request...</Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="paper-plane" size={18} color="#FFF" style={{ marginRight: 8 }} />
                   <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 15 }}>
-                    Confirm & Dispatch {ticketCategory === 'Others' ? 'Inquiry' : ticketCategory}
+                    Submit Request to HR
                   </Text>
                 </>
               )}
