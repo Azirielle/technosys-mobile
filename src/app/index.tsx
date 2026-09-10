@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter as useExpoRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +15,7 @@ import {
   Image 
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useAppTheme } from '../hooks/use-theme';
 
 const BRAND = {
   blue: '#1E3A8A',
@@ -25,6 +26,8 @@ const BRAND = {
 
 export default function RootLoginScreen() {
   const router = useExpoRouter();
+  const { colors, isDark } = useAppTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('+639');
   const [email, setEmail] = useState('');
@@ -115,7 +118,7 @@ export default function RootLoginScreen() {
   return (
     <View style={styles.masterContainer}>
       <LinearGradient
-        colors={['#FFFFFF', '#F8FAFC', '#E2E8F0']}
+        colors={isDark ? ['#0B0F17', '#131B26', '#0B0F17'] : ['#FFFFFF', '#F8FAFC', '#E2E8F0']}
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -135,11 +138,11 @@ export default function RootLoginScreen() {
                 <Text style={styles.methodTitle}>Mobile Access</Text>
                 {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
                 <View style={styles.inputWrapper}>
-                  <Feather name="phone" size={20} color="#64748B" style={styles.inputIcon} />
+                  <Feather name="phone" size={20} color={colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="+639..."
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={colors.textSubtle}
                     value={phoneNumber}
                     onChangeText={setPhoneNumber}
                     keyboardType="phone-pad"
@@ -159,11 +162,11 @@ export default function RootLoginScreen() {
                 <Text style={styles.methodTitle}>Email Access</Text>
                 {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
                 <View style={styles.inputWrapper}>
-                  <Feather name="mail" size={20} color="#64748B" style={styles.inputIcon} />
+                  <Feather name="mail" size={20} color={colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Work Email"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={colors.textSubtle}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -172,11 +175,11 @@ export default function RootLoginScreen() {
                 </View>
 
                 <View style={styles.inputWrapper}>
-                  <Feather name="lock" size={20} color="#64748B" style={styles.inputIcon} />
+                  <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Password"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={colors.textSubtle}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -200,15 +203,16 @@ export default function RootLoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.bg,
   },
   masterContainer: {
     flex: 1,
+    backgroundColor: colors.bg,
   },
   safeArea: {
     flex: 1,
@@ -228,38 +232,42 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'DMSans-Bold',
     fontSize: 32,
-    color: '#0F172A',
+    color: colors.text,
     marginBottom: 8,
   },
   subtitle: {
     fontFamily: 'DMSans-Medium',
     fontSize: 16,
-    color: '#64748B',
+    color: colors.textMuted,
     marginBottom: 40,
   },
   inputCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     width: '100%',
     padding: 24,
     borderRadius: 24,
-    shadowColor: BRAND.blue,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: colors.cardBorder,
+    shadowColor: isDark ? '#000' : BRAND.blue,
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
+    shadowOpacity: isDark ? 0.3 : 0.1,
     shadowRadius: 24,
     elevation: 8,
   },
   methodTitle: {
     fontFamily: 'DMSans-Bold',
     fontSize: 18,
-    color: '#0F172A',
+    color: colors.text,
     marginBottom: 20,
     textAlign: 'center',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.inputBg,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
     paddingHorizontal: 16,
     marginBottom: 16,
     height: 56,
@@ -271,7 +279,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'DMSans-Regular',
     fontSize: 16,
-    color: '#0F172A',
+    color: colors.text,
   },
   loginBtn: {
     backgroundColor: BRAND.blue,
@@ -299,6 +307,6 @@ const styles = StyleSheet.create({
   switchBtnText: {
     fontFamily: 'DMSans-Medium',
     fontSize: 14,
-    color: BRAND.blue,
+    color: isDark ? colors.brandBlue : BRAND.blue,
   }
 });

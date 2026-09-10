@@ -8,9 +8,15 @@ import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@
 import * as SplashScreen from 'expo-splash-screen';
 import { supabase } from '../lib/supabase';
 import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
+import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 
 SplashScreen.preventAutoHideAsync();
 LogBox.ignoreLogs(['Accessing element.ref was removed']);
+
+function RootStatusBar() {
+  const { isDark } = useAppTheme();
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
+}
 
 export default function RootLayout() {
   const router = useRouter();
@@ -75,18 +81,20 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <CopilotProvider tooltipStyle={{ backgroundColor: '#ffffff', borderRadius: 16 }} stepNumberComponent={() => null}>
-        <Slot />
-      </CopilotProvider>
+    <ThemeProvider>
+      <SafeAreaProvider>
+        <RootStatusBar />
+        <CopilotProvider tooltipStyle={{ backgroundColor: '#ffffff', borderRadius: 16 }} stepNumberComponent={() => null}>
+          <Slot />
+        </CopilotProvider>
 
-      {showSplashOverlay && (
-        <AnimatedSplashScreen
-          isReady={authReady}
-          onAnimationComplete={() => setShowSplashOverlay(false)}
-        />
-      )}
-    </SafeAreaProvider>
+        {showSplashOverlay && (
+          <AnimatedSplashScreen
+            isReady={authReady}
+            onAnimationComplete={() => setShowSplashOverlay(false)}
+          />
+        )}
+      </SafeAreaProvider>
+    </ThemeProvider>
   );
 }

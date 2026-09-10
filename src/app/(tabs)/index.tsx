@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import RNModal from 'react-native-modal';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Animated, Easing, ActivityIndicator, ScrollView, Image, Alert, Platform, FlatList, TextInput, Linking } from 'react-native';
 import * as Updates from 'expo-updates';
@@ -18,6 +18,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import SupportChatUI from '../../components/SupportChatUI';
 import * as Notifications from 'expo-notifications';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { useAppTheme } from '../../context/ThemeContext';
+import { AppThemeColors } from '../../constants/theme';
 import * as Sharing from 'expo-sharing';
 import ViewShot from 'react-native-view-shot';
 
@@ -62,6 +64,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tap_to_verify: "Tap to verify location presence",
     preferences: "Preferences",
     dark_mode: "Dark Mode",
+    appearance: "Appearance",
+    theme_light: "Light",
+    theme_dark: "Dark",
+    theme_system: "System",
     language: "Language",
     settings: "Settings",
     equipment: "Equipment",
@@ -86,6 +92,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tap_to_verify: "Pindutin para kumpirmahin ang lokasyon",
     preferences: "Kagustuhan",
     dark_mode: "Dark Mode",
+    appearance: "Hitsura",
+    theme_light: "Maliwanag",
+    theme_dark: "Madilim",
+    theme_system: "Sistema",
     language: "Wika",
     settings: "Mga Setting",
     equipment: "Kagamitan",
@@ -106,6 +116,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tap_to_verify: "タップして場所を確認",
     preferences: "環境設定",
     dark_mode: "ダークモード",
+    appearance: "外観",
+    theme_light: "ライト",
+    theme_dark: "ダーク",
+    theme_system: "システム",
     language: "言語",
     settings: "設定",
     equipment: "機材",
@@ -116,11 +130,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 export default function HomeScreen() {
   const router = useRouter();
   const pushNotificationState = usePushNotifications();
-  const [language, setLanguage] = useState<'en' | 'tl' | 'ja'>('en');
-  const [darkMode, setDarkMode] = useState(false);
+  const { themeMode, isDark, language, colors, setThemeMode, setLanguage } = useAppTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   
   const t = (key: string) => {
-    return TRANSLATIONS[language]?.[key] || TRANSLATIONS['en'][key] || key;
+    return TRANSLATIONS[language]?.[key] || TRANSLATIONS['en']?.[key] || key;
   };
   const activeFont = language === 'ja' ? 'System' : 'DMSans-Medium';
   const activeFontBold = language === 'ja' ? 'System' : 'DMSans-Bold';
@@ -165,7 +179,6 @@ export default function HomeScreen() {
   // Chunk 13.2 States
   const [dtrModalVisible, setDtrModalVisible] = useState(false);
   const [formsModalVisible, setFormsModalVisible] = useState(false);
-  const [langModalVisible, setLangModalVisible] = useState(false);
   const [dtrLogs, setDtrLogs] = useState<any[]>([]);
   const [dtrLoading, setDtrLoading] = useState(false);
 
@@ -845,20 +858,20 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.masterContainer}>
-      <LinearGradient colors={['#FFFFFF', '#F8FAFC', '#E2E8F0']} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+    <View style={[styles.masterContainer, { backgroundColor: colors.bg }]}>
+      <LinearGradient colors={isDark ? ['#0B0F17', '#111827', '#0B0F17'] : ['#FFFFFF', '#F8FAFC', '#E2E8F0']} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.safeArea}>
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.headerBtnOutline} onPress={() => setProfileModalVisible(true)}>
-            <Feather name="user" size={24} color="#0F172A" />
+          <TouchableOpacity style={[styles.headerBtnOutline, { backgroundColor: isDark ? colors.subCard : 'transparent' }]} onPress={() => setProfileModalVisible(true)}>
+            <Feather name="user" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Image source={require('../../../assets/logo.png')} style={{ width: 45, height: 45, resizeMode: 'contain' }} />
-            <Text style={styles.headerTitle}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
           </View>
-          <TouchableOpacity style={styles.headerBtnOutline} onPress={() => setNotifVisible(true)}>
-            <Feather name="bell" size={24} color="#0F172A" />
+          <TouchableOpacity style={[styles.headerBtnOutline, { backgroundColor: isDark ? colors.subCard : 'transparent' }]} onPress={() => setNotifVisible(true)}>
+            <Feather name="bell" size={24} color={colors.text} />
             {unreadCount > 0 && <View style={styles.notificationDot} />}
           </TouchableOpacity>
         </View>
@@ -866,75 +879,83 @@ export default function HomeScreen() {
         {/* MAIN CONTENT */}
         <View style={styles.mainContent}>
           {hasClockedInToday ? (
-            <View style={[styles.clockInCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1 }]} >
-              <View style={[styles.clockInIconContainer, { backgroundColor: '#BBF7D0' }]}>
+            <View style={[styles.clockInCard, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4', borderColor: isDark ? '#065F46' : '#BBF7D0', borderWidth: 1 }]} >
+              <View style={[styles.clockInIconContainer, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#BBF7D0' }]}>
                 <Feather name="check" size={32} color={BRAND.green} />
               </View>
               <View style={styles.clockInTextContainer}>
                 <Text style={[styles.clockInTitle, { color: BRAND.green }]}>Clock In Done</Text>
-                <Text style={styles.clockInSub}>Wait for admin to process clock-out</Text>
+                <Text style={[styles.clockInSub, { color: colors.textMuted }]}>Wait for admin to process clock-out</Text>
               </View>
             </View>
           ) : (
-            <TouchableOpacity style={styles.clockInCard} activeOpacity={0.8} onPress={handleClockIn}>
-              <View style={styles.clockInIconContainer}>
-                <Ionicons name="scan-outline" size={32} color={BRAND.blue} />
+            <TouchableOpacity 
+              style={[styles.clockInCard, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.blue, borderColor: isDark ? colors.cardBorder : 'transparent', borderWidth: isDark ? 1 : 0 }]} 
+              activeOpacity={0.8} 
+              onPress={handleClockIn}
+            >
+              <View style={[styles.clockInIconContainer, { backgroundColor: isDark ? colors.subCard : '#EFF6FF' }]}>
+                <Ionicons name="scan-outline" size={32} color={colors.brandBlue} />
               </View>
               <View style={styles.clockInTextContainer}>
-                <Text style={styles.clockInTitle}>{t('clock_in')}</Text>
-                <Text style={styles.clockInSub}>{t('tap_to_verify')}</Text>
+                <Text style={[styles.clockInTitle, { color: colors.text }]}>{t('clock_in')}</Text>
+                <Text style={[styles.clockInSub, { color: colors.textMuted }]}>{t('tap_to_verify')}</Text>
               </View>
-              <Feather name="arrow-right" size={24} color={BRAND.blue} />
+              <Feather name="arrow-right" size={24} color={colors.brandBlue} />
             </TouchableOpacity>
           )}
 
           <View style={styles.bubbleRow}>
             <TouchableOpacity style={styles.bubbleBtn} onPress={() => { fetchEquipment(); setEquipModalVisible(true); }}>
-              <View style={[styles.bubbleCircle, { shadowColor: BRAND.yellow }]}>
+              <View style={[styles.bubbleCircle, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.yellow }]}>
                 <Feather name="tool" size={24} color={BRAND.yellow} />
               </View>
-              <Text style={styles.bubbleText}>Equipment</Text>
+              <Text style={[styles.bubbleText, { color: colors.text }]}>Equipment</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.bubbleBtn} onPress={() => { fetchTickets(); setSupportModalVisible(true); }}>
-              <View style={[styles.bubbleCircle, { shadowColor: BRAND.green }]}>
+              <View style={[styles.bubbleCircle, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.green }]}>
                 <Feather name="headphones" size={24} color={BRAND.green} />
               </View>
-              <Text style={styles.bubbleText}>Support</Text>
+              <Text style={[styles.bubbleText, { color: colors.text }]}>Support</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.bubbleBtn} onPress={() => { fetchAnnouncements(); setUpdatesModalVisible(true); }}>
-              <View style={[styles.bubbleCircle, { shadowColor: BRAND.red }]}>
+              <View style={[styles.bubbleCircle, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.red }]}>
                 <Feather name="radio" size={24} color={BRAND.red} />
               </View>
-              <Text style={styles.bubbleText}>Updates</Text>
+              <Text style={[styles.bubbleText, { color: colors.text }]}>Updates</Text>
             </TouchableOpacity>
           </View>
 
           {schedule ? (
-            <TouchableOpacity style={styles.dispatchWidget} activeOpacity={0.8} onPress={() => setDispatchVisible(true)}>
-              <View style={styles.dispatchHeader}>
-                <View style={styles.dispatchIconContainer}>
-                  <Feather name="navigation" size={16} color="#3B82F6" />
+            <TouchableOpacity 
+              style={[styles.dispatchWidget, { backgroundColor: colors.card, borderColor: isDark ? colors.cardBorder : '#DBEAFE' }]} 
+              activeOpacity={0.8} 
+              onPress={() => setDispatchVisible(true)}
+            >
+              <View style={[styles.dispatchHeader, { backgroundColor: isDark ? colors.subCard : '#EFF6FF', borderBottomColor: isDark ? colors.cardBorder : '#DBEAFE' }]}>
+                <View style={[styles.dispatchIconContainer, { backgroundColor: isDark ? '#1E293B' : '#DBEAFE' }]}>
+                  <Feather name="navigation" size={16} color={colors.brandBlue} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.dispatchWidgetTitle, { fontFamily: activeFontBold }]}>{t('priority_dispatch')}</Text>
-                  <Text style={[styles.dispatchWidgetSub, { fontFamily: activeFont }]}>{t('active_ticket')}</Text>
+                  <Text style={[styles.dispatchWidgetTitle, { fontFamily: activeFontBold, color: colors.brandBlue }]}>{t('priority_dispatch')}</Text>
+                  <Text style={[styles.dispatchWidgetSub, { fontFamily: activeFont, color: colors.textMuted }]}>{t('active_ticket')}</Text>
                 </View>
-                <Feather name="chevron-right" size={20} color="#3B82F6" />
+                <Feather name="chevron-right" size={20} color={colors.brandBlue} />
               </View>
               <View style={styles.dispatchBody}>
-                <Text style={styles.dispatchDestination} numberOfLines={2}>
+                <Text style={[styles.dispatchDestination, { color: colors.text }]} numberOfLines={2}>
                   {schedule.location}
                 </Text>
-                <Text style={styles.dispatchClient}>{schedule.client_name}</Text>
+                <Text style={[styles.dispatchClient, { color: colors.textMuted }]}>{schedule.client_name}</Text>
               </View>
-              <View style={styles.dispatchAction}>
+              <View style={[styles.dispatchAction, { backgroundColor: colors.brandBlue }]}>
                 <Text style={[styles.dispatchActionText, { fontFamily: activeFontBold }]}>{t('view_dispatch_details')}</Text>
               </View>
             </TouchableOpacity>
           ) : (
-            <View style={styles.infoCard}>
-              <Text style={[styles.infoTitle, { fontFamily: activeFontBold }]}>{t('priority_dispatch')}</Text>
-              <Text style={[styles.infoSub, { fontFamily: activeFont }]}>{t('no_active_deployments')}</Text>
+            <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0, shadowColor: isDark ? '#000' : '#C0C2C9' }]}>
+              <Text style={[styles.infoTitle, { fontFamily: activeFontBold, color: colors.text }]}>{t('priority_dispatch')}</Text>
+              <Text style={[styles.infoSub, { fontFamily: activeFont, color: colors.textMuted }]}>{t('no_active_deployments')}</Text>
             </View>
           )}
         </View>
@@ -1041,65 +1062,68 @@ export default function HomeScreen() {
         {/* PROFILE MODAL (Bottom Sheet) */}
         <RNModal isVisible={profileModalVisible}   onBackdropPress={() => setProfileModalVisible(false)} onBackButtonPress={() => setProfileModalVisible(false)} onSwipeComplete={() => setProfileModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
-            <View style={styles.profileSheet}>
+            <View style={[styles.profileSheet, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
               {/* Handle */}
-              <View style={styles.sheetHandle} />
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               
               {/* Header: Name, Role, Status */}
               <View style={styles.profileHeader}>
-                <View style={styles.profileAvatar}>
-                  <Feather name="user" size={32} color={BRAND.blue} />
+                <View style={[styles.profileAvatar, { backgroundColor: isDark ? colors.subCard : '#EFF6FF' }]}>
+                  <Feather name="user" size={32} color={colors.brandBlue} />
                 </View>
                 <View style={styles.profileInfo}>
-                  <Text style={styles.profileName}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
-                  <Text style={styles.profileRole}>{profile ? profile.role.toUpperCase() : 'TECHNICIAN'}</Text>
+                  <Text style={[styles.profileName, { color: colors.text }]}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
+                  <Text style={[styles.profileRole, { color: colors.textMuted }]}>{profile ? profile.role.toUpperCase() : 'TECHNICIAN'}</Text>
                 </View>
-                <View style={styles.statusBadge}>
+                <View style={[styles.statusBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
                   <View style={styles.statusDot} />
                   <Text style={styles.statusText}>Online</Text>
                 </View>
               </View>
 
               <TouchableOpacity style={styles.closeProfileBtn} onPress={() => setProfileModalVisible(false)}>
-                <Feather name="x" size={24} color="#64748B" />
+                <Feather name="x" size={24} color={colors.textMuted} />
               </TouchableOpacity>
 
               {/* Menu Items */}
               <View style={styles.profileMenu}>
-                <TouchableOpacity style={styles.profileMenuItem} onPress={() => { setProfileModalVisible(false); fetchTimeLogs(); setTimesheetModalVisible(true); }}>
-                  <View style={[styles.profileMenuIcon, { backgroundColor: '#E0F2FE' }]}>
+                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => { setProfileModalVisible(false); fetchTimeLogs(); setTimesheetModalVisible(true); }}>
+                  <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#E0F2FE' }]}>
                     <Feather name="clock" size={20} color="#0EA5E9" />
                   </View>
-                  <Text style={styles.profileMenuText}>My DTR</Text>
-                  <Feather name="chevron-right" size={20} color="#CBD5E1" />
+                  <Text style={[styles.profileMenuText, { color: colors.text }]}>My DTR</Text>
+                  <Feather name="chevron-right" size={20} color={colors.textSubtle} />
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.profileMenuItem} onPress={() => { setFormsModalVisible(true); }}>
-                  <View style={[styles.profileMenuIcon, { backgroundColor: '#FEF3C7' }]}>
+                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => { setFormsModalVisible(true); }}>
+                  <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#FEF3C7' }]}>
                     <Feather name="file-text" size={20} color="#F59E0B" />
                   </View>
-                  <Text style={styles.profileMenuText}>Company Forms and handbooks</Text>
-                  <Feather name="chevron-right" size={20} color="#CBD5E1" />
+                  <Text style={[styles.profileMenuText, { color: colors.text }]}>Company Forms and handbooks</Text>
+                  <Feather name="chevron-right" size={20} color={colors.textSubtle} />
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.profileMenuItem} onPress={() => { setLangModalVisible(true); }}>
-                  <View style={[styles.profileMenuIcon, { backgroundColor: '#F1F5F9' }]}>
-                    <Feather name="globe" size={20} color="#64748B" />
+                <TouchableOpacity 
+                  style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} 
+                  onPress={() => { 
+                    setProfileModalVisible(false); 
+                    setTimeout(() => setPreferencesModalVisible(true), 250); 
+                  }}
+                >
+                  <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#F1F5F9' }]}>
+                    <Feather name="sliders" size={20} color={colors.brandBlue} />
                   </View>
-                  <Text style={styles.profileMenuText}>Preferences (Language)</Text>
-                  <Feather name="chevron-right" size={20} color="#CBD5E1" />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.profileMenuItem} onPress={() => safeAlert('Coming Soon', 'Dark Mode will be available in v2.0!')}>
-                  <View style={[styles.profileMenuIcon, { backgroundColor: '#F1F5F9' }]}>
-                    <Feather name="moon" size={20} color="#64748B" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.profileMenuText, { color: colors.text }]}>{t('preferences')}</Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, marginTop: 1 }}>
+                      {language.toUpperCase()} • {themeMode === 'system' ? 'System' : isDark ? 'Dark' : 'Light'}
+                    </Text>
                   </View>
-                  <Text style={styles.profileMenuText}>Dark Mode</Text>
-                  <Feather name="chevron-right" size={20} color="#CBD5E1" />
+                  <Feather name="chevron-right" size={20} color={colors.textSubtle} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={[styles.profileMenuItem, { borderBottomWidth: 0, marginTop: 16 }]} onPress={() => setLogoutModalVisible(true)}>
-                  <View style={[styles.profileMenuIcon, { backgroundColor: '#FEE2E2' }]}>
+                  <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
                     <Feather name="log-out" size={20} color="#EF4444" />
                   </View>
                   <Text style={[styles.profileMenuText, { color: '#EF4444' }]}>Log Out</Text>
@@ -1113,28 +1137,28 @@ export default function HomeScreen() {
         {/* DTR MODAL */}
         <RNModal isVisible={dtrModalVisible}   onBackdropPress={() => setDtrModalVisible(false)} onBackButtonPress={() => setDtrModalVisible(false)} onSwipeComplete={() => setDtrModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '80%' }]}>
-              <View style={styles.sheetHandle} />
+            <View style={[styles.profileSheet, { height: '80%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>My DTR</Text>
-                <TouchableOpacity onPress={() => setDtrModalVisible(false)}><Feather name="x" size={24} color="#64748B" /></TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>My DTR</Text>
+                <TouchableOpacity onPress={() => setDtrModalVisible(false)}><Feather name="x" size={24} color={colors.textMuted} /></TouchableOpacity>
               </View>
               {dtrLoading ? (
-                <ActivityIndicator size="large" color={BRAND.blue} style={{ marginTop: 40 }} />
+                <ActivityIndicator size="large" color={colors.brandBlue} style={{ marginTop: 40 }} />
               ) : (
                 <ScrollView style={{ marginTop: 16 }} showsVerticalScrollIndicator={false}>
                   {dtrLogs.map((log, idx) => (
-                    <View key={idx} style={styles.dtrRow}>
+                    <View key={idx} style={[styles.dtrRow, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]}>
                       <View>
-                        <Text style={styles.dtrDate}>{new Date(log.app_time_in).toLocaleDateString()}</Text>
-                        <Text style={styles.dtrTime}>{new Date(log.app_time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
+                        <Text style={[styles.dtrDate, { color: colors.text }]}>{new Date(log.app_time_in).toLocaleDateString()}</Text>
+                        <Text style={[styles.dtrTime, { color: colors.textMuted }]}>{new Date(log.app_time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
                       </View>
-                      <View style={[styles.statusBadge, { backgroundColor: log.status === 'verified' ? '#ECFDF5' : '#FEF3C7' }]}>
+                      <View style={[styles.statusBadge, { backgroundColor: log.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : (isDark ? 'rgba(251, 191, 36, 0.2)' : '#FEF3C7') }]}>
                         <Text style={[styles.statusText, { color: log.status === 'verified' ? BRAND.green : BRAND.yellow }]}>{log.status.toUpperCase()}</Text>
                       </View>
                     </View>
                   ))}
-                  {dtrLogs.length === 0 && <Text style={{ textAlign: 'center', color: '#64748B', marginTop: 40 }}>No logs found.</Text>}
+                  {dtrLogs.length === 0 && <Text style={{ textAlign: 'center', color: colors.textMuted, marginTop: 40 }}>No logs found.</Text>}
                 </ScrollView>
               )}
             </View>
@@ -1144,18 +1168,18 @@ export default function HomeScreen() {
         {/* FORMS MODAL */}
         <RNModal isVisible={formsModalVisible}   onBackdropPress={() => setFormsModalVisible(false)} onBackButtonPress={() => setFormsModalVisible(false)} onSwipeComplete={() => setFormsModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '60%' }]}>
-              <View style={styles.sheetHandle} />
+            <View style={[styles.profileSheet, { height: '60%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>Company Forms</Text>
-                <TouchableOpacity onPress={() => setFormsModalVisible(false)}><Feather name="x" size={24} color="#64748B" /></TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Company Forms</Text>
+                <TouchableOpacity onPress={() => setFormsModalVisible(false)}><Feather name="x" size={24} color={colors.textMuted} /></TouchableOpacity>
               </View>
               <ScrollView style={{ marginTop: 16 }} showsVerticalScrollIndicator={false}>
                 {['Employee Code of Conduct', 'Leave Policy', 'Equipment Handling Manual'].map((form, idx) => (
-                  <TouchableOpacity key={idx} style={styles.profileMenuItem} onPress={() => safeAlert('Coming Soon', 'This document is not yet available.')}>
-                    <View style={[styles.profileMenuIcon, { backgroundColor: '#F1F5F9' }]}><Feather name="file" size={20} color="#64748B" /></View>
-                    <Text style={styles.profileMenuText}>{form}</Text>
-                    <Feather name="download" size={20} color={BRAND.blue} />
+                  <TouchableOpacity key={idx} style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => safeAlert('Coming Soon', 'This document is not yet available.')}>
+                    <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#F1F5F9' }]}><Feather name="file" size={20} color={colors.brandBlue} /></View>
+                    <Text style={[styles.profileMenuText, { color: colors.text }]}>{form}</Text>
+                    <Feather name="download" size={20} color={colors.brandBlue} />
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -1163,79 +1187,151 @@ export default function HomeScreen() {
           </View>
         </RNModal>
 
-        {/* LANGUAGE MODAL */}
-        <RNModal isVisible={langModalVisible}   onBackdropPress={() => setLangModalVisible(false)} onBackButtonPress={() => setLangModalVisible(false)} onSwipeComplete={() => setLangModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        {/* UNIFIED CANONICAL PREFERENCES MODAL */}
+        <RNModal 
+          isVisible={preferencesModalVisible}   
+          onBackdropPress={() => setPreferencesModalVisible(false)} 
+          onBackButtonPress={() => setPreferencesModalVisible(false)} 
+          onSwipeComplete={() => setPreferencesModalVisible(false)} 
+          swipeDirection={['down']} 
+          propagateSwipe={true} 
+          swipeThreshold={50} 
+          style={{ margin: 0, justifyContent: 'flex-end' }}
+        >
           <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '50%' }]}>
-              <View style={styles.sheetHandle} />
-              <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>Preferences (Language)</Text>
-                <TouchableOpacity onPress={() => setLangModalVisible(false)}><Feather name="x" size={24} color="#64748B" /></TouchableOpacity>
-              </View>
-              <View style={{ marginTop: 16 }}>
-                {[ { label: 'English', code: 'en' }, { label: 'Filipino (Tagalog)', code: 'fil' }, { label: 'Japanese', code: 'ja' } ].map((lang, idx) => (
-                  <TouchableOpacity key={idx} style={styles.profileMenuItem} onPress={() => { safeAlert('Success', `${lang.label} language selected.`); setLangModalVisible(false); }}>
-                    <Text style={styles.profileMenuText}>{lang.label}</Text>
-                    {lang.code === 'en' && <Feather name="check" size={20} color={BRAND.green} />}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-        </RNModal>
-
-        {/* PREFERENCES MODAL */}
-        <RNModal isVisible={preferencesModalVisible}   onBackdropPress={() => setPreferencesModalVisible(false)} onBackButtonPress={() => setPreferencesModalVisible(false)} onSwipeComplete={() => setPreferencesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: 400 }]}>
-              <View style={styles.sheetHandle} />
+            <View style={[styles.profileSheet, { backgroundColor: colors.card, borderTopColor: colors.cardBorder, paddingBottom: 40 }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               
               <View style={styles.modalHeaderRow}>
-                <Text style={[styles.modalTitle, { fontFamily: activeFontBold }]}>{t('preferences')}</Text>
-                <TouchableOpacity onPress={() => setPreferencesModalVisible(false)}>
-                  <Feather name="x" size={24} color="#64748B" />
+                <View>
+                  <Text style={[styles.modalTitle, { fontFamily: activeFontBold, color: colors.text }]}>{t('preferences')}</Text>
+                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textMuted, marginTop: 2 }}>
+                    Customize interface & language
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setPreferencesModalVisible(false)} style={{ padding: 4 }}>
+                  <Feather name="x" size={24} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
 
-              <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
-                <Text style={[{ fontSize: 14, color: '#64748B', marginBottom: 12, textTransform: 'uppercase' }, { fontFamily: activeFontBold }]}>{t('language')}</Text>
+              <View style={{ marginTop: 20 }}>
+                {/* LANGUAGE SECTION */}
+                <Text style={[{ fontSize: 12, color: colors.textMuted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }, { fontFamily: activeFontBold }]}>
+                  {t('language')}
+                </Text>
                 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24 }}>
-                  <TouchableOpacity 
-                    style={{ flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: language === 'en' ? BRAND.blue : '#E2E8F0', backgroundColor: language === 'en' ? '#EFF6FF' : '#fff', marginRight: 8, alignItems: 'center' }}
-                    onPress={() => setLanguage('en')}
-                  >
-                    <Text style={{ fontFamily: 'DMSans-Bold', color: language === 'en' ? BRAND.blue : '#0F172A' }}>EN</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={{ flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: language === 'tl' ? BRAND.blue : '#E2E8F0', backgroundColor: language === 'tl' ? '#EFF6FF' : '#fff', marginRight: 8, alignItems: 'center' }}
-                    onPress={() => setLanguage('tl')}
-                  >
-                    <Text style={{ fontFamily: 'DMSans-Bold', color: language === 'tl' ? BRAND.blue : '#0F172A' }}>TL</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={{ flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: language === 'ja' ? BRAND.blue : '#E2E8F0', backgroundColor: language === 'ja' ? '#EFF6FF' : '#fff', alignItems: 'center' }}
-                    onPress={() => setLanguage('ja')}
-                  >
-                    <Text style={{ fontFamily: 'System', fontWeight: 'bold', color: language === 'ja' ? BRAND.blue : '#0F172A' }}>JA</Text>
-                  </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
+                  {[
+                    { code: 'en' as const, label: 'English', tag: 'EN', font: 'DMSans-Bold' },
+                    { code: 'tl' as const, label: 'Filipino', tag: 'TL', font: 'DMSans-Bold' },
+                    { code: 'ja' as const, label: '日本語', tag: 'JA', font: 'System' },
+                  ].map((item) => {
+                    const isSelected = language === item.code;
+                    return (
+                      <TouchableOpacity 
+                        key={item.code}
+                        style={{ 
+                          flex: 1, 
+                          paddingVertical: 14, 
+                          borderRadius: 14, 
+                          borderWidth: 1.5, 
+                          borderColor: isSelected ? colors.brandBlue : colors.cardBorder, 
+                          backgroundColor: isSelected ? (isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF') : colors.subCard, 
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          shadowColor: isSelected ? colors.brandBlue : 'transparent',
+                          shadowOpacity: isSelected ? 0.2 : 0,
+                          shadowRadius: 6,
+                          elevation: isSelected ? 3 : 0
+                        }}
+                        onPress={() => setLanguage(item.code)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ fontFamily: item.font, fontSize: 14, color: isSelected ? colors.brandBlue : colors.text }}>
+                          {item.tag}
+                        </Text>
+                        <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: isSelected ? colors.brandBlue : colors.textMuted, marginTop: 2 }}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                <Text style={[{ fontSize: 14, color: '#64748B', marginBottom: 12, textTransform: 'uppercase' }, { fontFamily: activeFontBold }]}>{t('dark_mode')}</Text>
-                <TouchableOpacity 
-                  style={{ flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#F8FAFC', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' }}
-                  onPress={() => safeAlert('Coming Soon', 'Dark mode theme is under development.')}
-                >
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
-                    <Feather name={darkMode ? "moon" : "sun"} size={20} color="#475569" />
+                {/* APPEARANCE SECTION */}
+                <Text style={[{ fontSize: 12, color: colors.textMuted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }, { fontFamily: activeFontBold }]}>
+                  {t('appearance')}
+                </Text>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
+                  {[
+                    { mode: 'light' as const, label: t('theme_light'), icon: 'sun' },
+                    { mode: 'dark' as const, label: t('theme_dark'), icon: 'moon' },
+                    { mode: 'system' as const, label: t('theme_system'), icon: 'smartphone' },
+                  ].map((item) => {
+                    const isSelected = themeMode === item.mode;
+                    return (
+                      <TouchableOpacity
+                        key={item.mode}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 14,
+                          borderRadius: 14,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? colors.brandBlue : colors.cardBorder,
+                          backgroundColor: isSelected ? (isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF') : colors.subCard,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          shadowColor: isSelected ? colors.brandBlue : 'transparent',
+                          shadowOpacity: isSelected ? 0.2 : 0,
+                          shadowRadius: 6,
+                          elevation: isSelected ? 3 : 0
+                        }}
+                        onPress={() => setThemeMode(item.mode)}
+                        activeOpacity={0.7}
+                      >
+                        <Feather 
+                          name={item.icon as any} 
+                          size={20} 
+                          color={isSelected ? colors.brandBlue : colors.textMuted} 
+                        />
+                        <Text style={{ 
+                          fontFamily: activeFontBold, 
+                          fontSize: 13, 
+                          color: isSelected ? colors.brandBlue : colors.text, 
+                          marginTop: 6 
+                        }}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* APP TELEMETRY & BUILD INFO */}
+                <View style={{ 
+                  backgroundColor: colors.subCard, 
+                  borderRadius: 14, 
+                  padding: 14, 
+                  flexDirection: 'row', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  borderWidth: 1,
+                  borderColor: colors.cardBorder,
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#1E293B' : '#FFFFFF', justifyContent: 'center', alignItems: 'center' }}>
+                      <Feather name="shield" size={16} color={colors.brandBlue} />
+                    </View>
+                    <View>
+                      <Text style={{ fontFamily: activeFontBold, fontSize: 13, color: colors.text }}>TechnoCycle Mobile</Text>
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>v0.5.0 • Channel: preview</Text>
+                    </View>
                   </View>
-                  <Text style={[{ fontSize: 16, color: '#0F172A', flex: 1 }, { fontFamily: activeFontBold }]}>{darkMode ? "On" : "Off"}</Text>
-                  <View style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: '#CBD5E1', justifyContent: 'center', paddingHorizontal: 2 }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' }} />
+                  <View style={{ backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}>
+                    <Text style={{ fontFamily: activeFontBold, fontSize: 11, color: BRAND.green }}>ONLINE</Text>
                   </View>
-                </TouchableOpacity>
+                </View>
                 
               </View>
             </View>
@@ -1245,16 +1341,16 @@ export default function HomeScreen() {
         {/* LOGOUT CONFIRMATION MODAL */}
         <RNModal isVisible={logoutModalVisible}   onBackdropPress={() => setLogoutModalVisible(false)} onBackButtonPress={() => setLogoutModalVisible(false)} onSwipeComplete={() => setLogoutModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.verificationOverlay}>
-            <View style={[styles.verificationCard, { padding: 32, alignItems: 'center' }]}>
-              <View style={[styles.gridIconCircle, { backgroundColor: '#FEE2E2', width: 64, height: 64, borderRadius: 32, marginBottom: 16 }]}>
+            <View style={[styles.verificationCard, { padding: 32, alignItems: 'center', backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0 }]}>
+              <View style={[styles.gridIconCircle, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2', width: 64, height: 64, borderRadius: 32, marginBottom: 16 }]}>
                 <Feather name="log-out" size={32} color="#EF4444" />
               </View>
-              <Text style={[styles.modalTitle, { textAlign: 'center', marginBottom: 8 }]}>Log Out</Text>
-              <Text style={[styles.fallbackSub, { textAlign: 'center' }]}>Are you sure you want to log out of your account?</Text>
+              <Text style={[styles.modalTitle, { textAlign: 'center', marginBottom: 8, color: colors.text }]}>Log Out</Text>
+              <Text style={[styles.fallbackSub, { textAlign: 'center', color: colors.textMuted }]}>Are you sure you want to log out of your account?</Text>
               
               <View style={{ flexDirection: 'row', gap: 16, marginTop: 16, width: '100%' }}>
-                <TouchableOpacity style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#F1F5F9', alignItems: 'center' }} onPress={() => setLogoutModalVisible(false)}>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#64748B' }}>Cancel</Text>
+                <TouchableOpacity style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.subCard, alignItems: 'center' }} onPress={() => setLogoutModalVisible(false)}>
+                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.text }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#EF4444', alignItems: 'center' }} onPress={handleLogout}>
                   <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#FFFFFF' }}>Log Out</Text>
@@ -1264,21 +1360,20 @@ export default function HomeScreen() {
           </View>
         </RNModal>
         {/* NOTIFICATION DRAWER */}
-        {/* NOTIFICATION DRAWER */}
         <RNModal isVisible={notifVisible}   onBackdropPress={() => setNotifVisible(false)} onBackButtonPress={() => setNotifVisible(false)} onSwipeComplete={() => setNotifVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '80%' }]}>
-              <View style={styles.sheetHandle} />
+            <View style={[styles.profileSheet, { height: '80%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>Notifications</Text>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Notifications</Text>
                 <TouchableOpacity onPress={() => setNotifVisible(false)}>
-                  <Feather name="x" size={24} color="#64748B" />
+                  <Feather name="x" size={24} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
               
               <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 }}>
                 <TouchableOpacity onPress={markAllNotificationsRead}>
-                  <Text style={styles.notifMarkRead}>Mark all read</Text>
+                  <Text style={[styles.notifMarkRead, { color: colors.brandBlue }]}>Mark all read</Text>
                 </TouchableOpacity>
               </View>
 
@@ -1289,16 +1384,16 @@ export default function HomeScreen() {
                 renderItem={({ item: notif }) => {
                   let icon = 'bell';
                   let color = '#64748B';
-                  let bgColor = '#F1F5F9';
-                  if (notif.type === 'dispatch') { icon = 'navigation'; color = '#EF4444'; bgColor = '#FEE2E2'; }
-                  if (notif.type === 'hr') { icon = 'check-circle'; color = '#10B981'; bgColor = '#D1FAE5'; }
-                  if (notif.type === 'tool') { icon = 'tool'; color = '#F59E0B'; bgColor = '#FEF3C7'; }
-                  if (notif.type === 'admin') { icon = 'file-text'; color = '#3B82F6'; bgColor = '#DBEAFE'; }
-                  if (notif.type === 'help') { icon = 'life-buoy'; color = '#8B5CF6'; bgColor = '#EDE9FE'; }
+                  let bgColor = isDark ? colors.subCard : '#F1F5F9';
+                  if (notif.type === 'dispatch') { icon = 'navigation'; color = '#EF4444'; bgColor = isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2'; }
+                  if (notif.type === 'hr') { icon = 'check-circle'; color = '#10B981'; bgColor = isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5'; }
+                  if (notif.type === 'tool') { icon = 'tool'; color = '#F59E0B'; bgColor = isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7'; }
+                  if (notif.type === 'admin') { icon = 'file-text'; color = colors.brandBlue; bgColor = isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE'; }
+                  if (notif.type === 'help') { icon = 'life-buoy'; color = '#8B5CF6'; bgColor = isDark ? 'rgba(139, 92, 246, 0.2)' : '#EDE9FE'; }
 
                   return (
                     <TouchableOpacity 
-                      style={[styles.notifItem, !notif.read && styles.notifItemUnread]}
+                      style={[styles.notifItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }, !notif.read && (isDark ? { backgroundColor: colors.subCard } : styles.notifItemUnread)]}
                       onPress={() => {
                         markNotificationRead(notif.id);
                         if (notif.ticketId) {
@@ -1314,17 +1409,17 @@ export default function HomeScreen() {
                         <Feather name={icon as any} size={20} color={color} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.notifItemTitle}>{notif.title}</Text>
-                        <Text style={styles.notifItemDesc}>{notif.desc}</Text>
-                        <Text style={styles.notifItemTime}>{notif.time}</Text>
+                        <Text style={[styles.notifItemTitle, { color: colors.text }]}>{notif.title}</Text>
+                        <Text style={[styles.notifItemDesc, { color: colors.textMuted }]}>{notif.desc}</Text>
+                        <Text style={[styles.notifItemTime, { color: colors.textSubtle }]}>{notif.time}</Text>
                       </View>
-                      {!notif.read && <View style={styles.notifUnreadDot} />}
+                      {!notif.read && <View style={[styles.notifUnreadDot, { backgroundColor: colors.brandBlue }]} />}
                     </TouchableOpacity>
                   );
                 }}
                 ListFooterComponent={() => (
                   <View style={{ padding: 24, alignItems: 'center' }}>
-                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textSubtle, textAlign: 'center' }}>
                       Showing latest notifications. Older alerts are automatically archived in their respective modules.
                     </Text>
                   </View>
@@ -2335,50 +2430,53 @@ export default function HomeScreen() {
   );
 }
 
-const MenuGridItem = ({ icon, label, color, onPress, fontFamily }: { icon: any, label: string, color: string, onPress?: () => void, fontFamily?: string }) => (
-  <TouchableOpacity style={styles.gridItem} onPress={onPress}>
-    <View style={styles.gridIconCircle}>
-      <Feather name={icon} size={24} color={color} />
-    </View>
-    <Text style={[styles.gridItemText, fontFamily ? { fontFamily } : {}]}>{label}</Text>
-  </TouchableOpacity>
-);
+const MenuGridItem = ({ icon, label, color, onPress, fontFamily }: { icon: any, label: string, color: string, onPress?: () => void, fontFamily?: string }) => {
+  const { isDark, colors } = useAppTheme();
+  return (
+    <TouchableOpacity style={{ width: '33.33%', alignItems: 'center', marginBottom: 12, marginTop: 4 }} onPress={onPress}>
+      <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: isDark ? colors.subCard : '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+        <Feather name={icon} size={24} color={color} />
+      </View>
+      <Text style={[{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#fff', textAlign: 'center' }, fontFamily ? { fontFamily } : {}]}>{label}</Text>
+    </TouchableOpacity>
+  );
+};
 
-const styles = StyleSheet.create({
-  masterContainer: { flex: 1, backgroundColor: BRAND.lightBg },
+const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create({
+  masterContainer: { flex: 1, backgroundColor: colors.bg },
   safeArea: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
-  headerBtnOutline: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
+  headerBtnOutline: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? colors.subCard : 'transparent' },
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A', letterSpacing: -0.5 },
+  headerTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, letterSpacing: -0.5 },
   notificationDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: BRAND.red },
   mainContent: { paddingHorizontal: 24, flex: 1, paddingTop: 8 },
-  clockInCard: { backgroundColor: '#FFFFFF', borderRadius: 28, padding: 24, flexDirection: 'row', alignItems: 'center', shadowColor: BRAND.blue, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 24, elevation: 8, marginBottom: 40 },
-  clockInIconContainer: { width: 64, height: 64, borderRadius: 20, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  clockInCard: { backgroundColor: colors.card, borderRadius: 28, padding: 24, flexDirection: 'row', alignItems: 'center', shadowColor: isDark ? '#000' : BRAND.blue, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 24, elevation: 8, marginBottom: 40, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
+  clockInIconContainer: { width: 64, height: 64, borderRadius: 20, backgroundColor: isDark ? colors.subCard : '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
   clockInTextContainer: { flex: 1 },
-  clockInTitle: { fontFamily: 'DMSans-Bold', fontSize: 22, color: '#0F172A', marginBottom: 4 },
-  clockInSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: '#64748B' },
+  clockInTitle: { fontFamily: 'DMSans-Bold', fontSize: 22, color: colors.text, marginBottom: 4 },
+  clockInSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted },
   bubbleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginBottom: 40 },
   bubbleBtn: { alignItems: 'center', gap: 12 },
-  bubbleCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10 },
-  bubbleText: { fontFamily: 'DMSans-Medium', fontSize: 14, color: '#1D2D44' },
-  infoCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, shadowColor: '#C0C2C9', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 16, elevation: 5 },
-  dispatchWidget: { backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: '#DBEAFE', overflow: 'hidden', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 8, marginTop: 12 },
-  dispatchHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', padding: 16, borderBottomWidth: 1, borderBottomColor: '#DBEAFE' },
-  dispatchIconContainer: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  dispatchWidgetTitle: { fontFamily: 'DMSans-Bold', fontSize: 13, color: '#1E3A8A', letterSpacing: 1 },
-  dispatchWidgetSub: { fontFamily: 'DMSans-Medium', fontSize: 11, color: '#3B82F6' },
+  bubbleCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: colors.card, justifyContent: 'center', alignItems: 'center', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10, shadowColor: isDark ? '#000' : undefined },
+  bubbleText: { fontFamily: 'DMSans-Medium', fontSize: 14, color: colors.text },
+  infoCard: { backgroundColor: colors.card, borderRadius: 24, padding: 24, shadowColor: isDark ? '#000' : '#C0C2C9', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 16, elevation: 5, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
+  dispatchWidget: { backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#DBEAFE', overflow: 'hidden', shadowColor: isDark ? '#000' : '#3B82F6', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 8, marginTop: 12 },
+  dispatchHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? colors.subCard : '#EFF6FF', padding: 16, borderBottomWidth: 1, borderBottomColor: isDark ? colors.cardBorder : '#DBEAFE' },
+  dispatchIconContainer: { width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#1E293B' : '#DBEAFE', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  dispatchWidgetTitle: { fontFamily: 'DMSans-Bold', fontSize: 13, color: colors.brandBlue, letterSpacing: 1 },
+  dispatchWidgetSub: { fontFamily: 'DMSans-Medium', fontSize: 11, color: isDark ? colors.textMuted : '#3B82F6' },
   dispatchBody: { padding: 20 },
-  dispatchDestination: { fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginBottom: 8 },
-  dispatchClient: { fontFamily: 'DMSans-Medium', fontSize: 14, color: '#64748B' },
-  dispatchAction: { backgroundColor: '#3B82F6', padding: 16, alignItems: 'center' },
+  dispatchDestination: { fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginBottom: 8 },
+  dispatchClient: { fontFamily: 'DMSans-Medium', fontSize: 14, color: colors.textMuted },
+  dispatchAction: { backgroundColor: colors.brandBlue, padding: 16, alignItems: 'center' },
   dispatchActionText: { fontFamily: 'DMSans-Bold', fontSize: 14, color: '#FFFFFF' },
-  infoTitle: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A', marginBottom: 6 },
-  infoSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: '#64748B', lineHeight: 20 },
+  infoTitle: { fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.text, marginBottom: 6 },
+  infoSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, lineHeight: 20 },
   floatingMenuContainer: { position: 'absolute', bottom: 32, left: 0, right: 0, alignItems: 'center' },
   menuPill: { backgroundColor: BRAND.blue, paddingVertical: 16, paddingHorizontal: 40, borderRadius: 32, shadowColor: BRAND.yellow, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.6, shadowRadius: 16, elevation: 12 },
   menuPillText: { fontFamily: 'DMSans-Bold', fontSize: 16, color: BRAND.yellow },
-  menuOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.95)' },
+  menuOverlay: { flex: 1, backgroundColor: isDark ? 'rgba(11, 15, 23, 0.96)' : 'rgba(15, 23, 42, 0.95)' },
   menuContent: { flex: 1 },
   menuHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
   menuHeaderText: { fontFamily: 'DMSans-Bold', fontSize: 20, color: '#fff' },
@@ -2387,120 +2485,120 @@ const styles = StyleSheet.create({
   categoryTitle: { fontFamily: 'DMSans-Bold', fontSize: 22, color: '#fff', marginTop: 12, marginBottom: 12 },
   menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', paddingTop: 8, paddingBottom: 8 },
   gridItem: { width: '33.33%', alignItems: 'center', marginBottom: 12, marginTop: 4 },
-  gridIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  gridIconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: isDark ? colors.subCard : '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   gridItemText: { fontFamily: 'DMSans-Medium', fontSize: 13, color: '#fff', textAlign: 'center' },
   bottomCloseContainer: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
   flowerCloseBtn: { alignItems: 'center', justifyContent: 'center' },
   flowerRing1: { width: 96, height: 96, borderRadius: 48, backgroundColor: 'rgba(251, 191, 36, 0.15)', justifyContent: 'center', alignItems: 'center' },
   flowerRing2: { width: 76, height: 76, borderRadius: 38, backgroundColor: BRAND.blue, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: BRAND.yellow },
   flowerText: { fontFamily: 'DMSans-Bold', fontSize: 12, color: BRAND.yellow, textAlign: 'center', lineHeight: 16 },
-  verificationOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  verificationCard: { backgroundColor: '#fff', borderRadius: 24, width: '100%', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
+  verificationOverlay: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  verificationCard: { backgroundColor: colors.card, borderRadius: 24, width: '100%', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
   verifyingState: { padding: 48, alignItems: 'center' },
-  verifyingText: { fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', marginTop: 20 },
+  verifyingText: { fontFamily: 'DMSans-Medium', fontSize: 16, color: colors.textMuted, marginTop: 20 },
   fallbackState: { padding: 24 },
   fallbackHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  fallbackTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A' },
-  fallbackSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: '#64748B', marginBottom: 24 },
-  mapContainer: { height: 200, borderRadius: 16, overflow: 'hidden', backgroundColor: '#F1F5F9', marginBottom: 24 },
+  fallbackTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text },
+  fallbackSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, marginBottom: 24 },
+  mapContainer: { height: 200, borderRadius: 16, overflow: 'hidden', backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginBottom: 24 },
   map: { width: '100%', height: '100%' },
-  fallbackBtn: { backgroundColor: BRAND.blue, paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
+  fallbackBtn: { backgroundColor: colors.brandBlue, paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
   fallbackBtnText: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#fff' },
-  profileOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  profileSheet: { backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 48, shadowColor: '#000', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 20 },
-  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', alignSelf: 'center', marginBottom: 24 },
+  profileOverlay: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  profileSheet: { backgroundColor: colors.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 48, shadowColor: '#000', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 20, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? '#334155' : '#CBD5E1', alignSelf: 'center', marginBottom: 24 },
   profileHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
-  profileAvatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  profileAvatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: isDark ? colors.subCard : '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
   profileInfo: { flex: 1 },
-  profileName: { fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A', marginBottom: 4 },
-  profileRole: { fontFamily: 'DMSans-Medium', fontSize: 12, color: '#64748B', letterSpacing: 1 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  profileName: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 4 },
+  profileRole: { fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, letterSpacing: 1 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
   statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: BRAND.green, marginRight: 6 },
   statusText: { fontFamily: 'DMSans-Medium', fontSize: 12, color: BRAND.green },
   closeProfileBtn: { position: 'absolute', top: 24, right: 24, width: 32, height: 32, justifyContent: 'center', alignItems: 'flex-end' },
   profileMenu: { marginTop: 8 },
-  profileMenuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  profileMenuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9' },
   profileMenuIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-  profileMenuText: { flex: 1, fontFamily: 'DMSans-Medium', fontSize: 16, color: '#1E293B' },
+  profileMenuText: { flex: 1, fontFamily: 'DMSans-Medium', fontSize: 16, color: colors.text },
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  modalTitle: { fontFamily: 'DMSans-Bold', fontSize: 24, color: '#0F172A' },
-  dtrRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  dtrDate: { fontFamily: 'DMSans-Medium', fontSize: 16, color: '#1E293B', marginBottom: 4 },
-  dtrTime: { fontFamily: 'DMSans-Regular', fontSize: 14, color: '#64748B' },
-  notifDrawer: { width: width * 0.85, height: '100%', backgroundColor: '#FFFFFF', alignSelf: 'flex-end', shadowColor: '#000', shadowOffset: { width: -10, height: 0 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 20 },
-  notifHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingTop: Platform.OS === 'web' ? 24 : 64, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  notifTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A' },
-  notifMarkRead: { fontFamily: 'DMSans-Medium', fontSize: 14, color: BRAND.blue },
-  notifItem: { flexDirection: 'row', padding: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'flex-start' },
-  notifItemUnread: { backgroundColor: '#F8FAFC' },
+  modalTitle: { fontFamily: 'DMSans-Bold', fontSize: 24, color: colors.text },
+  dtrRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9' },
+  dtrDate: { fontFamily: 'DMSans-Medium', fontSize: 16, color: colors.text, marginBottom: 4 },
+  dtrTime: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted },
+  notifDrawer: { width: width * 0.85, height: '100%', backgroundColor: colors.card, alignSelf: 'flex-end', shadowColor: '#000', shadowOffset: { width: -10, height: 0 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 20 },
+  notifHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingTop: Platform.OS === 'web' ? 24 : 64, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9' },
+  notifTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text },
+  notifMarkRead: { fontFamily: 'DMSans-Medium', fontSize: 14, color: colors.brandBlue },
+  notifItem: { flexDirection: 'row', padding: 20, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9', alignItems: 'flex-start' },
+  notifItemUnread: { backgroundColor: isDark ? colors.subCard : '#F8FAFC' },
   notifIconCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-  notifItemTitle: { fontFamily: 'DMSans-Bold', fontSize: 15, color: '#0F172A', marginBottom: 4 },
-  notifItemDesc: { fontFamily: 'DMSans-Regular', fontSize: 13, color: '#64748B', marginBottom: 8, lineHeight: 18 },
-  notifItemTime: { fontFamily: 'DMSans-Medium', fontSize: 11, color: '#94A3B8' },
-  notifUnreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: BRAND.blue, marginTop: 6 },
-  equipItem: { flexDirection: 'row', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'center' },
-  equipImagePlaceholder: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', marginRight: 16, overflow: 'hidden' },
+  notifItemTitle: { fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.text, marginBottom: 4 },
+  notifItemDesc: { fontFamily: 'DMSans-Regular', fontSize: 13, color: colors.textMuted, marginBottom: 8, lineHeight: 18 },
+  notifItemTime: { fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textSubtle },
+  notifUnreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brandBlue, marginTop: 6 },
+  equipItem: { flexDirection: 'row', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9', alignItems: 'center' },
+  equipImagePlaceholder: { width: 64, height: 64, borderRadius: 12, backgroundColor: isDark ? colors.subCard : '#F8FAFC', justifyContent: 'center', alignItems: 'center', marginRight: 16, overflow: 'hidden' },
   equipImg: { width: '100%', height: '100%', resizeMode: 'cover' },
-  equipTitle: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A', marginBottom: 4 },
-  equipSub: { fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B' },
+  equipTitle: { fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.text, marginBottom: 4 },
+  equipSub: { fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textMuted },
   equipStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  statusActive: { backgroundColor: '#ECFDF5' },
-  statusOverdue: { backgroundColor: '#FEF2F2' },
+  statusActive: { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' },
+  statusOverdue: { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2' },
   equipStatusText: { fontFamily: 'DMSans-Bold', fontSize: 10, letterSpacing: 1 },
   textActive: { color: BRAND.green },
   textOverdue: { color: BRAND.red },
-  newTicketBtn: { backgroundColor: BRAND.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, marginBottom: 16, marginTop: 16 },
+  newTicketBtn: { backgroundColor: colors.brandBlue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, marginBottom: 16, marginTop: 16 },
   newTicketBtnText: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#fff' },
-  ticketItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  ticketTitle: { fontFamily: 'DMSans-Bold', fontSize: 15, color: '#0F172A', marginBottom: 4 },
-  ticketSub: { fontFamily: 'DMSans-Medium', fontSize: 12, color: '#64748B' },
+  ticketItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9' },
+  ticketTitle: { fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.text, marginBottom: 4 },
+  ticketSub: { fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted },
   ticketBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  badgeOpen: { backgroundColor: '#FEF3C7' },
-  badgeResolved: { backgroundColor: '#ECFDF5' },
+  badgeOpen: { backgroundColor: isDark ? 'rgba(251, 191, 36, 0.2)' : '#FEF3C7' },
+  badgeResolved: { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' },
   ticketBadgeText: { fontFamily: 'DMSans-Bold', fontSize: 10, letterSpacing: 1 },
   badgeTextOpen: { color: BRAND.yellow },
   badgeTextResolved: { color: BRAND.green },
-  inputLabel: { fontFamily: 'DMSans-Bold', fontSize: 14, color: '#1E293B', marginBottom: 8, marginTop: 16 },
-  inputField: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontFamily: 'DMSans-Medium', fontSize: 15, color: '#0F172A' },
-  textInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontFamily: 'DMSans-Medium', fontSize: 15, color: '#0F172A' },
-  updateCard: { flexDirection: 'row', paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'flex-start' },
+  inputLabel: { fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text, marginBottom: 8, marginTop: 16 },
+  inputField: { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontFamily: 'DMSans-Medium', fontSize: 15, color: colors.text },
+  textInput: { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontFamily: 'DMSans-Medium', fontSize: 15, color: colors.text },
+  updateCard: { flexDirection: 'row', paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9', alignItems: 'flex-start' },
   categoryPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  categoryPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: 'transparent' },
-  categoryPillActive: { backgroundColor: '#EFF6FF', borderColor: BRAND.blue },
-  categoryPillText: { fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B' },
-  categoryPillTextActive: { color: BRAND.blue, fontFamily: 'DMSans-Bold' },
+  categoryPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: isDark ? colors.subCard : '#F1F5F9', borderWidth: 1, borderColor: 'transparent' },
+  categoryPillActive: { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', borderColor: colors.brandBlue },
+  categoryPillText: { fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textMuted },
+  categoryPillTextActive: { color: colors.brandBlue, fontFamily: 'DMSans-Bold' },
   submitBtn: { backgroundColor: BRAND.green, paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginTop: 32 },
   submitBtnText: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#fff' },
-  updateItem: { flexDirection: 'row', paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'flex-start' },
-  updateIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-  updateTitle: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A', marginBottom: 6 },
-  updateSub: { fontFamily: 'DMSans-Medium', fontSize: 12, color: '#64748B', marginBottom: 12 },
-  updateContent: { fontFamily: 'DMSans-Regular', fontSize: 14, color: '#475569', lineHeight: 22 },
-  woItem: { flexDirection: 'row', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'center' },
-  woTitle: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A', marginBottom: 4 },
-  woDesc: { fontFamily: 'DMSans-Regular', fontSize: 14, color: '#475569', marginBottom: 8 },
+  updateItem: { flexDirection: 'row', paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9', alignItems: 'flex-start' },
+  updateIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: isDark ? colors.subCard : '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  updateTitle: { fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.text, marginBottom: 6 },
+  updateSub: { fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, marginBottom: 12 },
+  updateContent: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, lineHeight: 22 },
+  woItem: { flexDirection: 'row', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9', alignItems: 'center' },
+  woTitle: { fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.text, marginBottom: 4 },
+  woDesc: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, marginBottom: 8 },
   woDate: { fontFamily: 'DMSans-Medium', fontSize: 12, color: BRAND.yellow },
   woActionBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  woPending: { backgroundColor: '#fff', borderColor: '#E2E8F0' },
-  woCompleted: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
-  payslipCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  woPending: { backgroundColor: colors.card, borderColor: isDark ? colors.cardBorder : '#E2E8F0' },
+  woCompleted: { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', borderColor: isDark ? '#065F46' : '#A7F3D0' },
+  payslipCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#F1F5F9', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   payslipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  payslipPeriodTitle: { fontFamily: 'DMSans-Bold', fontSize: 10, color: '#94A3B8', letterSpacing: 1, marginBottom: 4 },
-  payslipPeriod: { fontFamily: 'DMSans-Bold', fontSize: 14, color: '#0F172A' },
-  payslipNetBox: { backgroundColor: '#ECFDF5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignItems: 'flex-end' },
+  payslipPeriodTitle: { fontFamily: 'DMSans-Bold', fontSize: 10, color: colors.textSubtle, letterSpacing: 1, marginBottom: 4 },
+  payslipPeriod: { fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text },
+  payslipNetBox: { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignItems: 'flex-end' },
   payslipNetLabel: { fontFamily: 'DMSans-Medium', fontSize: 10, color: BRAND.green, marginBottom: 2 },
   payslipNetValue: { fontFamily: 'DMSans-Bold', fontSize: 16, color: BRAND.green },
   payslipDetails: { marginTop: 16 },
-  payslipDivider: { height: 1, backgroundColor: '#F1F5F9', marginBottom: 16 },
+  payslipDivider: { height: 1, backgroundColor: isDark ? colors.border : '#F1F5F9', marginBottom: 16 },
   payslipRow: { flexDirection: 'row', justifyContent: 'space-between' },
   payslipCol: { flex: 1, paddingRight: 8 },
-  payslipSectionTitle: { fontFamily: 'DMSans-Bold', fontSize: 12, color: '#0F172A', marginBottom: 12 },
+  payslipSectionTitle: { fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text, marginBottom: 12 },
   payslipLineItem: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  payslipLineLabel: { fontFamily: 'DMSans-Regular', fontSize: 12, color: '#64748B' },
-  payslipLineValue: { fontFamily: 'DMSans-Medium', fontSize: 12, color: '#0F172A' },
+  payslipLineLabel: { fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted },
+  payslipLineValue: { fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.text },
   payslipFooter: { marginTop: 16, alignItems: 'center' },
-  payslipFooterText: { fontFamily: 'DMSans-Medium', fontSize: 10, color: '#CBD5E1' },
-  payslipSectionCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  payslipFooterText: { fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textSubtle },
+  payslipSectionCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
   payslipLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
 });
 
