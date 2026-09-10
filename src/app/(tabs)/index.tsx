@@ -1431,24 +1431,24 @@ export default function HomeScreen() {
 
         {/* PRIORITY DISPATCH MODAL */}
         <RNModal isVisible={dispatchVisible}   onBackdropPress={() => setDispatchVisible(false)} onBackButtonPress={() => setDispatchVisible(false)} onSwipeComplete={() => setDispatchVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
+          <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
               <TouchableOpacity onPress={() => setDispatchVisible(false)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="arrow-left" size={24} color="#0F172A" />
+                <Feather name="arrow-left" size={24} color={colors.text} />
               </TouchableOpacity>
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginLeft: 8 }}>Dispatch Details</Text>
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginLeft: 8 }}>Dispatch Details</Text>
             </View>
             
-            <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#E2E8F0' }}>
+            <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 24, borderWidth: 1, borderColor: colors.cardBorder }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                <View style={[styles.notifIconCircle, { backgroundColor: '#DBEAFE', marginRight: 16 }]}>
+                <View style={[styles.notifIconCircle, { backgroundColor: isDark ? '#1E293B' : '#DBEAFE', marginRight: 16 }]}>
                   <Feather name="navigation" size={24} color="#3B82F6" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#3B82F6', letterSpacing: 1, marginBottom: 4 }}>
                     ACTIVE TICKET
                   </Text>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#94A3B8' }}>
+                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textSubtle }}>
                     Assigned 10m ago
                   </Text>
                 </View>
@@ -1456,20 +1456,20 @@ export default function HomeScreen() {
               
               <View style={styles.payslipDivider} />
               
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A', marginBottom: 8, marginTop: 8 }}>
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 8, marginTop: 8 }}>
                 {schedule?.client_name || 'N/A'}
               </Text>
               
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
-                <Feather name="map-pin" size={16} color="#64748B" style={{ marginTop: 2, marginRight: 8 }} />
-                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: '#475569', lineHeight: 22, flex: 1 }}>
+                <Feather name="map-pin" size={16} color={colors.textMuted} style={{ marginTop: 2, marginRight: 8 }} />
+                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22, flex: 1 }}>
                   {schedule?.location || 'N/A'}
                 </Text>
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 24 }}>
-                <Feather name="info" size={16} color="#64748B" style={{ marginTop: 2, marginRight: 8 }} />
-                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: '#475569', lineHeight: 22, flex: 1 }}>
+                <Feather name="info" size={16} color={colors.textMuted} style={{ marginTop: 2, marginRight: 8 }} />
+                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22, flex: 1 }}>
                   {schedule?.remarks || 'Perform standard maintenance checks on network rack cooling systems.'}
                 </Text>
               </View>
@@ -1477,7 +1477,7 @@ export default function HomeScreen() {
               <View style={styles.payslipDivider} />
 
               {schedule && userLoc && (
-                <View style={{ height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <View style={{ height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
                   <MapView provider={'google'} style={{ flex: 1 }} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: Math.abs(schedule.geofence_lat - userLoc.lat) * 2.5 || 0.05, longitudeDelta: Math.abs(schedule.geofence_lon - userLoc.lon) * 2.5 || 0.05 }}>
                     <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} pinColor='blue' />
                     <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} pinColor='red' />

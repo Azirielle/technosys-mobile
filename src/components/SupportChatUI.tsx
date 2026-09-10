@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, ScrollView , LayoutAnimation, UIManager, Image, Linking } from 'react-native';
 import Modal from 'react-native-modal';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 import * as Crypto from 'expo-crypto';
 import EventSource from 'react-native-sse';
 import { useFocusEffect } from 'expo-router';
+import { useAppTheme } from '../hooks/use-theme';
 
 const BRAND = {
   blue: '#1E3A8A',    
@@ -31,6 +32,9 @@ interface Message {
 }
 
 export default function SupportChatUI({ onClose, initialQuery, ticketId }: { onClose: () => void, initialQuery?: string, ticketId?: string }) {
+  const { colors, isDark } = useAppTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
   const getCatColor = (cat: string) => { 
     if (cat === 'Payroll Issue') return '#10B981'; 
     if (cat === 'Equipment Issue') return '#F59E0B'; 
@@ -892,7 +896,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
 };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFF' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardAvoidingView 
         style={styles.container} 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -900,15 +904,15 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Ionicons name="arrow-back" size={24} color="#333" />
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>AI Support</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <TouchableOpacity onPress={() => loadActiveTicket(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="add-circle-outline" size={24} color={BRAND.blue} />
+              <Ionicons name="add-circle-outline" size={24} color={isDark ? colors.brandBlue : BRAND.blue} />
             </TouchableOpacity>
             <TouchableOpacity onPress={openHistory} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="list" size={24} color="#333" />
+              <Ionicons name="list" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
         </View>
@@ -923,8 +927,8 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
             if (item.role === 'system') {
               return (
                 <View style={{ alignItems: 'center', marginVertical: 12 }}>
-                  <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '500' }}>{item.text}</Text>
+                  <View style={{ backgroundColor: colors.subCard, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '500' }}>{item.text}</Text>
                   </View>
                 </View>
               );
@@ -1096,17 +1100,17 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
 
         {/* Quick Suggestion Chips (Only on fresh sessions before an active ticket exists) */}
         {!activeTicket && (
-          <View style={{ paddingHorizontal: 16, paddingVertical: 6, backgroundColor: '#FFF', flexDirection: 'row' }}>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 6, backgroundColor: colors.card, flexDirection: 'row' }}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {['Report Payroll Issue', 'Report Equipment Issue', 'Report DTR Issue', 'File a Leave', 'Other Inquiry'].map((chip, idx) => (
-                <TouchableOpacity key={idx} style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E2E8F0' }} onPress={() => { 
+                <TouchableOpacity key={idx} style={{ backgroundColor: colors.subCard, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: colors.cardBorder }} onPress={() => { 
                   if (chip.includes('Payroll')) openTicketForm('Payroll Issue'); 
                   else if (chip.includes('Equipment')) openTicketForm('Equipment Issue'); 
                   else if (chip.includes('DTR')) openTicketForm('DTR Issue'); 
                   else if (chip.includes('Leave')) openTicketForm('File Leave'); 
                   else if (chip.includes('Other')) openTicketForm('Others');
                 }}>
-                  <Text style={{ fontSize: 13, color: BRAND.blue, fontWeight: '500' }}>{chip}</Text>
+                  <Text style={{ fontSize: 13, color: isDark ? colors.brandBlue : BRAND.blue, fontWeight: '500' }}>{chip}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -1117,9 +1121,9 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         {activeTicket?.status === 'closed' || activeTicket?.status === 'resolved' ? (
           <View style={{ 
             padding: 14, 
-            backgroundColor: activeTicket.status === 'resolved' ? '#F0FDF4' : '#FEF2F2', 
+            backgroundColor: activeTicket.status === 'resolved' ? (isDark ? '#064E3B' : '#F0FDF4') : (isDark ? '#7F1D1D' : '#FEF2F2'), 
             borderTopWidth: 1, 
-            borderColor: activeTicket.status === 'resolved' ? '#BBF7D0' : '#FECACA' 
+            borderColor: activeTicket.status === 'resolved' ? (isDark ? '#047857' : '#BBF7D0') : (isDark ? '#991B1B' : '#FECACA') 
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
               <Ionicons 
@@ -1131,7 +1135,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
               <Text style={{ 
                 fontWeight: 'bold', 
                 fontSize: 13, 
-                color: activeTicket.status === 'resolved' ? "#166534" : "#991B1B" 
+                color: activeTicket.status === 'resolved' ? (isDark ? '#A7F3D0' : '#166534') : (isDark ? '#FECACA' : '#991B1B') 
               }}>
                 {activeTicket.status === 'resolved' ? "Ticket Approved & Resolved" : "Request Refused & Closed"}
               </Text>
@@ -1139,7 +1143,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
 
             <Text style={{ 
               fontSize: 12, 
-              color: activeTicket.status === 'resolved' ? "#15803D" : "#B91C1C", 
+              color: activeTicket.status === 'resolved' ? (isDark ? '#6EE7B7' : "#15803D") : (isDark ? '#FCA5A5' : "#B91C1C"), 
               lineHeight: 16, 
               marginBottom: 10 
             }}>
@@ -1162,7 +1166,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity 
-                  style={{ flex: 1, backgroundColor: BRAND.blue, paddingVertical: 9, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                  style={{ flex: 1, backgroundColor: isDark ? colors.brandBlue : BRAND.blue, paddingVertical: 9, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
                   onPress={() => loadActiveTicket(true)}
                 >
                   <Ionicons name="add-circle-outline" size={15} color="#FFF" style={{ marginRight: 6 }} />
@@ -1172,12 +1176,12 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
             </View>
           </View>
         ) : (
-          <View style={{ backgroundColor: '#FFF', borderTopWidth: 1, borderColor: '#E2E8F0' }}>
+          <View style={{ backgroundColor: colors.card, borderTopWidth: 1, borderColor: colors.cardBorder }}>
             {chatAttachment && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#DBEAFE', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1E293B' : '#EFF6FF', paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.cardBorder, justifyContent: 'space-between' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
-                  <Ionicons name="attach" size={16} color={BRAND.blue} style={{ marginRight: 6 }} />
-                  <Text style={{ color: BRAND.blue, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                  <Ionicons name="attach" size={16} color={isDark ? colors.brandBlue : BRAND.blue} style={{ marginRight: 6 }} />
+                  <Text style={{ color: isDark ? colors.brandBlue : BRAND.blue, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
                     {chatAttachment.name}
                   </Text>
                 </View>
@@ -1193,7 +1197,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 onPress={pickChatAttachment}
                 disabled={isUploadingChatAttachment || isTyping}
               >
-                <Ionicons name="attach" size={22} color={chatAttachment ? BRAND.blue : "#64748B"} />
+                <Ionicons name="attach" size={22} color={chatAttachment ? (isDark ? colors.brandBlue : BRAND.blue) : colors.textMuted} />
               </TouchableOpacity>
 
               <TextInput 
@@ -1203,7 +1207,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 onChangeText={setInputText} 
                 onSubmitEditing={() => sendMessage()} 
                 multiline={true} 
-                placeholderTextColor='#94A3B8' 
+                placeholderTextColor={colors.textSubtle} 
               />
               
               <TouchableOpacity 
@@ -1226,15 +1230,15 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         onBackdropPress={() => setHistoryModalVisible(false)}
         style={{ margin: 0, justifyContent: 'flex-end' }}
       >
-        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '85%' }}>
+        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '85%' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: BRAND.blue }}>Ticket History</Text>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: isDark ? colors.text : BRAND.blue }}>Ticket History</Text>
             <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
-              <Feather name="x" size={24} color="#333" />
+              <Feather name="x" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
           <TouchableOpacity 
-            style={{ backgroundColor: BRAND.blue, padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 16 }} 
+            style={{ backgroundColor: isDark ? colors.brandBlue : BRAND.blue, padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 16 }} 
             onPress={() => { setHistoryModalVisible(false); loadActiveTicket(true); }}
           >
             <Text style={{ color: '#FFF', fontWeight: 'bold' }}>+ Start New Ticket</Text>
@@ -1246,24 +1250,24 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
             ListEmptyComponent={
               <View style={{ padding: 32, alignItems: 'center' }}>
                 <Ionicons name="folder-open-outline" size={36} color="#94A3B8" />
-                <Text style={{ color: '#64748B', fontSize: 13, marginTop: 8, fontWeight: '500' }}>No previous tickets found.</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 8, fontWeight: '500' }}>No previous tickets found.</Text>
               </View>
             }
             renderItem={({ item }) => {
               const isActive = activeTicket?.id === item.id;
               const catColor = getCatColor(item.category);
-              const statusBg = item.status === 'resolved' ? '#DCFCE7' : item.status === 'open' ? '#FEF3C7' : '#E0E7FF';
-              const statusTextColor = item.status === 'resolved' ? '#166534' : item.status === 'open' ? '#92400E' : '#3730A3';
+              const statusBg = item.status === 'resolved' ? (isDark ? '#064E3B' : '#DCFCE7') : item.status === 'open' ? (isDark ? '#78350F' : '#FEF3C7') : (isDark ? '#312E81' : '#E0E7FF');
+              const statusTextColor = item.status === 'resolved' ? (isDark ? '#A7F3D0' : '#166534') : item.status === 'open' ? (isDark ? '#FDE68A' : '#92400E') : (isDark ? '#C7D2FE' : '#3730A3');
 
               return (
                 <TouchableOpacity 
                   style={{ 
                     padding: 14, 
                     borderWidth: isActive ? 2 : 1, 
-                    borderColor: isActive ? BRAND.blue : '#E2E8F0', 
+                    borderColor: isActive ? (isDark ? colors.brandBlue : BRAND.blue) : colors.cardBorder, 
                     borderRadius: 12, 
                     marginBottom: 10,
-                    backgroundColor: isActive ? '#F8FAFC' : '#FFF',
+                    backgroundColor: isActive ? colors.subCard : colors.card,
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 1 },
                     shadowOpacity: 0.05,
@@ -1280,15 +1284,15 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                       <View style={{ backgroundColor: catColor + '18', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: catColor + '30', marginRight: 6 }}>
                         <Text style={{ fontSize: 10, fontWeight: '700', color: catColor }}>{item.category || 'General'}</Text>
                       </View>
-                      <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', color: '#94A3B8', fontWeight: '600' }}>
+                      <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', color: colors.textSubtle, fontWeight: '600' }}>
                         #{item.id.slice(0, 8).toUpperCase()}
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       {isActive && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#DBEAFE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 6 }}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND.blue, marginRight: 4 }} />
-                          <Text style={{ fontSize: 9, fontWeight: 'bold', color: BRAND.blue }}>ACTIVE</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1E293B' : '#DBEAFE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 6 }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isDark ? colors.brandBlue : BRAND.blue, marginRight: 4 }} />
+                          <Text style={{ fontSize: 9, fontWeight: 'bold', color: isDark ? colors.brandBlue : BRAND.blue }}>ACTIVE</Text>
                         </View>
                       )}
                       <View style={{ backgroundColor: statusBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
@@ -1299,22 +1303,22 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                     </View>
                   </View>
 
-                  <Text style={{ fontWeight: '700', fontSize: 14, color: '#0F172A', marginBottom: 4 }} numberOfLines={1}>
+                  <Text style={{ fontWeight: '700', fontSize: 14, color: colors.text, marginBottom: 4 }} numberOfLines={1}>
                     {item.title}
                   </Text>
-                  <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 16 }} numberOfLines={2}>
+                  <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 16 }} numberOfLines={2}>
                     {item.description}
                   </Text>
                   
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
-                    <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+                    <Text style={{ fontSize: 11, color: colors.textSubtle }}>
                       {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: item.handling_mode === 'ADMIN' ? '#7C3AED' : BRAND.blue, marginRight: 2 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: item.handling_mode === 'ADMIN' ? '#7C3AED' : (isDark ? colors.brandBlue : BRAND.blue), marginRight: 2 }}>
                         {item.handling_mode === 'ADMIN' ? 'HR Staff' : 'AI Handled'}
                       </Text>
-                      <Feather name="chevron-right" size={12} color="#94A3B8" />
+                      <Feather name="chevron-right" size={12} color={colors.textSubtle} />
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -1333,12 +1337,12 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         swipeThreshold={50}
         style={{ justifyContent: 'flex-end', margin: 0 }}
       >
-        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 30 : 16, maxHeight: '90%', flex: 1 }}>
+        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 30 : 16, maxHeight: '90%', flex: 1 }}>
           {/* Sheet Drag Handle */}
-          <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: '#CBD5E1', alignSelf: 'center', marginBottom: 12 }} />
+          <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: colors.cardBorder, alignSelf: 'center', marginBottom: 12 }} />
           
           {/* Modal Header */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: getCatColor(ticketCategory) + '20', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
                 <Ionicons 
@@ -1984,10 +1988,10 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BRAND.lightBg,
+    backgroundColor: colors.bg,
   },
   header: {
     flexDirection: 'row',
@@ -1995,9 +1999,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     paddingTop: Platform.OS === 'android' ? 44 : 16,
-    backgroundColor: '#FFF',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderColor: '#E2E8F0'
+    borderColor: colors.cardBorder,
   },
   closeBtn: {
     padding: 4,
@@ -2005,11 +2009,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: BRAND.blue,
+    color: isDark ? colors.text : BRAND.blue,
   },
   chatContainer: {
     padding: 16,
     paddingBottom: 32,
+    backgroundColor: colors.bg,
   },
   messageRow: {
     flexDirection: 'row',
@@ -2027,7 +2032,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: BRAND.blue,
+    backgroundColor: isDark ? colors.brandBlue : BRAND.blue,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
@@ -2039,14 +2044,14 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   bubbleUser: {
-    backgroundColor: BRAND.blue,
+    backgroundColor: isDark ? colors.brandBlue : BRAND.blue,
     borderTopRightRadius: 4,
   },
   bubbleAI: {
-    backgroundColor: '#FFF',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 4,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.cardBorder,
     minWidth: 150,
   },
   progressContainer: {
@@ -2056,14 +2061,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 4,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.subCard,
     padding: 8,
     borderRadius: 8,
   },
   progressText: {
     marginLeft: 8,
     fontSize: 12,
-    color: '#64748B',
+    color: colors.textMuted,
     fontStyle: 'italic',
   },
   messageText: {
@@ -2074,29 +2079,32 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   messageTextAI: {
-    color: '#334155',
+    color: colors.text,
   },
   inputContainer: {
     flexDirection: 'row',
     padding: 16,
     paddingTop: 12,
-    backgroundColor: '#FFF',
+    backgroundColor: colors.card,
     borderTopWidth: 0,
-    borderColor: '#E2E8F0',
+    borderColor: colors.cardBorder,
     alignItems: 'center',
   },
   input: {
     flex: 1,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.inputBg,
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 15,
+    color: colors.text,
     maxHeight: 100,
   },
   sendBtn: {
     marginLeft: 12,
-    backgroundColor: BRAND.blue,
+    backgroundColor: isDark ? colors.brandBlue : BRAND.blue,
     width: 40,
     height: 40,
     borderRadius: 20,
