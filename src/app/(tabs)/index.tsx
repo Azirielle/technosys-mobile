@@ -916,6 +916,70 @@ export default function HomeScreen() {
     };
   }, []);
 
+  // Duty-Bound Live Fleet Tracking: Periodic GPS Heartbeat
+  // Active strictly when technician is clocked in with an open shift (app_time_out is null)
+  useEffect(() => {
+    if (!activeTimeLog || activeTimeLog.app_time_out || !profile?.id) {
+      return;
+    }
+
+    const techId = profile.id;
+    let isMounted = true;
+
+    const sendHeartbeat = async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (!isMounted) return;
+
+        const nowIso = new Date().toISOString();
+        const lat = loc.coords.latitude;
+        const lon = loc.coords.longitude;
+
+        // 1. Dual-stream upsert into technician_locations with active working status
+        await supabase
+          .from('technician_locations')
+          .upsert({
+            technician_id: techId,
+            latitude: lat,
+            longitude: lon,
+            status: 'working',
+            updated_at: nowIso,
+          });
+
+        // 2. Realtime broadcast to admin fleet tracking radar
+        const trackingChannel = supabase.channel('fleet-tracking');
+        await trackingChannel.send({
+          type: 'broadcast',
+          event: 'location_update',
+          payload: {
+            technician_id: techId,
+            full_name: profile.full_name || 'Technician',
+            latitude: lat,
+            longitude: lon,
+            status: 'working',
+            action: 'heartbeat',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        });
+      } catch (err) {
+        // Non-fatal: background GPS blip or timeout
+        console.warn('[DutyHeartbeat] Location ping skipped:', err);
+      }
+    };
+
+    // Immediate initial sync on active shift, followed by 60s periodic ping
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 60000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeTimeLog?.id, activeTimeLog?.app_time_out, profile?.id, profile?.full_name]);
+
   // Crew Members Resolver for Active Dispatch / Selected Schedule
   useEffect(() => {
     const targetSched = selectedSchedule || (dispatchVisible ? schedule : null);
