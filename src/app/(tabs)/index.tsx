@@ -503,6 +503,7 @@ export default function HomeScreen() {
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
   const payslipViewRef = useRef<any>(null);
   const [aiInitialQuery, setAiInitialQuery] = useState('');
+  const [aiInitialTicketData, setAiInitialTicketData] = useState<any | null>(null);
 
   // File Leave Feature
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
@@ -653,6 +654,68 @@ export default function HomeScreen() {
       if (data) setTimeLogs(data);
     }
     setTimesheetLoading(false);
+  };
+
+  const handleDisputeTimeLog = (log?: any) => {
+    if (log) {
+      // Specific time log selected
+      const logDateRaw = log.created_at || log.app_time_in;
+      const formattedDate = logDateRaw 
+        ? new Date(logDateRaw).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+        : 'Selected Shift';
+      const logDateIso = logDateRaw ? new Date(logDateRaw).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+      
+      const timeInStr = log.app_time_in 
+        ? new Date(log.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : 'Not Logged';
+      const timeOutStr = log.app_time_out 
+        ? new Date(log.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : 'Ongoing / Missing';
+      const hoursStr = log.total_hours ? `${log.total_hours} hrs` : 'Incomplete';
+      const shortId = log.id ? log.id.slice(0, 8) : '';
+
+      const queryText = `Dispute Time Log [#${shortId}]: On ${formattedDate}, my recorded shift was Time In: ${timeInStr}, Time Out: ${timeOutStr} (${hoursStr}). Reason for dispute: `;
+
+      setAiInitialQuery(queryText);
+      setAiInitialTicketData({
+        category: 'DTR Issue',
+        logId: log.id,
+        logDate: logDateIso,
+        recordedIn: timeInStr,
+        recordedOut: timeOutStr,
+        expectedIn: timeInStr !== 'Not Logged' ? timeInStr : '08:00 AM',
+        expectedOut: '05:00 PM',
+        totalHours: log.total_hours || 0,
+        reason: queryText,
+      });
+
+      setSelectedTimeLog(null);
+      setTimesheetModalVisible(false);
+      setTimeout(() => {
+        setSupportModalVisible(true);
+      }, 350);
+    } else {
+      // Called from list view when no specific log is selected
+      if (timeLogs && timeLogs.length > 0) {
+        safeAlert(
+          "Select a Shift to Dispute",
+          "Please tap on the specific shift entry from the list below that you would like to dispute so we can attach the exact time log and GPS details to your request."
+        );
+      } else {
+        // No time logs exist, allow general DTR inquiry
+        setAiInitialQuery("I would like to file a general inquiry regarding my DTR and attendance logs: ");
+        setAiInitialTicketData({
+          category: 'DTR Issue',
+          logDate: new Date().toISOString().split('T')[0],
+          expectedIn: '08:00 AM',
+          expectedOut: '05:00 PM',
+        });
+        setTimesheetModalVisible(false);
+        setTimeout(() => {
+          setSupportModalVisible(true);
+        }, 350);
+      }
+    }
   };
 
   const fetchSchedulesList = async () => {
@@ -2158,7 +2221,23 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* SUPPORT MODAL */}
-        <RNModal isVisible={supportModalVisible}   onBackdropPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} onBackButtonPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} onSwipeComplete={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}><SupportChatUI onClose={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); }} initialQuery={aiInitialQuery} ticketId={selectedChatTicketId || undefined} /></RNModal>
+        <RNModal 
+          isVisible={supportModalVisible}   
+          onBackdropPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); setAiInitialQuery(''); setAiInitialTicketData(null); }} 
+          onBackButtonPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); setAiInitialQuery(''); setAiInitialTicketData(null); }} 
+          onSwipeComplete={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); setAiInitialQuery(''); setAiInitialTicketData(null); }} 
+          swipeDirection={undefined} 
+          propagateSwipe={true} 
+          swipeThreshold={50} 
+          style={{ margin: 0, justifyContent: 'flex-end' }}
+        >
+          <SupportChatUI 
+            onClose={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); setAiInitialQuery(''); setAiInitialTicketData(null); }} 
+            initialQuery={aiInitialQuery} 
+            ticketId={selectedChatTicketId || undefined} 
+            initialTicketData={aiInitialTicketData}
+          />
+        </RNModal>
 
         {/* SUPPORT TICKET DETAILS MODAL (SEPARATED FOR ANIMATION) */}
         <RNModal isVisible={!!selectedTicket}   onBackdropPress={() => setSelectedTicket(null)} onBackButtonPress={() => setSelectedTicket(null)} onSwipeComplete={() => setSelectedTicket(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
@@ -2514,41 +2593,41 @@ export default function HomeScreen() {
         {/* TIMESHEETS MODAL */}
         <RNModal isVisible={timesheetModalVisible} onBackdropPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onBackButtonPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onSwipeComplete={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} swipeDirection={selectedTimeLog ? undefined : ['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           {selectedTimeLog ? (
-            <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
+            <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 24 }}>
               {/* --- DETAILED VIEW: TIMESHEET --- */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
                 <TouchableOpacity onPress={() => setSelectedTimeLog(null)} style={{ padding: 8, marginLeft: -8 }}>
-                  <Feather name="arrow-left" size={24} color="#0F172A" />
+                  <Feather name="arrow-left" size={24} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginLeft: 8 }}>Time Log Details</Text>
+                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginLeft: 8 }}>Time Log Details</Text>
               </View>
               
-              <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A', marginBottom: 4 }}>
-                  {new Date(selectedTimeLog.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}
+              <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 24, borderWidth: 1, borderColor: colors.cardBorder }}>
+                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 4 }}>
+                  {new Date(selectedTimeLog.created_at || selectedTimeLog.app_time_in).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}
                 </Text>
                 
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: selectedTimeLog.status === 'approved' || selectedTimeLog.status === 'verified' ? '#ECFDF5' : selectedTimeLog.status === 'pending_review' ? '#FFFBEB' : '#FEF2F2' }}>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: selectedTimeLog.status === 'approved' || selectedTimeLog.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : selectedTimeLog.status === 'pending_review' ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FFFBEB') : (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2') }}>
                     <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: selectedTimeLog.status === 'approved' || selectedTimeLog.status === 'verified' ? BRAND.green : selectedTimeLog.status === 'pending_review' ? BRAND.yellow : BRAND.red }}>
                       {selectedTimeLog.status ? selectedTimeLog.status.replace('_', ' ').toUpperCase() : 'UNKNOWN'}
                     </Text>
                   </View>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: BRAND.blue, marginLeft: 12 }}>
+                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.brandBlue, marginLeft: 12 }}>
                     {selectedTimeLog.total_hours ? `${selectedTimeLog.total_hours} hrs` : '---'}
                   </Text>
                 </View>
                 
                 <View style={styles.payslipLine}>
                   <Text style={styles.payslipLineLabel}>Time In</Text>
-                  <Text style={styles.payslipLineValue}>
+                  <Text style={[styles.payslipLineValue, { color: colors.text }]}>
                     {selectedTimeLog.app_time_in ? new Date(selectedTimeLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
                   </Text>
                 </View>
                 
                 <View style={styles.payslipLine}>
                   <Text style={styles.payslipLineLabel}>Time Out</Text>
-                  <Text style={styles.payslipLineValue}>
+                  <Text style={[styles.payslipLineValue, { color: colors.text }]}>
                     {selectedTimeLog.app_time_out ? new Date(selectedTimeLog.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ongoing'}
                   </Text>
                 </View>
@@ -2557,35 +2636,48 @@ export default function HomeScreen() {
                 
                 <View style={styles.payslipLine}>
                   <Text style={styles.payslipLineLabel}>Geofence Status</Text>
-                  <Text style={[styles.payslipLineValue, { color: selectedTimeLog.geofence_status === 'passed' ? BRAND.green : BRAND.yellow }]}>
+                  <Text style={[styles.payslipLineValue, { color: selectedTimeLog.geofence_status === 'passed' || selectedTimeLog.geofence_status === 'inside' ? BRAND.green : BRAND.yellow }]}>
                     {selectedTimeLog.geofence_status ? selectedTimeLog.geofence_status.toUpperCase() : 'N/A'}
                   </Text>
                 </View>
                 
                 <View style={styles.payslipLine}>
                   <Text style={styles.payslipLineLabel}>Photo Status</Text>
-                  <Text style={styles.payslipLineValue}>
+                  <Text style={[styles.payslipLineValue, { color: colors.text }]}>
                     {selectedTimeLog.photo_status ? selectedTimeLog.photo_status.replace('_', ' ').toUpperCase() : 'N/A'}
                   </Text>
                 </View>
                 
                 <View style={styles.payslipLine}>
                   <Text style={styles.payslipLineLabel}>Manual Entry</Text>
-                  <Text style={styles.payslipLineValue}>
+                  <Text style={[styles.payslipLineValue, { color: colors.text }]}>
                     {selectedTimeLog.is_manual_entry ? 'YES' : 'NO'}
                   </Text>
                 </View>
                 
                 {selectedTimeLog.photo_url && (
                   <View style={{ marginTop: 24, alignItems: 'center' }}>
-                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: '#64748B', marginBottom: 8 }}>Verification Photo</Text>
-                    <Image source={{ uri: selectedTimeLog.photo_url }} style={{ width: 120, height: 160, borderRadius: 12, backgroundColor: '#F1F5F9' }} resizeMode="cover" />
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>Verification Photo</Text>
+                    <Image source={{ uri: selectedTimeLog.photo_url }} style={{ width: 120, height: 160, borderRadius: 12, backgroundColor: isDark ? colors.subCard : '#F1F5F9' }} resizeMode="cover" />
                   </View>
                 )}
                 
               </View>
               
-              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 24, flexDirection: 'row', justifyContent: 'center' }]} onPress={() => { setTimesheetModalVisible(false); setAiInitialQuery('I would like to dispute my time log for ' + selectedTimeLog.clock_in); setTimeout(() => setSupportModalVisible(true), 500); }}>
+              <TouchableOpacity 
+                style={[
+                  styles.submitBtn, 
+                  { 
+                    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2', 
+                    borderWidth: 1, 
+                    borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5', 
+                    marginTop: 24, 
+                    flexDirection: 'row', 
+                    justifyContent: 'center' 
+                  }
+                ]} 
+                onPress={() => handleDisputeTimeLog(selectedTimeLog)}
+              >
                 <Feather name="alert-circle" size={20} color={BRAND.red} style={{ marginRight: 8 }} />
                 <Text style={[styles.submitBtnText, { color: BRAND.red }]}>Dispute This Entry</Text>
               </TouchableOpacity>
@@ -2593,17 +2685,30 @@ export default function HomeScreen() {
             </View>
           ) : (
             <View style={styles.profileOverlay}>
-              <View style={[styles.profileSheet, { height: '85%' }]}>
-                <View style={styles.sheetHandle} />
+              <View style={[styles.profileSheet, { height: '85%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+                <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
                 
                 <View style={styles.modalHeaderRow}>
-                  <Text style={styles.modalTitle}>My Timesheets</Text>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>My Timesheets</Text>
                   <TouchableOpacity onPress={() => setTimesheetModalVisible(false)}>
-                    <Feather name="x" size={24} color="#64748B" />
+                    <Feather name="x" size={24} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16, flexDirection: 'row', justifyContent: 'center' }]} onPress={() => { setTimesheetModalVisible(false); setAiInitialQuery('I would like to dispute my time log for ' + selectedTimeLog.clock_in); setTimeout(() => setSupportModalVisible(true), 500); }}>
+                <TouchableOpacity 
+                  style={[
+                    styles.submitBtn, 
+                    { 
+                      backgroundColor: isDark ? colors.subCard : '#FFFFFF', 
+                      borderWidth: 1, 
+                      borderColor: isDark ? colors.cardBorder : '#E2E8F0', 
+                      marginBottom: 16, 
+                      flexDirection: 'row', 
+                      justifyContent: 'center' 
+                    }
+                  ]} 
+                  onPress={() => handleDisputeTimeLog(null)}
+                >
                   <Feather name="alert-circle" size={20} color={BRAND.red} style={{ marginRight: 8 }} />
                   <Text style={[styles.submitBtnText, { color: BRAND.red }]}>Dispute Time Log</Text>
                 </TouchableOpacity>
@@ -2621,41 +2726,42 @@ export default function HomeScreen() {
                     ListEmptyComponent={() => (
                       <View style={{ padding: 32, alignItems: 'center' }}>
                         <Feather name="clock" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                        <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
+                        <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: colors.textMuted, textAlign: 'center' }}>
                           No time logs found.
                         </Text>
                       </View>
                     )}
                     renderItem={({ item }) => (
                       <TouchableOpacity 
-                        style={styles.updateCard}
+                        style={[styles.updateCard, { borderBottomColor: colors.cardBorder }]}
                         activeOpacity={0.7}
                         onPress={() => setSelectedTimeLog(item)}
                       >
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                           <View style={{ flex: 1 }}>
-                            <Text style={styles.updateTitle}>
-                              {new Date(item.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}
+                            <Text style={[styles.updateTitle, { color: colors.text }]}>
+                              {new Date(item.created_at || item.app_time_in).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}
                             </Text>
-                            <Text style={[styles.updateSub, { marginTop: 4 }]}>
+                            <Text style={[styles.updateSub, { marginTop: 4, color: colors.textMuted }]}>
                               {item.app_time_in ? new Date(item.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
                               {' - '}
                               {item.app_time_out ? new Date(item.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ongoing'}
                             </Text>
                             
-                            <View style={{ flexDirection: 'row', marginTop: 12 }}>
-                              <View style={{ backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 8 }}>
-                                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: BRAND.blue }}>
+                            <View style={{ flexDirection: 'row', marginTop: 12, alignItems: 'center' }}>
+                              <View style={{ backgroundColor: isDark ? colors.subCard : '#EFF6FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 8 }}>
+                                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>
                                   {item.total_hours ? `${item.total_hours} hrs` : '---'}
+                                </Text>
+                              </View>
+                              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: item.status === 'approved' || item.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : item.status === 'pending_review' ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FFFBEB') : (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2') }}>
+                                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: item.status === 'approved' || item.status === 'verified' ? BRAND.green : item.status === 'pending_review' ? BRAND.yellow : BRAND.red }}>
+                                  {item.status ? item.status.replace('_', ' ').toUpperCase() : 'LOGGED'}
                                 </Text>
                               </View>
                             </View>
                           </View>
-                          <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: item.status === 'approved' || item.status === 'verified' ? '#ECFDF5' : item.status === 'pending_review' ? '#FFFBEB' : '#FEF2F2' }}>
-                            <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: item.status === 'approved' || item.status === 'verified' ? BRAND.green : item.status === 'pending_review' ? BRAND.yellow : BRAND.red }}>
-                              {item.status ? item.status.replace('_', ' ').toUpperCase() : 'UNKNOWN'}
-                            </Text>
-                          </View>
+                          <Feather name="chevron-right" size={20} color={colors.textMuted} />
                         </View>
                       </TouchableOpacity>
                     )}

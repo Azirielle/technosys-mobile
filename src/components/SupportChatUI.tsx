@@ -31,7 +31,24 @@ interface Message {
   sender_role?: string;
 }
 
-export default function SupportChatUI({ onClose, initialQuery, ticketId }: { onClose: () => void, initialQuery?: string, ticketId?: string }) {
+export interface SupportChatUIProps {
+  onClose: () => void;
+  initialQuery?: string;
+  ticketId?: string;
+  initialTicketData?: {
+    category?: string;
+    logId?: string;
+    logDate?: string;
+    recordedIn?: string;
+    recordedOut?: string;
+    expectedIn?: string;
+    expectedOut?: string;
+    totalHours?: string | number;
+    reason?: string;
+  } | null;
+}
+
+export default function SupportChatUI({ onClose, initialQuery, ticketId, initialTicketData }: SupportChatUIProps) {
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
@@ -352,6 +369,37 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId }: { onC
   const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
   const tomorrowDate = new Date(Date.now() + 86400000);
   const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+
+  // Hydrate chat input from deep-linked initialQuery
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim()) {
+      setInputText(initialQuery);
+    }
+  }, [initialQuery]);
+
+  // Hydrate formal ticket form from deep-linked initialTicketData
+  useEffect(() => {
+    if (initialTicketData) {
+      if (initialTicketData.category) {
+        setTicketCategory(initialTicketData.category);
+      }
+      setTicketDynamic((prev: any) => ({
+        ...prev,
+        logDate: initialTicketData.logDate || prev.logDate || todayStr,
+        expectedIn: initialTicketData.expectedIn || prev.expectedIn || '08:00 AM',
+        expectedOut: initialTicketData.expectedOut || prev.expectedOut || '05:00 PM',
+        recordedIn: initialTicketData.recordedIn,
+        recordedOut: initialTicketData.recordedOut,
+        totalHours: initialTicketData.totalHours,
+        logId: initialTicketData.logId,
+      }));
+      if (initialTicketData.reason || initialTicketData.logId) {
+        const shortId = initialTicketData.logId ? initialTicketData.logId.slice(0, 8) : '';
+        const desc = `Dispute for Time Log #${shortId} (${initialTicketData.logDate || ''}). Recorded: ${initialTicketData.recordedIn || ''} - ${initialTicketData.recordedOut || ''} (${initialTicketData.totalHours ? `${initialTicketData.totalHours} hrs` : ''}). Expected: ${initialTicketData.expectedIn || ''} - ${initialTicketData.expectedOut || ''}.`;
+        setTicketDesc(desc);
+      }
+    }
+  }, [initialTicketData]);
 
   const applyCategoryDefaults = (cat: string) => {
     setTicketDynamic((prev: any) => {
@@ -1187,6 +1235,41 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 </View>
                 <TouchableOpacity onPress={() => setChatAttachment(null)}>
                   <Feather name="x-circle" size={16} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            )}
+            {initialTicketData?.logId && (
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderBottomWidth: 1,
+                borderBottomColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE',
+                justifyContent: 'space-between'
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                  <Ionicons name="time" size={16} color="#6366F1" style={{ marginRight: 6 }} />
+                  <Text style={{ color: isDark ? '#A5B4FC' : '#4338CA', fontSize: 12, fontFamily: 'DMSans-Medium' }} numberOfLines={1}>
+                    Disputing Log #{initialTicketData.logId.slice(0, 8)} ({initialTicketData.logDate || 'Selected Shift'})
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={() => {
+                    setTicketCategory('DTR Issue');
+                    setTicketModalVisible(true);
+                  }}
+                  style={{
+                    backgroundColor: '#6366F1',
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 6,
+                  }}
+                >
+                  <Text style={{ color: '#FFF', fontSize: 11, fontFamily: 'DMSans-Bold' }}>
+                    Open Form
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
