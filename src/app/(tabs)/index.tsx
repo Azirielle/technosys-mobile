@@ -377,17 +377,40 @@ export default function HomeScreen() {
 
   const fetchEquipment = async () => {
     setToolsLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data } = await supabase
-        .from('tool_assignments')
-        .select('id, quantity, borrowed_at, returned_at, status, notes, tool_catalog ( id, name, image_url )')
-        .eq('technician_id', user.id)
-        .order('borrowed_at', { ascending: false });
-      
-      setTools(data || []);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('tool_handovers')
+          .select('id, quantity, status, handed_over_at, returned_at, notes, condition_on_return, tool_catalog ( id, name, description, image_url, category, serial_number )')
+          .eq('technician_id', user.id)
+          .order('handed_over_at', { ascending: false });
+        
+        if (error) throw error;
+        setTools(data || []);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch equipment:', e);
+    } finally {
+      setToolsLoading(false);
     }
-    setToolsLoading(false);
+  };
+
+  const handleReportToolIssue = (toolItem: any) => {
+    setEquipModalVisible(false);
+    const toolName = toolItem.tool_catalog?.name || 'Equipment';
+    const serial = toolItem.tool_catalog?.serial_number ? ` (SN: ${toolItem.tool_catalog.serial_number})` : '';
+    const queryText = `Reporting an issue/damage for ${toolName}${serial}: `;
+    setAiInitialQuery(queryText);
+    setAiInitialTicketData({
+      category: 'Equipment / Tools',
+      title: `Issue with ${toolName}`,
+      description: queryText,
+      reason: queryText,
+    });
+    setTimeout(() => {
+      setSupportModalVisible(true);
+    }, 350);
   };
 
   // Chunk 16: Support & Ticketing
@@ -2553,14 +2576,28 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* EQUIPMENT MODAL */}
-        <RNModal isVisible={equipModalVisible}   onBackdropPress={() => setEquipModalVisible(false)} onBackButtonPress={() => setEquipModalVisible(false)} onSwipeComplete={() => setEquipModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal 
+          isVisible={equipModalVisible}   
+          onBackdropPress={() => setEquipModalVisible(false)} 
+          onBackButtonPress={() => setEquipModalVisible(false)} 
+          onSwipeComplete={() => setEquipModalVisible(false)} 
+          swipeDirection={['down']} 
+          propagateSwipe={true} 
+          swipeThreshold={50} 
+          style={{ margin: 0, justifyContent: 'flex-end' }}
+        >
           <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '80%' }]}>
-              <View style={styles.sheetHandle} />
+            <View style={[styles.profileSheet, { height: '82%', backgroundColor: colors.bg }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>My Equipment</Text>
-                <TouchableOpacity onPress={() => setEquipModalVisible(false)}>
-                  <Feather name="x" size={24} color="#64748B" />
+                <View>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>My Equipment</Text>
+                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                    Assigned company tools & equipment custody
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setEquipModalVisible(false)} style={{ padding: 4 }}>
+                  <Feather name="x" size={22} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
               
@@ -2573,37 +2610,112 @@ export default function HomeScreen() {
                   data={tools}
                   keyExtractor={(item) => item.id}
                   showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
+                  contentContainerStyle={{ paddingBottom: 32, paddingTop: 12 }}
                   ListEmptyComponent={() => (
-                    <View style={{ padding: 32, alignItems: 'center' }}>
-                      <Feather name="tool" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
-                        You currently have no equipment checked out.
+                    <View style={{ padding: 40, alignItems: 'center' }}>
+                      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: isDark ? '#1E293B' : '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                        <Feather name="tool" size={28} color={colors.textMuted} />
+                      </View>
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.text, textAlign: 'center', marginBottom: 6 }}>
+                        No Equipment Assigned
+                      </Text>
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 18 }}>
+                        You currently have no tools or machinery checked out under your custody.
                       </Text>
                     </View>
                   )}
-                  renderItem={({ item }) => (
-                    <View style={styles.equipItem}>
-                      <View style={styles.equipImagePlaceholder}>
-                        {item.tool_catalog?.image_url ? (
-                          <Image source={{ uri: item.tool_catalog.image_url }} style={styles.equipImg} />
-                        ) : (
-                          <Feather name="tool" size={24} color="#94A3B8" />
-                        )}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.equipTitle}>{item.tool_catalog?.name || 'Unknown Tool'}</Text>
-                        <Text style={styles.equipSub}>Qty: {item.quantity}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                          <View style={[styles.equipStatusBadge, item.status === 'borrowed' ? styles.statusActive : styles.statusOverdue]}>
-                            <Text style={[styles.equipStatusText, item.status === 'borrowed' ? styles.textActive : styles.textOverdue]}>
-                              {item.status.toUpperCase()}
+                  renderItem={({ item }) => {
+                    const isCheckedOut = item.status === 'checked_out';
+                    const daysOut = item.handed_over_at
+                      ? Math.floor(Math.abs(Date.now() - new Date(item.handed_over_at).getTime()) / (1000 * 60 * 60 * 24))
+                      : 0;
+
+                    return (
+                      <View style={[
+                        styles.equipItem, 
+                        { 
+                          backgroundColor: colors.card, 
+                          borderColor: isCheckedOut ? (isDark ? '#334155' : '#E2E8F0') : (isDark ? '#1E293B' : '#F1F5F9'),
+                          opacity: isCheckedOut ? 1 : 0.8,
+                          marginBottom: 12,
+                          borderRadius: 16,
+                          padding: 14,
+                        }
+                      ]}>
+                        <View style={[styles.equipImagePlaceholder, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC' }]}>
+                          {item.tool_catalog?.image_url ? (
+                            <Image source={{ uri: item.tool_catalog.image_url }} style={styles.equipImg} />
+                          ) : (
+                            <Feather name="tool" size={24} color="#94A3B8" />
+                          )}
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                            <Text style={[styles.equipTitle, { color: colors.text, flex: 1 }]} numberOfLines={1}>
+                              {item.tool_catalog?.name || 'Equipment'}
                             </Text>
+                            <View style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 2,
+                              borderRadius: 6,
+                              backgroundColor: isCheckedOut ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5') : (isDark ? '#334155' : '#F1F5F9'),
+                              borderWidth: 1,
+                              borderColor: isCheckedOut ? '#10B981' : '#CBD5E1',
+                            }}>
+                              <Text style={{
+                                fontSize: 10,
+                                fontFamily: 'DMSans-Bold',
+                                color: isCheckedOut ? '#10B981' : '#64748B',
+                              }}>
+                                {isCheckedOut ? 'IN CUSTODY' : item.status.toUpperCase()}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                            {item.tool_catalog?.category && (
+                              <Text style={{ fontSize: 11, fontFamily: 'DMSans-Medium', color: colors.textMuted }}>
+                                {item.tool_catalog.category}
+                              </Text>
+                            )}
+                            {item.tool_catalog?.serial_number && (
+                              <Text style={{ fontSize: 10, fontFamily: 'DMSans-Medium', color: isDark ? '#94A3B8' : '#64748B', backgroundColor: isDark ? '#1E293B' : '#F1F5F9', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                                SN: {item.tool_catalog.serial_number}
+                              </Text>
+                            )}
+                          </View>
+
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                            <Text style={{ fontSize: 11, fontFamily: 'DMSans-Medium', color: colors.textMuted }}>
+                              Qty: {item.quantity || 1} • {isCheckedOut ? `${daysOut}d in custody` : `Returned ${item.returned_at ? new Date(item.returned_at).toLocaleDateString() : ''}`}
+                            </Text>
+
+                            {isCheckedOut && (
+                              <TouchableOpacity 
+                                onPress={() => handleReportToolIssue(item)}
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 3,
+                                  borderRadius: 8,
+                                  backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
+                                  borderWidth: 1,
+                                  borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#FEE2E2',
+                                }}
+                              >
+                                <Feather name="alert-circle" size={11} color="#EF4444" />
+                                <Text style={{ fontSize: 10, fontFamily: 'DMSans-Bold', color: '#EF4444' }}>
+                                  Report Issue
+                                </Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                         </View>
                       </View>
-                    </View>
-                  )}
+                    );
+                  }}
                 />
               )}
             </View>
