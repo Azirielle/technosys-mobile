@@ -22,6 +22,7 @@ import { useAppTheme } from '../../context/ThemeContext';
 import { AppThemeColors } from '../../constants/theme';
 import * as Sharing from 'expo-sharing';
 import ViewShot from 'react-native-view-shot';
+import { sanitizeNotification, formatRelativeTime } from '../../utils/notification-sanitizer';
 
 const { width, height } = Dimensions.get('window');
 
@@ -34,6 +35,14 @@ interface NotificationItem {
   read: boolean;
   ticketId?: string;
   timestamp: number;
+  category?: string;
+  categoryColor?: string;
+  categoryBgLight?: string;
+  categoryBgDark?: string;
+  reviewer?: string;
+  statusTag?: string;
+  actionLabel?: string;
+  actionType?: 'chat' | 'dispatch' | 'announcement' | 'tool' | 'general';
 }
 
 // TECHONOSYS PRO BRAND COLORS
@@ -246,31 +255,32 @@ export default function HomeScreen() {
             const isApproved = c.content.includes('[DECISION: APPROVED');
             const isRefused = c.content.includes('[DECISION: REFUSED');
             
-            let title = 'HR Ticket Message';
-            let type: 'hr' | 'help' | 'admin' = 'admin';
-            let desc = c.content;
+            const rawType = isApproved ? 'hr' : isRefused ? 'help' : 'admin';
+            const rawTitle = isApproved 
+              ? `Ticket Approved (${t?.category || 'HR'})`
+              : isRefused 
+              ? `Ticket Refused (${t?.category || 'HR'})`
+              : `HR Message: ${t?.title || t?.category || 'Support'}`;
 
-            if (isApproved) {
-              type = 'hr';
-              title = `Ticket Approved (${t?.category || 'HR'})`;
-              desc = c.content.replace(/\[DECISION: APPROVED & RESOLVED\]\s*/i, '').replace(/Resolution Note:\s*/i, '');
-            } else if (isRefused) {
-              type = 'help';
-              title = `Ticket Refused (${t?.category || 'HR'})`;
-              desc = c.content.replace(/\[DECISION: REFUSED\]\s*/i, '').replace(/Reason:\s*/i, '');
-            } else {
-              title = `HR Comment (${t?.category || 'Support'})`;
-            }
+            const parsed = sanitizeNotification(rawTitle, c.content, rawType, t?.category);
 
             items.push({
               id: `tc_${c.id}`,
-              type,
-              title,
-              desc: desc.trim(),
-              time: formatNotifTime(c.created_at),
+              type: rawType,
+              title: parsed.title,
+              desc: parsed.summary,
+              time: formatRelativeTime(c.created_at),
               read: readSet.has(`tc_${c.id}`),
               ticketId: c.ticket_id,
-              timestamp: new Date(c.created_at).getTime()
+              timestamp: new Date(c.created_at).getTime(),
+              category: parsed.category,
+              categoryColor: parsed.categoryColor,
+              categoryBgLight: parsed.categoryBgLight,
+              categoryBgDark: parsed.categoryBgDark,
+              reviewer: parsed.reviewer,
+              statusTag: parsed.statusTag,
+              actionLabel: parsed.actionLabel,
+              actionType: parsed.actionType,
             });
           });
         }
@@ -285,14 +295,21 @@ export default function HomeScreen() {
 
       if (announcementsData) {
         announcementsData.forEach(a => {
+          const parsed = sanitizeNotification(a.title, a.content || 'Company announcement posted.', 'admin', 'Announcement');
           items.push({
             id: `ann_${a.id}`,
             type: 'admin',
-            title: a.title,
-            desc: a.content || 'Company announcement posted.',
-            time: formatNotifTime(a.created_at),
+            title: parsed.title,
+            desc: parsed.summary,
+            time: formatRelativeTime(a.created_at),
             read: readSet.has(`ann_${a.id}`),
-            timestamp: new Date(a.created_at).getTime()
+            timestamp: new Date(a.created_at).getTime(),
+            category: parsed.category,
+            categoryColor: parsed.categoryColor,
+            categoryBgLight: parsed.categoryBgLight,
+            categoryBgDark: parsed.categoryBgDark,
+            actionLabel: 'Read Announcement',
+            actionType: 'announcement',
           });
         });
       }
@@ -305,10 +322,17 @@ export default function HomeScreen() {
           id: 'welcome_init',
           type: 'hr',
           title: 'Welcome to TechnoCycle',
-          desc: 'Operational alerts and HR ticket updates will appear here in real time.',
+          desc: 'Operational alerts, dispatches, and HR tickets appear here in real time.',
           time: 'Active',
           read: true,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          category: 'Operations',
+          categoryColor: '#3B82F6',
+          categoryBgLight: '#EFF6FF',
+          categoryBgDark: 'rgba(59, 130, 246, 0.2)',
+          statusTag: 'Live',
+          actionLabel: 'Explore System',
+          actionType: 'general',
         });
       }
 
@@ -1381,39 +1405,114 @@ export default function HomeScreen() {
                 data={notifications}
                 keyExtractor={(item) => item.id.toString()}
                 showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 24, paddingTop: 4 }}
+                ListEmptyComponent={() => (
+                  <View style={{ padding: 40, alignItems: 'center' }}>
+                    <Feather name="bell-off" size={44} color={isDark ? '#334155' : '#CBD5E1'} style={{ marginBottom: 12 }} />
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 15, color: colors.textSubtle, textAlign: 'center' }}>
+                      No notifications at the moment.
+                    </Text>
+                  </View>
+                )}
                 renderItem={({ item: notif }) => {
                   let icon = 'bell';
                   let color = '#64748B';
                   let bgColor = isDark ? colors.subCard : '#F1F5F9';
-                  if (notif.type === 'dispatch') { icon = 'navigation'; color = '#EF4444'; bgColor = isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2'; }
+                  if (notif.type === 'dispatch') { icon = 'navigation'; color = '#3B82F6'; bgColor = isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE'; }
                   if (notif.type === 'hr') { icon = 'check-circle'; color = '#10B981'; bgColor = isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5'; }
                   if (notif.type === 'tool') { icon = 'tool'; color = '#F59E0B'; bgColor = isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7'; }
                   if (notif.type === 'admin') { icon = 'file-text'; color = colors.brandBlue; bgColor = isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE'; }
-                  if (notif.type === 'help') { icon = 'life-buoy'; color = '#8B5CF6'; bgColor = isDark ? 'rgba(139, 92, 246, 0.2)' : '#EDE9FE'; }
+                  if (notif.type === 'help') { icon = 'alert-circle'; color = '#EF4444'; bgColor = isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2'; }
+
+                  const pillBg = isDark ? (notif.categoryBgDark || 'rgba(59, 130, 246, 0.2)') : (notif.categoryBgLight || '#EFF6FF');
+                  const pillColor = notif.categoryColor || colors.brandBlue;
 
                   return (
                     <TouchableOpacity 
-                      style={[styles.notifItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }, !notif.read && (isDark ? { backgroundColor: colors.subCard } : styles.notifItemUnread)]}
+                      activeOpacity={0.7}
+                      style={[
+                        styles.notifModernCard,
+                        !notif.read && styles.notifModernCardUnread,
+                        !notif.read && { borderLeftColor: pillColor }
+                      ]}
                       onPress={() => {
                         markNotificationRead(notif.id);
-                        if (notif.ticketId) {
-                          setSelectedChatTicketId(notif.ticketId);
+                        if (notif.ticketId || notif.actionType === 'chat') {
+                          if (notif.ticketId) setSelectedChatTicketId(notif.ticketId);
                           setNotifVisible(false);
                           setSupportModalVisible(true);
+                        } else if (notif.actionType === 'dispatch') {
+                          setNotifVisible(false);
+                          setDispatchVisible(true);
+                        } else if (notif.actionType === 'tool') {
+                          setNotifVisible(false);
+                          setEquipModalVisible(true);
                         } else {
                           setSelectedNotif(notif);
                         }
                       }}
                     >
-                      <View style={[styles.notifIconCircle, { backgroundColor: bgColor }]}>
-                        <Feather name={icon as any} size={20} color={color} />
+                      {/* Top Header Row: Category Pill + Status Tag + Timestamp */}
+                      <View style={styles.notifHeaderRow}>
+                        <View style={styles.notifBadgeRow}>
+                          <View style={[styles.notifPill, { backgroundColor: pillBg, borderColor: pillColor + '40' }]}>
+                            <Text style={[styles.notifPillText, { color: pillColor }]}>
+                              {(notif.category || 'NOTICE').toUpperCase()}
+                            </Text>
+                          </View>
+                          {!!notif.statusTag && (
+                            <View style={[styles.notifStatusPill, { 
+                              backgroundColor: notif.statusTag === 'Approved' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5') :
+                                              notif.statusTag === 'Refused' ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2') :
+                                              (isDark ? colors.subCard : '#F1F5F9')
+                            }]}>
+                              <Text style={[styles.notifStatusText, { 
+                                color: notif.statusTag === 'Approved' ? '#10B981' :
+                                       notif.statusTag === 'Refused' ? '#EF4444' :
+                                       colors.textSubtle
+                              }]}>
+                                {notif.statusTag}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.notifTimeRow}>
+                          <Text style={styles.notifTimeText}>{notif.time}</Text>
+                          {!notif.read && <View style={[styles.notifDot, { backgroundColor: pillColor }]} />}
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.notifItemTitle, { color: colors.text }]}>{notif.title}</Text>
-                        <Text style={[styles.notifItemDesc, { color: colors.textMuted }]}>{notif.desc}</Text>
-                        <Text style={[styles.notifItemTime, { color: colors.textSubtle }]}>{notif.time}</Text>
+
+                      {/* Card Content */}
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 6 }}>
+                        <View style={[styles.notifIconCircle, { backgroundColor: bgColor, width: 36, height: 36, borderRadius: 18, marginRight: 12, marginTop: 2 }]}>
+                          <Feather name={icon as any} size={18} color={color} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.notifItemTitle, { color: colors.text, fontSize: 14 }]} numberOfLines={1}>
+                            {notif.title}
+                          </Text>
+                          <Text style={[styles.notifItemDesc, { color: colors.textMuted, fontSize: 13, marginBottom: 0 }]} numberOfLines={2}>
+                            {notif.desc}
+                          </Text>
+                        </View>
                       </View>
-                      {!notif.read && <View style={[styles.notifUnreadDot, { backgroundColor: colors.brandBlue }]} />}
+
+                      {/* Action / Reviewer Row */}
+                      <View style={styles.notifActionRow}>
+                        {notif.reviewer ? (
+                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textSubtle }}>
+                            Reviewed by {notif.reviewer}
+                          </Text>
+                        ) : (
+                          <View />
+                        )}
+                        <View style={styles.notifActionChip}>
+                          <Text style={[styles.notifActionChipText, { color: pillColor }]}>
+                            {notif.actionLabel || 'Details'}
+                          </Text>
+                          <Feather name="arrow-right" size={11} color={pillColor} />
+                        </View>
+                      </View>
                     </TouchableOpacity>
                   );
                 }}
@@ -1498,53 +1597,108 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* NOTIFICATION DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <RNModal isVisible={!!selectedNotif}   onBackdropPress={() => setSelectedNotif(null)} onBackButtonPress={() => setSelectedNotif(null)} onSwipeComplete={() => setSelectedNotif(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
+        <RNModal 
+          isVisible={!!selectedNotif} 
+          onBackdropPress={() => setSelectedNotif(null)} 
+          onBackButtonPress={() => setSelectedNotif(null)} 
+          onSwipeComplete={() => setSelectedNotif(null)} 
+          swipeDirection={undefined} 
+          propagateSwipe={true} 
+          swipeThreshold={50} 
+          style={{ margin: 0, justifyContent: 'flex-end' }}
+        >
+          <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 20 }}>
             {selectedNotif && (
               <>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                   <TouchableOpacity onPress={() => setSelectedNotif(null)} style={{ padding: 8, marginLeft: -8 }}>
-                    <Feather name="arrow-left" size={24} color="#0F172A" />
+                    <Feather name="arrow-left" size={24} color={colors.text} />
                   </TouchableOpacity>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginLeft: 8 }}>Notification Details</Text>
+                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginLeft: 8 }}>Notification Details</Text>
                 </View>
                 
-                <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                    <View style={[styles.notifIconCircle, { 
-                      backgroundColor: selectedNotif.type === 'dispatch' ? '#FEE2E2' : 
-                                     selectedNotif.type === 'hr' ? '#D1FAE5' : 
-                                     selectedNotif.type === 'tool' ? '#FEF3C7' : 
-                                     selectedNotif.type === 'admin' ? '#DBEAFE' : '#EDE9FE',
-                      marginRight: 16
-                    }]}>
-                      <Feather name={
-                        selectedNotif.type === 'dispatch' ? 'navigation' :
-                        selectedNotif.type === 'hr' ? 'check-circle' :
-                        selectedNotif.type === 'tool' ? 'tool' :
-                        selectedNotif.type === 'admin' ? 'file-text' : 'life-buoy'
-                      } size={24} color={
-                        selectedNotif.type === 'dispatch' ? '#EF4444' :
-                        selectedNotif.type === 'hr' ? '#10B981' :
-                        selectedNotif.type === 'tool' ? '#F59E0B' :
-                        selectedNotif.type === 'admin' ? '#3B82F6' : '#8B5CF6'
-                      } />
+                <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.cardBorder }}>
+                  {/* Category & Status Badges */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={[styles.notifPill, { 
+                        backgroundColor: isDark ? (selectedNotif.categoryBgDark || 'rgba(59, 130, 246, 0.2)') : (selectedNotif.categoryBgLight || '#EFF6FF'),
+                        borderColor: (selectedNotif.categoryColor || colors.brandBlue) + '40'
+                      }]}>
+                        <Text style={[styles.notifPillText, { color: selectedNotif.categoryColor || colors.brandBlue }]}>
+                          {(selectedNotif.category || 'NOTICE').toUpperCase()}
+                        </Text>
+                      </View>
+                      {!!selectedNotif.statusTag && (
+                        <View style={[styles.notifStatusPill, { 
+                          backgroundColor: selectedNotif.statusTag === 'Approved' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5') :
+                                          selectedNotif.statusTag === 'Refused' ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2') :
+                                          (isDark ? colors.subCard : '#F1F5F9')
+                        }]}>
+                          <Text style={[styles.notifStatusText, { 
+                            color: selectedNotif.statusTag === 'Approved' ? '#10B981' :
+                                   selectedNotif.statusTag === 'Refused' ? '#EF4444' :
+                                   colors.textSubtle
+                          }]}>
+                            {selectedNotif.statusTag}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginBottom: 4 }}>
-                        {selectedNotif.title}
-                      </Text>
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#94A3B8' }}>
-                        {selectedNotif.time}
-                      </Text>
-                    </View>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textSubtle }}>
+                      {selectedNotif.time}
+                    </Text>
                   </View>
-                  
-                  <View style={styles.payslipDivider} />
-                  
-                  <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: '#475569', lineHeight: 24, marginTop: 8 }}>
-                    {selectedNotif.desc}
+
+                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginBottom: 8 }}>
+                    {selectedNotif.title}
                   </Text>
+
+                  {selectedNotif.reviewer && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 6 }}>
+                      <Feather name="user-check" size={14} color={colors.textSubtle} />
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textSubtle }}>
+                        Reviewed by: <Text style={{ color: colors.text, fontFamily: 'DMSans-Bold' }}>{selectedNotif.reviewer}</Text>
+                      </Text>
+                    </View>
+                  )}
+                  
+                  <View style={[styles.payslipDivider, { backgroundColor: isDark ? colors.border : '#E2E8F0', marginVertical: 12 }]} />
+                  
+                  <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 260 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 24 }}>
+                      {selectedNotif.desc}
+                    </Text>
+                  </ScrollView>
+
+                  {/* Direct Deep-Linking Action Button */}
+                  {selectedNotif.ticketId ? (
+                    <TouchableOpacity 
+                      style={[styles.submitBtn, { backgroundColor: colors.brandBlue, marginTop: 20 }]} 
+                      onPress={() => {
+                        const tId = selectedNotif.ticketId;
+                        setSelectedNotif(null);
+                        setSelectedChatTicketId(tId);
+                        setNotifVisible(false);
+                        setSupportModalVisible(true);
+                      }}
+                    >
+                      <Feather name="message-square" size={16} color="#fff" style={{ marginRight: 8 }} />
+                      <Text style={styles.submitBtnText}>Open in HR Chat</Text>
+                    </TouchableOpacity>
+                  ) : selectedNotif.actionType === 'dispatch' ? (
+                    <TouchableOpacity 
+                      style={[styles.submitBtn, { backgroundColor: colors.brandBlue, marginTop: 20 }]} 
+                      onPress={() => {
+                        setSelectedNotif(null);
+                        setNotifVisible(false);
+                        setDispatchVisible(true);
+                      }}
+                    >
+                      <Feather name="navigation" size={16} color="#fff" style={{ marginRight: 8 }} />
+                      <Text style={styles.submitBtnText}>View Dispatch</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </>
             )}
@@ -1614,23 +1768,23 @@ export default function HomeScreen() {
 
         {/* SUPPORT TICKET DETAILS MODAL (SEPARATED FOR ANIMATION) */}
         <RNModal isVisible={!!selectedTicket}   onBackdropPress={() => setSelectedTicket(null)} onBackButtonPress={() => setSelectedTicket(null)} onSwipeComplete={() => setSelectedTicket(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>
+          <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: TICKET --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
               <TouchableOpacity onPress={() => setSelectedTicket(null)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="arrow-left" size={24} color="#0F172A" />
+                <Feather name="arrow-left" size={24} color={colors.text} />
               </TouchableOpacity>
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginLeft: 8 }}>Ticket Details</Text>
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginLeft: 8 }}>Ticket Details</Text>
             </View>
             
-            <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#E2E8F0', flex: 1, marginBottom: 40 }}>
+            <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 24, borderWidth: 1, borderColor: colors.cardBorder, flex: 1, marginBottom: 40 }}>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: '#0F172A', marginBottom: 4 }}>
+                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 4 }}>
                     {selectedTicket?.title}
                   </Text>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: '#64748B' }}>
-                    {selectedTicket?.category} • {selectedTicket?.created_at ? new Date(selectedTicket.created_at).toLocaleString() : ''}
+                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textSubtle }}>
+                    {selectedTicket?.category} • {selectedTicket?.created_at ? formatRelativeTime(selectedTicket.created_at) : ''}
                   </Text>
                 </View>
                 <View style={[styles.ticketBadge, selectedTicket?.status === 'open' ? styles.badgeOpen : styles.badgeResolved]}>
@@ -1640,11 +1794,11 @@ export default function HomeScreen() {
                 </View>
               </View>
               
-              <View style={styles.payslipDivider} />
+              <View style={[styles.payslipDivider, { backgroundColor: isDark ? colors.border : '#E2E8F0', marginVertical: 12 }]} />
               
               <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
-                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#0F172A', marginBottom: 8 }}>DESCRIPTION</Text>
-                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: '#475569', lineHeight: 22 }}>
+                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text, marginBottom: 8 }}>DESCRIPTION</Text>
+                <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22 }}>
                   {selectedTicket?.description}
                 </Text>
               </ScrollView>
@@ -1660,7 +1814,7 @@ export default function HomeScreen() {
               <View style={styles.modalHeaderRow}>
                 <Text style={styles.modalTitle}>Company Updates</Text>
                 <TouchableOpacity onPress={() => setUpdatesModalVisible(false)}>
-                  <Feather name="x" size={24} color="#64748B" />
+                  <Feather name="x" size={24} color={colors.textSubtle} />
                 </TouchableOpacity>
               </View>
 
@@ -1676,34 +1830,80 @@ export default function HomeScreen() {
                   contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
                   ListEmptyComponent={() => (
                     <View style={{ padding: 32, alignItems: 'center' }}>
-                      <Feather name="radio" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
+                      <Feather name="radio" size={48} color={isDark ? '#334155' : '#CBD5E1'} style={{ marginBottom: 16 }} />
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: colors.textSubtle, textAlign: 'center' }}>
                         No new announcements right now.
                       </Text>
                     </View>
                   )}
-                  renderItem={({ item }) => (
-                    <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                          <Feather name="user" size={20} color={BRAND.blue} />
+                  renderItem={({ item }) => {
+                    const isExpanded = !!expandedUpdates[item.id];
+                    const isLongText = (item.content || '').length > 150;
+                    const combinedText = ((item.title || '') + ' ' + (item.content || '')).toLowerCase();
+                    const isUrgent = combinedText.includes('urgent') || 
+                                     combinedText.includes('critical') ||
+                                     combinedText.includes('required') ||
+                                     combinedText.includes('important');
+
+                    return (
+                      <View style={styles.updateModernCard}>
+                        {/* Header: Avatar, Name, Priority Badge */}
+                        <View style={styles.updateHeader}>
+                          <View style={styles.updateAuthorRow}>
+                            <View style={styles.updateAvatar}>
+                              <Feather name="shield" size={18} color={colors.brandBlue} />
+                            </View>
+                            <View>
+                              <Text style={styles.updateAuthorName}>{item.profiles?.full_name || 'Operations HQ'}</Text>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textSubtle }}>
+                                {formatRelativeTime(item.created_at)}
+                              </Text>
+                            </View>
+                          </View>
+                          
+                          <View style={[styles.updatePriorityBadge, {
+                            backgroundColor: isUrgent 
+                              ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2')
+                              : (isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF')
+                          }]}>
+                            <Text style={[styles.updatePriorityText, {
+                              color: isUrgent ? '#EF4444' : colors.brandBlue
+                            }]}>
+                              {isUrgent ? 'URGENT' : 'OFFICIAL'}
+                            </Text>
+                          </View>
                         </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: '#0F172A' }}>{item.profiles?.full_name || 'Admin'}</Text>
-                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: '#64748B' }}>
-                            {new Date(item.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </Text>
-                        </View>
-                        <TouchableOpacity hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} onPress={() => safeAlert("Options", "You can report this announcement if you have concerns.")}>
-                          <Feather name="more-horizontal" size={20} color="#94A3B8" />
-                        </TouchableOpacity>
+
+                        {/* Title */}
+                        <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.text, marginBottom: 8, lineHeight: 22 }}>
+                          {item.title}
+                        </Text>
+
+                        {/* Content Body */}
+                        <Text 
+                          style={{ fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, lineHeight: 22 }}
+                          numberOfLines={isExpanded ? undefined : 3}
+                        >
+                          {item.content}
+                        </Text>
+
+                        {/* Expand / Collapse toggle */}
+                        {isLongText && (
+                          <TouchableOpacity 
+                            style={styles.updateExpandBtn}
+                            onPress={() => {
+                              setExpandedUpdates(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                            }}
+                          >
+                            <Text style={styles.updateExpandText}>
+                              {isExpanded ? 'Show less' : 'Read full update'}
+                            </Text>
+                            <Feather name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.brandBlue} />
+                          </TouchableOpacity>
+                        )}
                       </View>
-                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A', marginBottom: 4 }}>{item.title}</Text>
-                      <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 14, color: '#334155', lineHeight: 22, marginBottom: 16 }}>
-                        {item.content}
-                      </Text>
-                    </View>
-                  )}
+                    );
+                  }}
                 />
               )}
             </View>
@@ -2536,6 +2736,154 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   notifItemDesc: { fontFamily: 'DMSans-Regular', fontSize: 13, color: colors.textMuted, marginBottom: 8, lineHeight: 18 },
   notifItemTime: { fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textSubtle },
   notifUnreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brandBlue, marginTop: 6 },
+  notifModernCard: {
+    backgroundColor: isDark ? colors.card : '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: isDark ? colors.cardBorder : '#E2E8F0',
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: isDark ? 0.2 : 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  notifModernCardUnread: {
+    borderLeftWidth: 4,
+    borderColor: isDark ? colors.cardBorder : '#BFDBFE',
+    backgroundColor: isDark ? colors.card : '#F8FAFC',
+  },
+  notifHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  notifBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  notifPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  notifPillText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  notifStatusPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  notifStatusText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 10,
+    textTransform: 'uppercase',
+  },
+  notifTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  notifTimeText: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 11,
+    color: colors.textSubtle,
+  },
+  notifDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.brandBlue,
+  },
+  notifActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? colors.border : '#F1F5F9',
+  },
+  notifActionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: isDark ? colors.subCard : '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  notifActionChipText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 11,
+    color: colors.brandBlue,
+  },
+  updateModernCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.25 : 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  updateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  updateAuthorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  updateAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  updateAuthorName: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 14,
+    color: colors.text,
+  },
+  updatePriorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  updatePriorityText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  updateExpandBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  updateExpandText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 12,
+    color: colors.brandBlue,
+  },
   equipItem: { flexDirection: 'row', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#F1F5F9', alignItems: 'center' },
   equipImagePlaceholder: { width: 64, height: 64, borderRadius: 12, backgroundColor: isDark ? colors.subCard : '#F8FAFC', justifyContent: 'center', alignItems: 'center', marginRight: 16, overflow: 'hidden' },
   equipImg: { width: '100%', height: '100%', resizeMode: 'cover' },
