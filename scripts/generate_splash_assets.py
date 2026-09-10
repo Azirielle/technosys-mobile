@@ -1,5 +1,6 @@
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageFilter
+import numpy as np
 
 def generate_assets():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -32,82 +33,105 @@ def generate_assets():
 
     orig = Image.open(trans_logo_path)
     bbox = orig.getbbox()
-    emblem = orig.crop(bbox)
+    emblem_tight = orig.crop(bbox)
 
-    # 1. SPLASH ICON (Lockup: Emblem + 'TECHNOCYCLE' + 'FIELD OPERATIONS')
-    canvas_w, canvas_h = 600, 680
-    splash = Image.new('RGBA', (canvas_w, canvas_h), (255, 255, 255, 0))
+    # 1. ANDROID 12+ CIRCULAR SAFE-ZONE NATIVE SPLASH (512x512)
+    native_splash = Image.new('RGBA', (512, 512), (255, 255, 255, 0))
+    target_dim = 300
+    ratio = target_dim / max(emblem_tight.width, emblem_tight.height)
+    emblem_scaled = emblem_tight.resize((int(emblem_tight.width * ratio), int(emblem_tight.height * ratio)), Image.Resampling.LANCZOS)
+    px = (512 - emblem_scaled.width) // 2
+    py = (512 - emblem_scaled.height) // 2
+    native_splash.paste(emblem_scaled, (px, py), emblem_scaled)
+    native_splash.save(os.path.join(assets_dir, 'splash-icon.png'))
+    print('1. Generated Android 12+ safe-zone 1:1 splash-icon.png:', native_splash.size)
 
-    target_emblem_w = 380
-    ratio = target_emblem_w / emblem.width
-    target_emblem_h = int(emblem.height * ratio)
-    emblem_resized = emblem.resize((target_emblem_w, target_emblem_h), Image.Resampling.LANCZOS)
+    # 2. 5 EMBLEM ANIMATION LAYERS (Normalized on 600x600 canvas)
+    arr = np.array(orig)
+    r, g, b, a = arr[:,:,0], arr[:,:,1], arr[:,:,2], arr[:,:,3]
+    visible = a > 50
 
-    emblem_x = (canvas_w - target_emblem_w) // 2
-    emblem_y = 30
-    splash.paste(emblem_resized, (emblem_x, emblem_y), emblem_resized)
+    blue_mask = visible & (b > 100) & (r < 60)
+    green_mask = visible & (g > 90) & (r < 60) & (b < 80)
+    yellow_mask = visible & (r > 180) & (g > 160) & (b < 80)
+    red_mask = visible & (r > 120) & (g < 60) & (b < 70)
 
-    draw = ImageDraw.Draw(splash)
-    font_title = ImageFont.truetype('C:/Windows/Fonts/segoeuib.ttf', 48)
-    font_sub = ImageFont.truetype('C:/Windows/Fonts/segoeui.ttf', 19)
+    def dilate_mask(m, radius=7):
+        p_img = Image.fromarray((m * 255).astype(np.uint8))
+        dilated = p_img.filter(ImageFilter.MaxFilter(radius))
+        return np.array(dilated) > 128
 
-    title_text = 'TECHNOCYCLE'
-    sub_text = 'FIELD OPERATIONS'
+    dil_blue = dilate_mask(blue_mask, 7)
+    dil_green = dilate_mask(green_mask, 7)
+    dil_yellow = dilate_mask(yellow_mask, 7)
+    dil_red = dilate_mask(red_mask, 7)
+    all_arrows = dil_blue | dil_green | dil_yellow | dil_red
+    center_mask = visible & (~all_arrows)
 
-    t_bbox = draw.textbbox((0, 0), title_text, font=font_title)
-    t_w = t_bbox[2] - t_bbox[0]
-    t_x = (canvas_w - t_w) // 2
-    t_y = emblem_y + target_emblem_h + 24
-    draw.text((t_x, t_y), title_text, fill=(15, 23, 42, 255), font=font_title)
+    layers = {
+        'arrow_blue.png': dil_blue & visible,
+        'arrow_red.png': dil_red & visible,
+        'arrow_yellow.png': dil_yellow & visible,
+        'arrow_green.png': dil_green & visible,
+        'center_gear.png': center_mask & visible
+    }
 
-    spaced_sub = '  '.join(list(sub_text))
-    s_bbox = draw.textbbox((0, 0), spaced_sub, font=font_sub)
-    s_w = s_bbox[2] - s_bbox[0]
-    s_x = (canvas_w - s_w) // 2
-    s_y = t_y + 58
-    draw.text((s_x, s_y), spaced_sub, fill=(100, 116, 139, 255), font=font_sub)
+    out_dir = os.path.join(assets_dir, 'emblem_parts')
+    os.makedirs(out_dir, exist_ok=True)
 
-    pad = 20
-    s_bbox = splash.getbbox()
-    splash_cropped = splash.crop((max(0, s_bbox[0]-pad), max(0, s_bbox[1]-pad), min(canvas_w, s_bbox[2]+pad), min(canvas_h, s_bbox[3]+pad)))
-    splash_cropped.save(os.path.join(assets_dir, 'splash-icon.png'))
-    print('1. Generated splash-icon.png:', splash_cropped.size)
+    for name, m in layers.items():
+        part = np.zeros_like(arr)
+        part[m] = arr[m]
+        p_img = Image.fromarray(part)
+        p_cropped = p_img.crop(bbox)
+        
+        c_size = 600
+        c_img = Image.new('RGBA', (c_size, c_size), (255, 255, 255, 0))
+        s_dim = 520
+        s_ratio = s_dim / max(emblem_tight.width, emblem_tight.height)
+        p_scaled = p_cropped.resize((int(p_cropped.width * s_ratio), int(p_cropped.height * s_ratio)), Image.Resampling.LANCZOS)
+        c_img.paste(p_scaled, ((c_size - p_scaled.width) // 2, (c_size - p_scaled.height) // 2), p_scaled)
+        c_img.save(os.path.join(out_dir, name))
+        print(f'2. Saved animation layer {name}')
 
-    # 2. ANDROID ADAPTIVE FOREGROUND (432x432)
+    # 3. ANDROID ADAPTIVE FOREGROUND (432x432)
     fg_size = 432
     fg = Image.new('RGBA', (fg_size, fg_size), (255, 255, 255, 0))
     fg_emblem_w = 260
-    fg_ratio = fg_emblem_w / emblem.width
-    fg_emblem_h = int(emblem.height * fg_ratio)
-    fg_emblem = emblem.resize((fg_emblem_w, fg_emblem_h), Image.Resampling.LANCZOS)
+    fg_ratio = fg_emblem_w / emblem_tight.width
+    fg_emblem_h = int(emblem_tight.height * fg_ratio)
+    fg_emblem = emblem_tight.resize((fg_emblem_w, fg_emblem_h), Image.Resampling.LANCZOS)
     fg.paste(fg_emblem, ((fg_size - fg_emblem_w) // 2, (fg_size - fg_emblem_h) // 2), fg_emblem)
     fg.save(os.path.join(assets_dir, 'android-icon-foreground.png'))
-    print('2. Generated android-icon-foreground.png:', fg.size)
+    print('3. Generated android-icon-foreground.png:', fg.size)
 
-    # 3. ANDROID ADAPTIVE BACKGROUND (432x432)
+    # 4. ANDROID ADAPTIVE BACKGROUND (432x432)
     bg = Image.new('RGBA', (fg_size, fg_size), (255, 255, 255, 255))
     bg.save(os.path.join(assets_dir, 'android-icon-background.png'))
-    print('3. Generated android-icon-background.png:', bg.size)
+    print('4. Generated android-icon-background.png:', bg.size)
 
-    # 4. MASTER ICON (1024x1024)
+    # 5. MASTER ICON (1024x1024)
     icon_size = 1024
     master_icon = Image.new('RGBA', (icon_size, icon_size), (255, 255, 255, 255))
     m_emblem_w = 720
-    m_ratio = m_emblem_w / emblem.width
-    m_emblem_h = int(emblem.height * m_ratio)
-    m_emblem = emblem.resize((m_emblem_w, m_emblem_h), Image.Resampling.LANCZOS)
+    m_ratio = m_emblem_w / emblem_tight.width
+    m_emblem_h = int(emblem_tight.height * m_ratio)
+    m_emblem = emblem_tight.resize((m_emblem_w, m_emblem_h), Image.Resampling.LANCZOS)
     master_icon.paste(m_emblem, ((icon_size - m_emblem_w) // 2, (icon_size - m_emblem_h) // 2), m_emblem)
+    master_icon.save(os.path.join(assets_dir, 'icon.png'))
+    master_icon.save(os.path.join(assets_dir, 'technosys_mobile.png'))
+    master_icon.save(os.path.join(assets_dir, 'favicon.png'))
+    print('5. Generated master icon assets:', master_icon.size)
 
-    # 5. HEADER LOGO (512x512)
+    # 6. HEADER LOGO (512x512)
     logo_img = Image.new('RGBA', (512, 512), (255, 255, 255, 0))
     w = 480
-    ratio = w / emblem.width
-    h = int(emblem.height * ratio)
-    resized = emblem.resize((w, h), Image.Resampling.LANCZOS)
+    ratio = w / emblem_tight.width
+    h = int(emblem_tight.height * ratio)
+    resized = emblem_tight.resize((w, h), Image.Resampling.LANCZOS)
     logo_img.paste(resized, ((512 - w) // 2, (512 - h) // 2), resized)
     logo_img.save(os.path.join(base_dir, 'assets', 'logo.png'))
-    print('5. Generated assets/logo.png:', logo_img.size)
+    print('6. Generated assets/logo.png:', logo_img.size)
 
 if __name__ == '__main__':
     generate_assets()
-
