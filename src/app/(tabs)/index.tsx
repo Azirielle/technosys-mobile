@@ -517,9 +517,38 @@ export default function HomeScreen() {
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
-  // Timesheets Feature
+  // Timesheets & Live Attendance Feature
   const [timesheetModalVisible, setTimesheetModalVisible] = useState(false);
-    const [hasClockedInToday, setHasClockedInToday] = useState(false);
+  const [hasClockedInToday, setHasClockedInToday] = useState(false);
+  const [activeTimeLog, setActiveTimeLog] = useState<any | null>(null);
+  const [todayCompletedLog, setTodayCompletedLog] = useState<any | null>(null);
+  const [clockingOut, setClockingOut] = useState(false);
+  const [elapsedShiftTime, setElapsedShiftTime] = useState<string>('');
+  const [targetGeofence, setTargetGeofence] = useState<{
+    name: string;
+    lat: number;
+    lon: number;
+    radius: number;
+  } | null>(null);
+
+  // Live Shift Timer Effect
+  useEffect(() => {
+    if (!activeTimeLog?.app_time_in) {
+      setElapsedShiftTime('');
+      return;
+    }
+    
+    const updateElapsed = () => {
+      const diffMs = Math.max(0, Date.now() - new Date(activeTimeLog.app_time_in).getTime());
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      setElapsedShiftTime(`${hours}h ${mins}m`);
+    };
+
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 30000);
+    return () => clearInterval(interval);
+  }, [activeTimeLog]);
   const [timeLogs, setTimeLogs] = useState<any[]>([]);
   const [selectedTimeLog, setSelectedTimeLog] = useState<any>(null);
   const [timesheetLoading, setTimesheetLoading] = useState(false);
@@ -729,19 +758,31 @@ export default function HomeScreen() {
       
       if (scheduleData) setSchedule(scheduleData);
 
-      // Check if user clocked in today
+      // Check today's attendance logs
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
       
-      const { data: todaysLog } = await supabase
+      const { data: todaysLogs } = await supabase
         .from('time_logs')
-        .select('id, app_time_out')
+        .select('*')
         .eq('technician_id', user.id)
         .gte('created_at', startOfDay.toISOString())
-        .limit(1);
+        .order('created_at', { ascending: false });
 
-      if (todaysLog && todaysLog.length > 0) {
+      if (todaysLogs && todaysLogs.length > 0) {
         setHasClockedInToday(true);
+        const ongoing = todaysLogs.find(l => !l.app_time_out);
+        if (ongoing) {
+          setActiveTimeLog(ongoing);
+          setTodayCompletedLog(null);
+        } else {
+          setActiveTimeLog(null);
+          setTodayCompletedLog(todaysLogs[0]);
+        }
+      } else {
+        setHasClockedInToday(false);
+        setActiveTimeLog(null);
+        setTodayCompletedLog(null);
       }
 
       fetchNotifications();
@@ -790,10 +831,72 @@ export default function HomeScreen() {
     Animated.timing(menuAnim, { toValue: 0, duration: 250, easing: Easing.in(Easing.poly(4)), useNativeDriver: true }).start(() => setMenuVisible(false));
   };
 
+  const resolveTargetGeofence = async (): Promise<{ name: string; lat: number; lon: number; radius: number }> => {
+    // 1. If active dispatch schedule exists with valid coordinates, use it as primary target
+    if (schedule?.geofence_lat && schedule?.geofence_lon) {
+      return {
+        name: schedule.client_name || 'Assigned Dispatch Site',
+        lat: Number(schedule.geofence_lat),
+        lon: Number(schedule.geofence_lon),
+        radius: Number(schedule.geofence_radius) || 100,
+      };
+    }
+
+    // 2. Cascade to active company branches from office_locations
+    try {
+      const { data: offices } = await supabase
+        .from('office_locations')
+        .select('id, name, latitude, longitude, radius_meters')
+        .eq('is_active', true);
+
+      if (offices && offices.length > 0) {
+        if (userLoc) {
+          let nearest = offices[0];
+          let minDistance = Infinity;
+
+          for (const office of offices) {
+            const dist = getDistance(
+              { latitude: userLoc.lat, longitude: userLoc.lon },
+              { latitude: Number(office.latitude), longitude: Number(office.longitude) }
+            );
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearest = office;
+            }
+          }
+
+          return {
+            name: nearest.name,
+            lat: Number(nearest.latitude),
+            lon: Number(nearest.longitude),
+            radius: Number(nearest.radius_meters) || 100,
+          };
+        } else {
+          return {
+            name: offices[0].name,
+            lat: Number(offices[0].latitude),
+            lon: Number(offices[0].longitude),
+            radius: Number(offices[0].radius_meters) || 100,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Error resolving office locations:', e);
+    }
+
+    // 3. Fallback default to TechnoCycle Main Office
+    return {
+      name: 'TechnoCycle Main Office',
+      lat: 14.5995,
+      lon: 120.9842,
+      radius: 100,
+    };
+  };
+
   const handleClockIn = async () => {
-    if (!schedule) {
-       Alert.alert("No Schedule", "You don't have an active dispatch scheduled today.");
-       return;
+    if (activeTimeLog) {
+      safeAlert("Active Shift", "You already have an active shift in progress. Please clock out before starting a new session.");
+      return;
     }
 
     setClockInModal(true);
@@ -802,36 +905,96 @@ export default function HomeScreen() {
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        safeAlert("Permission Required", "High-accuracy location access is required to verify clock-in.");
         setLocationStatus('fallback');
         return;
       }
 
-      let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      setUserLoc({ lat: location.coords.latitude, lon: location.coords.longitude });
+      let location = null;
+      try {
+        location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      } catch (err) {
+        location = await Location.getLastKnownPositionAsync();
+      }
+
+      if (!location) {
+        safeAlert("GPS Unavailable", "Could not acquire GPS position. Please ensure device location is enabled.");
+        setLocationStatus('fallback');
+        return;
+      }
+
+      const currentLoc = { lat: location.coords.latitude, lon: location.coords.longitude };
+      setUserLoc(currentLoc);
       
+      const target = await resolveTargetGeofence();
+      setTargetGeofence(target);
+
       const distance = getDistance(
-        { latitude: location.coords.latitude, longitude: location.coords.longitude },
-        { latitude: schedule.geofence_lat, longitude: schedule.geofence_lon }
+        { latitude: currentLoc.lat, longitude: currentLoc.lon },
+        { latitude: target.lat, longitude: target.lon }
       );
 
-      if (distance <= schedule.geofence_radius) {
-        // Success inside geofence
-        await supabase.from('time_logs').insert({
-          technician_id: profile?.id,
-          app_time_in: new Date().toISOString(),
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          status: 'verified',
-          geofence_status: 'inside'
-        });
+      const now = new Date().toISOString();
+      const techId = profile?.id;
+
+      if (distance <= target.radius) {
+        // --- 1. INSERT TIME LOG ---
+        const { data: insertedLog, error: logError } = await supabase
+          .from('time_logs')
+          .insert({
+            technician_id: techId,
+            app_time_in: now,
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lon,
+            status: 'verified',
+            geofence_status: 'inside',
+            is_manual_entry: false,
+          })
+          .select()
+          .single();
+
+        if (logError) throw logError;
+
+        // --- 2. DUAL-STREAM: UPSERT TECHNICIAN LOCATIONS ---
+        if (techId) {
+          await supabase
+            .from('technician_locations')
+            .upsert({
+              technician_id: techId,
+              latitude: currentLoc.lat,
+              longitude: currentLoc.lon,
+              status: 'working',
+              updated_at: now,
+            });
+
+          // --- 3. REALTIME BROADCAST TO ADMIN ---
+          const trackingChannel = supabase.channel('fleet-tracking');
+          await trackingChannel.send({
+            type: 'broadcast',
+            event: 'location_update',
+            payload: {
+              technician_id: techId,
+              full_name: profile?.full_name || 'Technician',
+              latitude: currentLoc.lat,
+              longitude: currentLoc.lon,
+              status: 'working',
+              action: 'clock_in',
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+          });
+        }
+
         setLocationStatus('success');
         setHasClockedInToday(true);
-        setTimeout(() => setClockInModal(false), 2000);
+        setActiveTimeLog(insertedLog);
+        setTodayCompletedLog(null);
+        setTimeout(() => setClockInModal(false), 1800);
       } else {
-        // Fallback due to distance
+        // Outside target radius -> fallback to map & photo override
         setLocationStatus('fallback');
       }
-    } catch (e) {
+    } catch (e: any) {
+      console.error("Clock in error:", e);
       setLocationStatus('fallback');
     }
   };
@@ -839,13 +1002,14 @@ export default function HomeScreen() {
   const handleVisualOverride = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Camera access is required for visual override.');
+      safeAlert('Permission Denied', 'Camera access is required for visual override.');
       return;
     }
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.5,
+      cameraType: ImagePicker.CameraType.front,
     });
 
     if (!result.canceled && result.assets[0].uri) {
@@ -860,25 +1024,161 @@ export default function HomeScreen() {
         await supabase.storage.from('dtr-selfies').upload(fileName, blob);
         const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
 
-        await supabase.from('time_logs').insert({
-          technician_id: profile?.id,
-          app_time_in: new Date().toISOString(),
-          latitude: userLoc?.lat || 0,
-          longitude: userLoc?.lon || 0,
-          status: 'pending_review',
-          geofence_status: 'outside',
-          photo_url: publicUrlData.publicUrl
-        });
+        const now = new Date().toISOString();
+        const techId = profile?.id;
+        const currentLoc = userLoc || { lat: 0, lon: 0 };
 
-        Alert.alert('Override Submitted', 'Your photo has been sent to HR for review.');
+        // 1. Insert time log with pending_review status
+        const { data: insertedLog, error: logError } = await supabase
+          .from('time_logs')
+          .insert({
+            technician_id: techId,
+            app_time_in: now,
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lon,
+            status: 'pending_review',
+            geofence_status: 'outside',
+            photo_url: publicUrlData.publicUrl || fileName,
+            photo_status: 'pending',
+            is_manual_entry: false,
+          })
+          .select()
+          .single();
+
+        if (logError) throw logError;
+
+        // 2. Dual stream: upsert technician locations
+        if (techId) {
+          await supabase
+            .from('technician_locations')
+            .upsert({
+              technician_id: techId,
+              latitude: currentLoc.lat,
+              longitude: currentLoc.lon,
+              status: 'working',
+              updated_at: now,
+            });
+
+          // 3. Realtime broadcast to admin
+          const trackingChannel = supabase.channel('fleet-tracking');
+          await trackingChannel.send({
+            type: 'broadcast',
+            event: 'location_update',
+            payload: {
+              technician_id: techId,
+              full_name: profile?.full_name || 'Technician',
+              latitude: currentLoc.lat,
+              longitude: currentLoc.lon,
+              status: 'working',
+              action: 'clock_in_override',
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+          });
+        }
+
+        safeAlert('Override Submitted', 'Your attendance and selfie have been logged and submitted to HR for review.');
         setClockInModal(false);
         setHasClockedInToday(true);
-      } catch (err) {
-        console.error(err);
-        Alert.alert('Upload Failed', 'There was an issue uploading your photo.');
+        setActiveTimeLog(insertedLog);
+        setTodayCompletedLog(null);
+      } catch (err: any) {
+        console.error("Photo override error:", err);
+        safeAlert('Upload Failed', 'There was an issue uploading your photo. Please try again.');
       }
       setUploadingSelfie(false);
     }
+  };
+
+  const handleClockOut = () => {
+    if (!activeTimeLog) return;
+
+    const shiftStart = new Date(activeTimeLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    Alert.alert(
+      "Confirm Clock Out",
+      `Are you sure you want to end your shift?\n(Started at ${shiftStart}${elapsedShiftTime ? ` • Duration: ${elapsedShiftTime}` : ''})`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Clock Out Now", 
+          style: "destructive",
+          onPress: async () => {
+            setClockingOut(true);
+            try {
+              let exitLoc = userLoc;
+              try {
+                const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                exitLoc = { lat: loc.coords.latitude, lon: loc.coords.longitude };
+              } catch (e) {}
+
+              const now = new Date();
+              const nowIso = now.toISOString();
+              const startMs = new Date(activeTimeLog.app_time_in).getTime();
+              const diffMs = Math.max(0, now.getTime() - startMs);
+              const totalHours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10;
+              const techId = profile?.id;
+
+              // 1. Update time_logs with app_time_out and total_hours
+              const { error: logErr } = await supabase
+                .from('time_logs')
+                .update({
+                  app_time_out: nowIso,
+                  total_hours: totalHours,
+                })
+                .eq('id', activeTimeLog.id);
+
+              if (logErr) throw logErr;
+
+              // 2. Update technician_locations to offline
+              if (techId) {
+                await supabase
+                  .from('technician_locations')
+                  .upsert({
+                    technician_id: techId,
+                    latitude: exitLoc?.lat || 0,
+                    longitude: exitLoc?.lon || 0,
+                    status: 'offline',
+                    updated_at: nowIso
+                  });
+
+                // 3. Broadcast clock_out to admin
+                const trackingChannel = supabase.channel('fleet-tracking');
+                await trackingChannel.send({
+                  type: 'broadcast',
+                  event: 'location_update',
+                  payload: {
+                    technician_id: techId,
+                    full_name: profile?.full_name || 'Technician',
+                    latitude: exitLoc?.lat || 0,
+                    longitude: exitLoc?.lon || 0,
+                    status: 'offline',
+                    action: 'clock_out',
+                    time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  }
+                });
+              }
+
+              safeAlert(
+                "Shift Ended",
+                `You have successfully clocked out. Total logged time: ${totalHours} hours. Attendance synced with HQ.`
+              );
+
+              setTodayCompletedLog({
+                ...activeTimeLog,
+                app_time_out: nowIso,
+                total_hours: totalHours
+              });
+              setActiveTimeLog(null);
+            } catch (err: any) {
+              console.error("Clock out error:", err);
+              safeAlert("Clock Out Failed", err.message || "Failed to log clock out. Please check your connection.");
+            } finally {
+              setClockingOut(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -902,15 +1202,78 @@ export default function HomeScreen() {
 
         {/* MAIN CONTENT */}
         <View style={styles.mainContent}>
-          {hasClockedInToday ? (
-            <View style={[styles.clockInCard, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4', borderColor: isDark ? '#065F46' : '#BBF7D0', borderWidth: 1 }]} >
-              <View style={[styles.clockInIconContainer, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#BBF7D0' }]}>
-                <Feather name="check" size={32} color={BRAND.green} />
+          {activeTimeLog ? (
+            <View style={[styles.activeShiftCard, { backgroundColor: isDark ? colors.card : '#FFFFFF', borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#BBF7D0' }]}>
+              {/* Header: Live Badge + Clock-in Time */}
+              <View style={styles.activeShiftHeader}>
+                <View style={styles.activePulseBadge}>
+                  <Animated.View style={[styles.activePulseDot, { transform: [{ scale: auraAnim }] }]} />
+                  <Text style={styles.activePulseText}>SHIFT ACTIVE</Text>
+                </View>
+                <Text style={styles.activeShiftTime}>
+                  Started at {new Date(activeTimeLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
               </View>
-              <View style={styles.clockInTextContainer}>
-                <Text style={[styles.clockInTitle, { color: BRAND.green }]}>Clock In Done</Text>
-                <Text style={[styles.clockInSub, { color: colors.textMuted }]}>Wait for admin to process clock-out</Text>
+
+              {/* Body: Elapsed Hours & Status */}
+              <View style={styles.activeShiftBody}>
+                <View>
+                  <Text style={styles.activeShiftTitle}>Technician on Duty</Text>
+                  <Text style={styles.activeShiftElapsed}>
+                    Elapsed: {elapsedShiftTime || 'Calculating...'}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textSubtle }}>
+                    {activeTimeLog.geofence_status === 'inside' ? 'Verified on-site' : 'Photo override'}
+                  </Text>
+                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: activeTimeLog.status === 'verified' ? '#10B981' : '#F59E0B' }}>
+                    {activeTimeLog.status ? activeTimeLog.status.toUpperCase() : 'ACTIVE'}
+                  </Text>
+                </View>
               </View>
+
+              {/* Action: Clock Out Button */}
+              <TouchableOpacity 
+                style={styles.clockOutBtn} 
+                activeOpacity={0.8}
+                disabled={clockingOut}
+                onPress={handleClockOut}
+              >
+                {clockingOut ? (
+                  <ActivityIndicator size="small" color="#EF4444" />
+                ) : (
+                  <>
+                    <Feather name="log-out" size={16} color="#EF4444" />
+                    <Text style={styles.clockOutBtnText}>Clock Out (End Shift)</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : todayCompletedLog ? (
+            <View style={[styles.completedShiftCard, { backgroundColor: isDark ? colors.card : '#FFFFFF', borderColor: isDark ? colors.cardBorder : '#E2E8F0' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7', justifyContent: 'center', alignItems: 'center' }}>
+                    <Feather name="check" size={18} color="#10B981" />
+                  </View>
+                  <View>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.text }}>Shift Completed Today</Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted }}>
+                      {new Date(todayCompletedLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {todayCompletedLog.app_time_out ? new Date(todayCompletedLog.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Logged'} ({todayCompletedLog.total_hours || '0'} hrs)
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity 
+                  style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: isDark ? colors.subCard : '#F1F5F9' }}
+                  onPress={handleClockIn}
+                >
+                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>+ New Shift</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textSubtle }}>
+                Attendance recorded and synchronized with Admin & Payroll.
+              </Text>
             </View>
           ) : (
             <TouchableOpacity 
@@ -1061,12 +1424,43 @@ export default function HomeScreen() {
                       <Feather name="x" size={24} color="#64748B" />
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.fallbackSub}>You are outside the target green zone.</Text>
+                  <Text style={styles.fallbackSub}>
+                    You are outside {targetGeofence?.name ? `"${targetGeofence.name}"` : 'the target green zone'}.
+                  </Text>
                   <View style={styles.mapContainer}>
-                    {userLoc && schedule && (
-                      <MapView provider={'google'} style={styles.map} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: 0.005, longitudeDelta: 0.005 }}>
-                        <Circle center={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} radius={schedule.geofence_radius} strokeColor="rgba(16, 185, 129, 0.5)" fillColor="rgba(16, 185, 129, 0.2)" />
-                        <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} />
+                    {userLoc && (targetGeofence || schedule) && (
+                      <MapView
+                        provider={'google'}
+                        style={styles.map}
+                        initialRegion={{
+                          latitude: userLoc.lat,
+                          longitude: userLoc.lon,
+                          latitudeDelta: 0.01,
+                          longitudeDelta: 0.01,
+                        }}
+                      >
+                        <Circle
+                          center={{
+                            latitude: targetGeofence?.lat ?? schedule?.geofence_lat,
+                            longitude: targetGeofence?.lon ?? schedule?.geofence_lon,
+                          }}
+                          radius={targetGeofence?.radius ?? schedule?.geofence_radius ?? 100}
+                          strokeColor="rgba(16, 185, 129, 0.6)"
+                          fillColor="rgba(16, 185, 129, 0.2)"
+                        />
+                        <Marker
+                          coordinate={{
+                            latitude: targetGeofence?.lat ?? schedule?.geofence_lat,
+                            longitude: targetGeofence?.lon ?? schedule?.geofence_lon,
+                          }}
+                          title={targetGeofence?.name || schedule?.client_name || 'Target Zone'}
+                          pinColor="#10B981"
+                        />
+                        <Marker
+                          coordinate={{ latitude: userLoc.lat, longitude: userLoc.lon }}
+                          title="Your Location"
+                          pinColor="#EF4444"
+                        />
                       </MapView>
                     )}
                   </View>
@@ -2656,6 +3050,97 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   clockInTextContainer: { flex: 1 },
   clockInTitle: { fontFamily: 'DMSans-Bold', fontSize: 22, color: colors.text, marginBottom: 4 },
   clockInSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted },
+  activeShiftCard: {
+    backgroundColor: isDark ? colors.card : '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 36,
+    borderWidth: 1.5,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#BBF7D0',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.3 : 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  activeShiftHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  activePulseBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  activePulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+  },
+  activePulseText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 11,
+    color: '#10B981',
+    letterSpacing: 0.5,
+  },
+  activeShiftTime: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 12,
+    color: colors.textSubtle,
+  },
+  activeShiftBody: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  activeShiftTitle: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 18,
+    color: colors.text,
+  },
+  activeShiftElapsed: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 13,
+    color: colors.brandBlue,
+    marginTop: 2,
+  },
+  clockOutBtn: {
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
+    borderRadius: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  clockOutBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 14,
+    color: '#EF4444',
+  },
+  completedShiftCard: {
+    backgroundColor: isDark ? colors.card : '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 36,
+    borderWidth: 1,
+    borderColor: isDark ? colors.cardBorder : '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: isDark ? 0.2 : 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
   bubbleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginBottom: 40 },
   bubbleBtn: { alignItems: 'center', gap: 12 },
   bubbleCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: colors.card, justifyContent: 'center', alignItems: 'center', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10, shadowColor: isDark ? '#000' : undefined },
