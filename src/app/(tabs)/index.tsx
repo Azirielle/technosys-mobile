@@ -543,6 +543,7 @@ export default function HomeScreen() {
 
   // Timesheets & Live Attendance Feature
   const [timesheetModalVisible, setTimesheetModalVisible] = useState(false);
+  const [shiftDisputeModalVisible, setShiftDisputeModalVisible] = useState(false);
   const [hasClockedInToday, setHasClockedInToday] = useState(false);
   const [activeTimeLog, setActiveTimeLog] = useState<any | null>(null);
   const [todayCompletedLog, setTodayCompletedLog] = useState<any | null>(null);
@@ -728,25 +729,34 @@ export default function HomeScreen() {
     } else {
       // Called from list view when no specific log is selected
       if (timeLogs && timeLogs.length > 0) {
-        safeAlert(
-          "Select a Shift to Dispute",
-          "Please tap on the specific shift entry from the list below that you would like to dispute so we can attach the exact time log and GPS details to your request."
-        );
+        setShiftDisputeModalVisible(true);
       } else {
-        // No time logs exist, allow general DTR inquiry
-        setAiInitialQuery("I would like to file a general inquiry regarding my DTR and attendance logs: ");
-        setAiInitialTicketData({
-          category: 'DTR Issue',
-          logDate: new Date().toISOString().split('T')[0],
-          expectedIn: '08:00 AM',
-          expectedOut: '05:00 PM',
-        });
-        setTimesheetModalVisible(false);
-        setTimeout(() => {
-          setSupportModalVisible(true);
-        }, 350);
+        handleDisputeMissingShift();
       }
     }
+  };
+
+  const handleSelectShiftToDispute = (log: any) => {
+    setShiftDisputeModalVisible(false);
+    handleDisputeTimeLog(log);
+  };
+
+  const handleDisputeMissingShift = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const queryText = `I would like to file an attendance dispute for an unrecorded shift on ${today}. My shift is missing from my timesheets. Reason for dispute: `;
+    setAiInitialQuery(queryText);
+    setAiInitialTicketData({
+      category: 'DTR Issue',
+      logDate: today,
+      expectedIn: '08:00 AM',
+      expectedOut: '05:00 PM',
+      reason: queryText,
+    });
+    setShiftDisputeModalVisible(false);
+    setTimesheetModalVisible(false);
+    setTimeout(() => {
+      setSupportModalVisible(true);
+    }, 350);
   };
 
   const fetchSchedulesList = async () => {
@@ -3655,6 +3665,122 @@ export default function HomeScreen() {
           )}
         </RNModal>
 
+        {/* CHUNK 46: SHIFT DISPUTE BOTTOM SHEET PICKER */}
+        <RNModal
+          isVisible={shiftDisputeModalVisible}
+          onBackdropPress={() => setShiftDisputeModalVisible(false)}
+          onBackButtonPress={() => setShiftDisputeModalVisible(false)}
+          onSwipeComplete={() => setShiftDisputeModalVisible(false)}
+          swipeDirection={['down']}
+          propagateSwipe={true}
+          swipeThreshold={50}
+          style={{ margin: 0, justifyContent: 'flex-end' }}
+        >
+          <View style={styles.profileOverlay}>
+            <View style={[styles.profileSheet, { maxHeight: '80%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
+              
+              {/* Header */}
+              <View style={styles.modalHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 }}>
+                  <View style={[styles.clockInErrorIconBox, { width: 38, height: 38, borderRadius: 10, backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2' }]}>
+                    <Feather name="alert-triangle" size={20} color={BRAND.red} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalTitle, { color: colors.text, fontSize: 18 }]}>Select Shift to Dispute</Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted }}>Choose a shift to pre-fill your dispute ticket</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setShiftDisputeModalVisible(false)}>
+                  <Feather name="x" size={24} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Missing Shift Quick Action */}
+              <TouchableOpacity
+                style={[
+                  styles.disputeMissingBtn,
+                  { 
+                    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.12)' : '#EFF6FF',
+                    borderColor: isDark ? 'rgba(59, 130, 246, 0.3)' : '#BFDBFE',
+                  }
+                ]}
+                onPress={handleDisputeMissingShift}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Feather name="help-circle" size={20} color={BRAND.blue} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.disputeMissingBtnText, { color: BRAND.blue }]}>Shift Missing from List?</Text>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Dispute an unrecorded workday or cloud sync delay</Text>
+                  </View>
+                </View>
+                <Feather name="arrow-right" size={16} color={BRAND.blue} />
+              </TouchableOpacity>
+
+              {/* Shifts List */}
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.textMuted, marginTop: 16, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Recorded Shifts ({timeLogs?.length || 0})
+              </Text>
+
+              <FlatList
+                data={timeLogs}
+                keyExtractor={(item) => `dispute-${item.id}`}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 32 }}
+                ListEmptyComponent={() => (
+                  <View style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 14, color: colors.textMuted, textAlign: 'center' }}>
+                      No shifts recorded yet. Use the missing shift option above to report your attendance.
+                    </Text>
+                  </View>
+                )}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.disputeShiftCard,
+                      {
+                        backgroundColor: isDark ? colors.subCard : '#F8FAFC',
+                        borderColor: colors.cardBorder,
+                      }
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => handleSelectShiftToDispute(item)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.disputeShiftDate, { color: colors.text }]}>
+                        {new Date(item.created_at || item.app_time_in).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                      <Text style={[styles.disputeShiftTimes, { color: colors.textMuted }]}>
+                        {item.app_time_in ? new Date(item.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
+                        {' → '}
+                        {item.app_time_out ? new Date(item.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ongoing / Missing'}
+                      </Text>
+
+                      <View style={{ flexDirection: 'row', marginTop: 8, gap: 6, alignItems: 'center' }}>
+                        <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: colors.brandBlue }}>
+                            {item.total_hours ? `${item.total_hours} hrs` : 'Incomplete'}
+                          </Text>
+                        </View>
+                        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: item.status === 'approved' || item.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2') }}>
+                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: item.status === 'approved' || item.status === 'verified' ? BRAND.green : BRAND.red }}>
+                            {item.status ? item.status.replace('_', ' ').toUpperCase() : 'LOGGED'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 13, color: BRAND.red }}>Dispute</Text>
+                      <Feather name="chevron-right" size={16} color={BRAND.red} />
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          </View>
+        </RNModal>
+
         {/* LEAVE MODAL */}
         <RNModal isVisible={leaveModalVisible}   onBackdropPress={() => setLeaveModalVisible(false)} onBackButtonPress={() => setLeaveModalVisible(false)} onSwipeComplete={() => setLeaveModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
@@ -4508,6 +4634,39 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   clockInDismissBtnText: {
     fontFamily: 'DMSans-Medium',
     fontSize: 14,
+  },
+
+  // Chunk 46: Shift Dispute Bottom Sheet Styles
+  disputeMissingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  disputeMissingBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 14,
+  },
+  disputeShiftCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  disputeShiftDate: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  disputeShiftTimes: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 12,
   },
 });
 
