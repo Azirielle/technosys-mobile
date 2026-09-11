@@ -1486,9 +1486,9 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: colors.cardBorder, alignSelf: 'center', marginBottom: 12 }} />
           
           {/* Modal Header */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: getCatColor(ticketCategory) + '20', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: isDark ? getCatColor(ticketCategory) + '30' : getCatColor(ticketCategory) + '20', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
                 <Ionicons 
                   name={
                     ticketCategory === 'Payroll Issue' ? 'card' :
@@ -1496,36 +1496,36 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                     ticketCategory === 'DTR Issue' ? 'time' :
                     ticketCategory === 'File Leave' ? 'calendar' : 'help-circle'
                   } 
-                  size={18} 
+                  size={20} 
                   color={getCatColor(ticketCategory)} 
                 />
               </View>
               <View>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>Quick Ticket Form</Text>
-                <Text style={{ fontSize: 11, color: '#64748B' }}>5-Second Submission • HR Dispatch</Text>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Quick Ticket Form</Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted }}>5-Second Submission • HR Dispatch</Text>
               </View>
             </View>
             <TouchableOpacity onPress={() => setTicketModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Feather name="x" size={22} color="#64748B" />
+              <Feather name="x" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
           {/* Form Body ScrollView */}
           <ScrollView ref={formScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             
-            {/* Step 1: Category Selection with Instant Auto-Cascade */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            {/* Step 1: Category Selection (Collision-Free Grid) */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
                 1. Select Category
               </Text>
-              <View style={{ backgroundColor: getCatColor(ticketCategory) + '18', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+              <View style={{ backgroundColor: isDark ? getCatColor(ticketCategory) + '25' : getCatColor(ticketCategory) + '18', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
                 <Text style={{ fontSize: 11, fontWeight: '700', color: getCatColor(ticketCategory) }}>
                   {ticketCategory} Selected
                 </Text>
               </View>
             </View>
 
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, marginBottom: 18 }}>
               {CATEGORY_ITEMS.map((cat, idx) => {
                 const isSelected = ticketCategory === cat.id;
                 const isWide = idx === 4;
@@ -1543,47 +1543,40 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                     }}
                     style={{
                       width: isWide ? '100%' : '48.5%',
-                      marginBottom: 8,
-                      paddingVertical: 10,
-                      paddingHorizontal: 12,
-                      borderRadius: 12,
+                      minHeight: isWide ? 48 : 58,
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      borderRadius: 14,
                       borderWidth: isSelected ? 2 : 1,
-                      borderColor: isSelected ? cat.color : '#E2E8F0',
-                      backgroundColor: isSelected ? cat.color + '14' : '#F8FAFC',
-                      flexDirection: isWide ? 'row' : 'column',
-                      alignItems: isWide ? 'center' : 'flex-start',
-                      justifyContent: isWide ? 'space-between' : 'flex-start',
+                      borderColor: isSelected ? cat.color : (isDark ? colors.cardBorder : '#E2E8F0'),
+                      backgroundColor: isSelected ? (isDark ? cat.color + '22' : cat.color + '12') : (isDark ? colors.subCard : '#F8FAFC'),
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 7,
-                        backgroundColor: isSelected ? cat.color : cat.color + '22',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: isWide ? 10 : 0,
-                        marginBottom: isWide ? 0 : 6
-                      }}>
-                        <Ionicons name={cat.icon as any} size={15} color={isSelected ? '#FFF' : cat.color} />
-                      </View>
-                      <View>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: isSelected ? cat.color : '#1E293B' }}>
-                          {cat.label}
-                        </Text>
-                        {isWide && (
-                          <Text style={{ fontSize: 11, color: '#64748B' }}>{cat.desc}</Text>
-                        )}
-                      </View>
+                    <View style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 10,
+                      backgroundColor: isSelected ? cat.color : (isDark ? 'rgba(255,255,255,0.06)' : cat.color + '18'),
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 8,
+                      flexShrink: 0,
+                    }}>
+                      <Ionicons name={cat.icon as any} size={17} color={isSelected ? '#FFF' : cat.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12.5, fontWeight: isSelected ? '800' : '700', color: isSelected ? cat.color : colors.text }} numberOfLines={1}>
+                        {cat.label}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 1 }} numberOfLines={1}>
+                        {cat.desc}
+                      </Text>
                     </View>
                     {isSelected && (
-                      <Ionicons 
-                        name="checkmark-circle" 
-                        size={16} 
-                        color={cat.color} 
-                        style={{ position: isWide ? 'relative' : 'absolute', top: isWide ? 0 : 8, right: isWide ? 0 : 8 }} 
-                      />
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cat.color, marginLeft: 4 }} />
                     )}
                   </TouchableOpacity>
                 );
@@ -1623,16 +1616,16 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
               />
             )}
 
-            {/* Step 2: Category-Specific Dynamic Form Cards (1-Tap Chips) */}
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+            {/* Step 2: Specific Details */}
+            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
               2. Specific Details
             </Text>
 
             {/* Payroll Issue Form */}
             {ticketCategory === 'Payroll Issue' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Pay Period Cutoff</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              <View style={{ backgroundColor: isDark ? colors.subCard : '#F8FAFC', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#E2E8F0', marginBottom: 16 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Pay Period Cutoff</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                   {[
                     `${isFirstHalf ? '1st - 15th' : '16th - End'} ${currentMonth}`,
                     `${isFirstHalf ? '16th - End' : '1st - 15th'} ${isFirstHalf ? prevMonth : currentMonth}`,
@@ -1642,6 +1635,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                     return (
                       <TouchableOpacity
                         key={idx}
+                        activeOpacity={0.7}
                         onPress={() => {
                           if (idx === 2) {
                             setDateTarget('payPeriod');
@@ -1653,15 +1647,18 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                           }
                         }}
                         style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: isSelected ? '#10B981' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#ECFDF5' : '#FFF'
+                          minHeight: 36,
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                          borderRadius: 10,
+                          borderWidth: isSelected ? 1.5 : 1,
+                          borderColor: isSelected ? '#10B981' : (isDark ? colors.cardBorder : '#CBD5E1'),
+                          backgroundColor: isSelected ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : (isDark ? colors.card : '#FFF'),
+                          justifyContent: 'center',
+                          alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#047857' : '#475569' }}>
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '600', color: isSelected ? '#059669' : colors.text }}>
                           {idx === 2 && ticketDynamic.payPeriod && !ticketDynamic.payPeriod.includes('Cutoff') && !ticketDynamic.payPeriod.includes(currentMonth) ? ticketDynamic.payPeriod : preset}
                         </Text>
                       </TouchableOpacity>
@@ -1669,62 +1666,74 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                   })}
                 </View>
 
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Common Discrepancies (1-Tap Preset)</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {PAYROLL_PRESETS.map((chip, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      onPress={() => {
-                        setTicketDesc((prev: string) => prev.trim() ? (prev.includes(chip) ? prev : `${prev}, ${chip}`) : chip);
-                      }}
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 5,
-                        borderRadius: 8,
-                        backgroundColor: ticketDesc.includes(chip) ? '#D1FAE5' : '#FFF',
-                        borderWidth: 1,
-                        borderColor: ticketDesc.includes(chip) ? '#10B981' : '#CBD5E1'
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: ticketDesc.includes(chip) ? '700' : '500', color: ticketDesc.includes(chip) ? '#065F46' : '#475569' }}>
-                        + {chip}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Common Discrepancies (1-Tap Preset)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                  {PAYROLL_PRESETS.map((chip, idx) => {
+                    const isChipSelected = ticketDesc.includes(chip);
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          setTicketDesc((prev: string) => prev.trim() ? (prev.includes(chip) ? prev : `${prev}, ${chip}`) : chip);
+                        }}
+                        style={{
+                          minHeight: 34,
+                          paddingHorizontal: 11,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          backgroundColor: isChipSelected ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5') : (isDark ? colors.card : '#FFF'),
+                          borderWidth: isChipSelected ? 1.5 : 1,
+                          borderColor: isChipSelected ? '#10B981' : (isDark ? colors.cardBorder : '#CBD5E1'),
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: isChipSelected ? '700' : '500', color: isChipSelected ? '#047857' : colors.text }}>
+                          + {chip}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Dispute Details / Explanation</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Dispute Details / Explanation</Text>
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 75, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 12, padding: 12, height: 80, textAlignVertical: 'top', backgroundColor: isDark ? colors.card : '#FFF', fontSize: 14, color: colors.text }}
                   value={ticketDesc}
                   onChangeText={setTicketDesc}
                   multiline
                   placeholder="State the missing amount, hours, or deductions..."
+                  placeholderTextColor={colors.textSubtle}
                 />
               </View>
             )}
 
             {/* Equipment Issue Form */}
             {ticketCategory === 'Equipment Issue' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Select Tool / Equipment</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              <View style={{ backgroundColor: isDark ? colors.subCard : '#F8FAFC', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#E2E8F0', marginBottom: 16 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Select Tool / Equipment</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                   {TOOL_PRESETS.map((tool, idx) => {
                     const isSelected = ticketDynamic.toolName === tool;
                     return (
                       <TouchableOpacity
                         key={idx}
+                        activeOpacity={0.7}
                         onPress={() => setTicketDynamic((prev: any) => ({ ...prev, toolName: tool }))}
                         style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: isSelected ? '#F59E0B' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#FEF3C7' : '#FFF'
+                          minHeight: 36,
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                          borderRadius: 10,
+                          borderWidth: isSelected ? 1.5 : 1,
+                          borderColor: isSelected ? '#F59E0B' : (isDark ? colors.cardBorder : '#CBD5E1'),
+                          backgroundColor: isSelected ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7') : (isDark ? colors.card : '#FFF'),
+                          justifyContent: 'center',
+                          alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#92400E' : '#475569' }}>
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '600', color: isSelected ? '#B45309' : colors.text }}>
                           {tool}
                         </Text>
                       </TouchableOpacity>
@@ -1734,55 +1743,60 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
 
                 {ticketDynamic.toolName === 'Other Tool' && (
                   <TextInput
-                    style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, marginBottom: 10, backgroundColor: '#FFF', fontSize: 13 }}
+                    style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 10, padding: 10, marginBottom: 12, backgroundColor: isDark ? colors.card : '#FFF', fontSize: 14, color: colors.text }}
                     placeholder="Enter custom tool name or serial ID..."
+                    placeholderTextColor={colors.textSubtle}
                     value={ticketDynamic.customTool || ''}
                     onChangeText={(val) => setTicketDynamic((prev: any) => ({ ...prev, customTool: val }))}
                   />
                 )}
 
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Issue Classification</Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Issue Classification</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                   {ISSUE_TYPE_PRESETS.map((item, idx) => {
                     const isSelected = ticketDynamic.issueType === item.value;
                     return (
                       <TouchableOpacity
                         key={idx}
+                        activeOpacity={0.7}
                         onPress={() => setTicketDynamic((prev: any) => ({ ...prev, issueType: item.value }))}
                         style={{
                           flex: 1,
-                          paddingVertical: 8,
-                          borderRadius: 8,
-                          borderWidth: 1,
+                          minHeight: 40,
+                          borderRadius: 10,
+                          borderWidth: isSelected ? 1.5 : 1,
                           alignItems: 'center',
-                          borderColor: isSelected ? '#F59E0B' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#FEF3C7' : '#FFF'
+                          justifyContent: 'center',
+                          borderColor: isSelected ? '#F59E0B' : (isDark ? colors.cardBorder : '#CBD5E1'),
+                          backgroundColor: isSelected ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7') : (isDark ? colors.card : '#FFF'),
+                          paddingHorizontal: 4,
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#92400E' : '#475569' }}>
-                          {item.label}
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '600', color: isSelected ? '#B45309' : colors.text, textAlign: 'center' }}>
+                          {item.value === 'Damaged' ? 'Damaged' : item.label}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Damage / Defect Details</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Damage / Defect Details</Text>
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 75, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 12, padding: 12, height: 80, textAlignVertical: 'top', backgroundColor: isDark ? colors.card : '#FFF', fontSize: 14, color: colors.text }}
                   value={ticketDesc}
                   onChangeText={setTicketDesc}
                   multiline
                   placeholder="How did the damage or failure occur? Location..."
+                  placeholderTextColor={colors.textSubtle}
                 />
               </View>
             )}
 
             {/* DTR / Attendance Issue Form */}
             {ticketCategory === 'DTR Issue' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Log Date</Text>
-                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+              <View style={{ backgroundColor: isDark ? colors.subCard : '#F8FAFC', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#E2E8F0', marginBottom: 16 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Log Date</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                   {[
                     { label: 'Today', val: todayStr },
                     { label: 'Yesterday', val: yesterdayStr },
@@ -1792,6 +1806,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                     return (
                       <TouchableOpacity
                         key={idx}
+                        activeOpacity={0.7}
                         onPress={() => {
                           if (item.val === 'custom') {
                             setDateTarget('logDate');
@@ -1804,15 +1819,16 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                         }}
                         style={{
                           flex: 1,
-                          paddingVertical: 7,
-                          borderRadius: 8,
-                          borderWidth: 1,
+                          minHeight: 38,
+                          borderRadius: 10,
+                          borderWidth: isSelected ? 1.5 : 1,
                           alignItems: 'center',
-                          borderColor: isSelected ? '#6366F1' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#EEF2FF' : '#FFF'
+                          justifyContent: 'center',
+                          borderColor: isSelected ? '#6366F1' : (isDark ? colors.cardBorder : '#CBD5E1'),
+                          backgroundColor: isSelected ? (isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF') : (isDark ? colors.card : '#FFF')
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#4338CA' : '#475569' }}>
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '600', color: isSelected ? '#4338CA' : colors.text }}>
                           {item.val === 'custom' && ticketDynamic.logDate && ticketDynamic.logDate !== todayStr && ticketDynamic.logDate !== yesterdayStr ? ticketDynamic.logDate : item.label}
                         </Text>
                       </TouchableOpacity>
@@ -1820,87 +1836,99 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                   })}
                 </View>
 
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Dispute Preset (1-Tap)</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {DTR_PRESETS.map((preset, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      onPress={() => {
-                        setTicketDesc((prev: string) => prev.trim() ? (prev.includes(preset) ? prev : `${prev}, ${preset}`) : preset);
-                      }}
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 5,
-                        borderRadius: 8,
-                        backgroundColor: ticketDesc.includes(preset) ? '#E0E7FF' : '#FFF',
-                        borderWidth: 1,
-                        borderColor: ticketDesc.includes(preset) ? '#6366F1' : '#CBD5E1'
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: ticketDesc.includes(preset) ? '700' : '500', color: ticketDesc.includes(preset) ? '#3730A3' : '#475569' }}>
-                        + {preset}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Dispute Preset (1-Tap)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                  {DTR_PRESETS.map((preset, idx) => {
+                    const isChipSelected = ticketDesc.includes(preset);
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          setTicketDesc((prev: string) => prev.trim() ? (prev.includes(preset) ? prev : `${prev}, ${preset}`) : preset);
+                        }}
+                        style={{
+                          minHeight: 34,
+                          paddingHorizontal: 11,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          backgroundColor: isChipSelected ? (isDark ? 'rgba(99, 102, 241, 0.2)' : '#E0E7FF') : (isDark ? colors.card : '#FFF'),
+                          borderWidth: isChipSelected ? 1.5 : 1,
+                          borderColor: isChipSelected ? '#6366F1' : (isDark ? colors.cardBorder : '#CBD5E1'),
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: isChipSelected ? '700' : '500', color: isChipSelected ? '#3730A3' : colors.text }}>
+                          + {preset}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Expected In</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Expected In</Text>
                     <TouchableOpacity
                       onPress={() => { setDateTarget('expectedIn'); setDateVal(new Date()); setPickerMode('time'); setShowDatePicker(true); }}
-                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
+                      style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 10, padding: 10, backgroundColor: isDark ? colors.card : '#FFF', alignItems: 'center' }}
                     >
-                      <Text style={{ fontSize: 12, color: ticketDynamic.expectedIn ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
+                      <Text style={{ fontSize: 13, color: ticketDynamic.expectedIn ? colors.text : colors.textSubtle, fontWeight: '700' }}>
                         {ticketDynamic.expectedIn || '08:00 AM'}
                       </Text>
                     </TouchableOpacity>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Expected Out</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Expected Out</Text>
                     <TouchableOpacity
                       onPress={() => { setDateTarget('expectedOut'); setDateVal(new Date()); setPickerMode('time'); setShowDatePicker(true); }}
-                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
+                      style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 10, padding: 10, backgroundColor: isDark ? colors.card : '#FFF', alignItems: 'center' }}
                     >
-                      <Text style={{ fontSize: 12, color: ticketDynamic.expectedOut ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
+                      <Text style={{ fontSize: 13, color: ticketDynamic.expectedOut ? colors.text : colors.textSubtle, fontWeight: '700' }}>
                         {ticketDynamic.expectedOut || '05:00 PM'}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Explanation</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Explanation</Text>
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 70, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 12, padding: 12, height: 75, textAlignVertical: 'top', backgroundColor: isDark ? colors.card : '#FFF', fontSize: 14, color: colors.text }}
                   value={ticketDesc}
                   onChangeText={setTicketDesc}
                   multiline
                   placeholder="Reason for missing time log or dispute..."
+                  placeholderTextColor={colors.textSubtle}
                 />
               </View>
             )}
 
             {/* File Leave Form */}
             {ticketCategory === 'File Leave' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Leave Type</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              <View style={{ backgroundColor: isDark ? colors.subCard : '#F8FAFC', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#E2E8F0', marginBottom: 16 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Leave Type</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                   {LEAVE_TYPES.map((leave, idx) => {
                     const isSelected = ticketDynamic.leaveType === leave;
                     return (
                       <TouchableOpacity
                         key={idx}
+                        activeOpacity={0.7}
                         onPress={() => setTicketDynamic((prev: any) => ({ ...prev, leaveType: leave }))}
                         style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: isSelected ? '#EF4444' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#FEE2E2' : '#FFF'
+                          minHeight: 36,
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                          borderRadius: 10,
+                          borderWidth: isSelected ? 1.5 : 1,
+                          borderColor: isSelected ? '#EF4444' : (isDark ? colors.cardBorder : '#CBD5E1'),
+                          backgroundColor: isSelected ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2') : (isDark ? colors.card : '#FFF'),
+                          justifyContent: 'center',
+                          alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#991B1B' : '#475569' }}>
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '600', color: isSelected ? '#B91C1C' : colors.text }}>
                           {leave}
                         </Text>
                       </TouchableOpacity>
@@ -1908,65 +1936,68 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                   })}
                 </View>
 
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Start Date</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Start Date</Text>
                     <TouchableOpacity
                       onPress={() => { setDateTarget('startDate'); setDateVal(new Date()); setPickerMode('date'); setShowDatePicker(true); }}
-                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
+                      style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 10, padding: 10, backgroundColor: isDark ? colors.card : '#FFF', alignItems: 'center' }}
                     >
-                      <Text style={{ fontSize: 12, color: ticketDynamic.startDate ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
+                      <Text style={{ fontSize: 13, color: ticketDynamic.startDate ? colors.text : colors.textSubtle, fontWeight: '700' }}>
                         {ticketDynamic.startDate || tomorrowStr}
                       </Text>
                     </TouchableOpacity>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>End Date</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>End Date</Text>
                     <TouchableOpacity
                       onPress={() => { setDateTarget('endDate'); setDateVal(new Date()); setPickerMode('date'); setShowDatePicker(true); }}
-                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
+                      style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 10, padding: 10, backgroundColor: isDark ? colors.card : '#FFF', alignItems: 'center' }}
                     >
-                      <Text style={{ fontSize: 12, color: ticketDynamic.endDate ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
+                      <Text style={{ fontSize: 13, color: ticketDynamic.endDate ? colors.text : colors.textSubtle, fontWeight: '700' }}>
                         {ticketDynamic.endDate || tomorrowStr}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Reason for Leave</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Reason for Leave</Text>
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 70, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 12, padding: 12, height: 75, textAlignVertical: 'top', backgroundColor: isDark ? colors.card : '#FFF', fontSize: 14, color: colors.text }}
                   value={ticketDesc}
                   onChangeText={setTicketDesc}
                   multiline
                   placeholder="Medical appointment, family emergency, etc."
+                  placeholderTextColor={colors.textSubtle}
                 />
               </View>
             )}
 
             {/* Others / General Form */}
             {ticketCategory === 'Others' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Subject / Concern</Text>
+              <View style={{ backgroundColor: isDark ? colors.subCard : '#F8FAFC', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#E2E8F0', marginBottom: 16 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Subject / Concern</Text>
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: '#FFF', fontSize: 13 }}
+                  style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 10, padding: 12, marginBottom: 12, backgroundColor: isDark ? colors.card : '#FFF', fontSize: 14, color: colors.text }}
                   value={ticketTitle}
                   onChangeText={setTicketTitle}
                   placeholder="Brief summary of your concern..."
+                  placeholderTextColor={colors.textSubtle}
                 />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Detailed Description</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Detailed Description</Text>
                 <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 85, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
+                  style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 12, padding: 12, height: 85, textAlignVertical: 'top', backgroundColor: isDark ? colors.card : '#FFF', fontSize: 14, color: colors.text }}
                   value={ticketDesc}
                   onChangeText={setTicketDesc}
                   multiline
                   placeholder="Explain the details of your inquiry or report to HR..."
+                  placeholderTextColor={colors.textSubtle}
                 />
               </View>
             )}
 
             {/* Step 3: Modern Attachment Card */}
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
               3. Proof / Attachment (Optional)
             </Text>
             {attachedFile ? (
@@ -1974,25 +2005,25 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                backgroundColor: '#F0FDF4',
+                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4',
                 borderWidth: 1,
-                borderColor: '#86EFAC',
-                borderRadius: 12,
-                padding: 10,
-                marginBottom: 14
+                borderColor: isDark ? '#059669' : '#86EFAC',
+                borderRadius: 14,
+                padding: 12,
+                marginBottom: 16
               }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
-                    <Ionicons name="document-attach" size={18} color="#16A34A" />
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                    <Ionicons name="document-attach" size={20} color="#16A34A" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#166534' }} numberOfLines={1}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#A7F3D0' : '#166534' }} numberOfLines={1}>
                       {attachedFile.name}
                     </Text>
-                    <Text style={{ fontSize: 10, color: '#15803D' }}>Ready for upload • 1 file attached</Text>
+                    <Text style={{ fontSize: 11, color: isDark ? '#6EE7B7' : '#15803D' }}>Ready for upload • 1 file attached</Text>
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => setAttachedFile(null)} style={{ padding: 4 }}>
+                <TouchableOpacity onPress={() => setAttachedFile(null)} style={{ padding: 6 }}>
                   <Feather name="trash-2" size={18} color="#DC2626" />
                 </TouchableOpacity>
               </View>
@@ -2001,87 +2032,60 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 activeOpacity={0.7}
                 onPress={pickModalAttachment}
                 style={{
-                  borderWidth: 1,
+                  borderWidth: 1.5,
                   borderStyle: 'dashed',
-                  borderColor: '#CBD5E1',
-                  borderRadius: 12,
-                  backgroundColor: '#F8FAFC',
-                  paddingVertical: 12,
+                  borderColor: isDark ? colors.cardBorder : '#CBD5E1',
+                  borderRadius: 14,
+                  backgroundColor: isDark ? colors.subCard : '#F8FAFC',
+                  paddingVertical: 14,
                   paddingHorizontal: 14,
                   flexDirection: 'row',
                   alignItems: 'center',
-                  marginBottom: 14
+                  marginBottom: 16
                 }}
               >
-                <View style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: '#EEF2F6', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                  <Feather name="paperclip" size={18} color="#64748B" />
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: isDark ? colors.card : '#EEF2F6', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                  <Feather name="paperclip" size={18} color={colors.textMuted} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Tap to upload attachment</Text>
-                  <Text style={{ fontSize: 11, color: '#94A3B8' }}>Images, PDF, Word, Excel (Max 5MB)</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Tap to upload attachment</Text>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Images, PDF, Word, Excel (Max 5MB)</Text>
                 </View>
-                <Feather name="upload-cloud" size={18} color="#64748B" />
+                <Feather name="upload-cloud" size={20} color={colors.textMuted} />
               </TouchableOpacity>
             )}
 
-            {/* Step 4: Request Overview Card */}
-            <View style={{
-              backgroundColor: '#F8FAFC',
-              borderWidth: 1,
-              borderColor: '#CBD5E1',
-              borderRadius: 14,
-              padding: 12,
-              marginBottom: 12,
-              borderLeftWidth: 4,
-              borderLeftColor: getCatColor(ticketCategory)
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="document-text-outline" size={16} color={getCatColor(ticketCategory)} style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
-                    4. Request Overview
-                  </Text>
-                </View>
-                <View style={{ backgroundColor: getCatColor(ticketCategory) + '15', paddingHorizontal: 7, paddingVertical: 2.5, borderRadius: 6 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: getCatColor(ticketCategory) }}>
-                    Review Details
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ gap: 4 }}>
-                <Text style={{ fontSize: 11, color: '#475569' }}>
-                  <Text style={{ fontWeight: '700', color: '#1E293B' }}>Target / Scope: </Text>
-                  {ticketCategory === 'Payroll Issue' ? (ticketDynamic.payPeriod || 'Current Cutoff') :
-                   ticketCategory === 'Equipment Issue' ? `${ticketDynamic.toolName === 'Other Tool' ? (ticketDynamic.customTool || 'Other Equipment') : (ticketDynamic.toolName || 'Makita Drill #4')} • ${ticketDynamic.issueType || 'Damaged'}` :
-                   ticketCategory === 'DTR Issue' ? `${ticketDynamic.logDate || todayStr} • ${ticketDynamic.expectedIn || '08:00 AM'} - ${ticketDynamic.expectedOut || '05:00 PM'}` :
-                   ticketCategory === 'File Leave' ? `${ticketDynamic.leaveType || 'Sick Leave'} (${ticketDynamic.startDate || tomorrowStr} to ${ticketDynamic.endDate || tomorrowStr})` :
-                   (ticketTitle.trim() || 'General Concern')}
-                </Text>
-
-                <Text style={{ fontSize: 11, color: '#475569' }} numberOfLines={2}>
-                  <Text style={{ fontWeight: '700', color: '#1E293B' }}>Reason / Notes: </Text>
-                  {ticketDesc.trim() || '(No extra notes entered)'}
-                </Text>
-
-                <Text style={{ fontSize: 10, color: attachedFile ? '#16A34A' : '#94A3B8', fontWeight: attachedFile ? '600' : '400' }}>
-                  📎 Attachment: {attachedFile ? attachedFile.name : 'None attached (Optional)'}
-                </Text>
-              </View>
-            </View>
-
             {/* Error Message */}
             {formError ? (
-              <View style={{ backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA', padding: 10, borderRadius: 10, marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="alert-circle" size={16} color="#DC2626" style={{ marginRight: 6 }} />
-                <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600', flex: 1 }}>{formError}</Text>
+              <View style={{ backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2', borderWidth: 1, borderColor: '#FECACA', padding: 12, borderRadius: 12, marginBottom: 14, flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="alert-circle" size={18} color="#DC2626" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '700', flex: 1 }}>{formError}</Text>
               </View>
             ) : null}
 
           </ScrollView>
 
-          {/* Sticky Thumb-Zone Submit Bar (Fitts' Law) */}
-          <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+          {/* Sticky Thumb-Zone Action Bar with Contextual Summary */}
+          <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.cardBorder, backgroundColor: colors.card }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                <Ionicons name="flash" size={14} color={getCatColor(ticketCategory)} style={{ marginRight: 4 }} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }} numberOfLines={1}>
+                  {ticketCategory === 'Payroll Issue' ? (ticketDynamic.payPeriod || 'Current Cutoff') :
+                   ticketCategory === 'Equipment Issue' ? `${ticketDynamic.toolName === 'Other Tool' ? (ticketDynamic.customTool || 'Other Tool') : (ticketDynamic.toolName || 'Makita Drill #4')} • ${ticketDynamic.issueType || 'Damaged'}` :
+                   ticketCategory === 'DTR Issue' ? `${ticketDynamic.logDate || todayStr} • ${ticketDynamic.expectedIn || '08:00 AM'} - ${ticketDynamic.expectedOut || '05:00 PM'}` :
+                   ticketCategory === 'File Leave' ? `${ticketDynamic.leaveType || 'Sick Leave'} (${ticketDynamic.startDate || tomorrowStr} to ${ticketDynamic.endDate || tomorrowStr})` :
+                   (ticketTitle.trim() || 'General Concern')}
+                </Text>
+              </View>
+              {attachedFile && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                  <Feather name="paperclip" size={11} color="#16A34A" style={{ marginRight: 3 }} />
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#16A34A' }}>1 File</Text>
+                </View>
+              )}
+            </View>
+
             <TouchableOpacity 
               disabled={isSubmitting} 
               activeOpacity={0.85}
@@ -2089,14 +2093,14 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 backgroundColor: isSubmitting ? '#94A3B8' : getCatColor(ticketCategory), 
                 paddingVertical: 14, 
                 borderRadius: 14, 
-                alignItems: 'center',
-                flexDirection: 'row',
-                justifyContent: 'center',
+                alignItems: 'center', 
+                flexDirection: 'row', 
+                justifyContent: 'center', 
                 shadowColor: getCatColor(ticketCategory),
                 shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.25,
+                shadowOpacity: 0.3,
                 shadowRadius: 6,
-                elevation: 3
+                elevation: 4
               }} 
               onPress={submitTicket}
             >

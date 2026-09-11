@@ -1934,54 +1934,126 @@ export default function HomeScreen() {
                   <View style={styles.fallbackHeader}>
                     <Text style={styles.fallbackTitle}>Location Proximity</Text>
                     <TouchableOpacity onPress={() => setClockInModal(false)}>
-                      <Feather name="x" size={24} color="#64748B" />
+                      <Feather name="x" size={24} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.fallbackSub}>
-                    You are outside {targetGeofence?.name ? `"${targetGeofence.name}"` : 'the target green zone'}.
-                  </Text>
-                  <View style={styles.mapContainer}>
-                    {userLoc && (targetGeofence || schedule) && (
-                      <MapView
-                        provider={'google'}
-                        style={styles.map}
-                        initialRegion={{
-                          latitude: userLoc.lat,
-                          longitude: userLoc.lon,
-                          latitudeDelta: 0.01,
-                          longitudeDelta: 0.01,
-                        }}
-                      >
-                        <Circle
-                          center={{
-                            latitude: targetGeofence?.lat ?? schedule?.geofence_lat,
-                            longitude: targetGeofence?.lon ?? schedule?.geofence_lon,
-                          }}
-                          radius={targetGeofence?.radius ?? schedule?.geofence_radius ?? 100}
-                          strokeColor="rgba(16, 185, 129, 0.6)"
-                          fillColor="rgba(16, 185, 129, 0.2)"
-                        />
-                        <Marker
-                          coordinate={{
-                            latitude: targetGeofence?.lat ?? schedule?.geofence_lat,
-                            longitude: targetGeofence?.lon ?? schedule?.geofence_lon,
-                          }}
-                          title={targetGeofence?.name || schedule?.client_name || 'Target Zone'}
-                          pinColor="#10B981"
-                        />
-                        <Marker
-                          coordinate={{ latitude: userLoc.lat, longitude: userLoc.lon }}
-                          title="Your Location"
-                          pinColor="#EF4444"
-                        />
-                      </MapView>
-                    )}
-                  </View>
-                  <TouchableOpacity style={styles.fallbackBtn} onPress={handleVisualOverride} disabled={uploadingSelfie}>
+                  {(() => {
+                    const targetLat = targetGeofence?.lat ?? schedule?.geofence_lat;
+                    const targetLon = targetGeofence?.lon ?? schedule?.geofence_lon;
+                    const distM = (userLoc && targetLat && targetLon) 
+                      ? getDistance(
+                          { latitude: userLoc.lat, longitude: userLoc.lon },
+                          { latitude: targetLat, longitude: targetLon }
+                        )
+                      : null;
+                    const distText = distM != null ? (distM >= 1000 ? `${(distM / 1000).toFixed(1)} km` : `${distM} m`) : null;
+                    
+                    return (
+                      <>
+                        <Text style={styles.fallbackSub}>
+                          You are outside {targetGeofence?.name ? `"${targetGeofence.name}"` : 'the target green zone'}
+                          {distText ? ` (~${distText} away)` : ''}.
+                        </Text>
+                        <View style={styles.mapContainer}>
+                          {userLoc && (targetGeofence || schedule) && targetLat && targetLon && (
+                            <>
+                              <MapView
+                                provider={'google'}
+                                style={styles.map}
+                                initialRegion={{
+                                  latitude: (userLoc.lat + targetLat) / 2,
+                                  longitude: (userLoc.lon + targetLon) / 2,
+                                  latitudeDelta: Math.max(Math.abs(userLoc.lat - targetLat) * 2.2, 0.008),
+                                  longitudeDelta: Math.max(Math.abs(userLoc.lon - targetLon) * 2.2, 0.008),
+                                }}
+                              >
+                                <Circle
+                                  center={{
+                                    latitude: targetLat,
+                                    longitude: targetLon,
+                                  }}
+                                  radius={targetGeofence?.radius ?? schedule?.geofence_radius ?? 100}
+                                  strokeColor="rgba(16, 185, 129, 0.8)"
+                                  fillColor="rgba(16, 185, 129, 0.25)"
+                                />
+                                <Marker
+                                  coordinate={{
+                                    latitude: targetLat,
+                                    longitude: targetLon,
+                                  }}
+                                  title={targetGeofence?.name || schedule?.client_name || 'Target Zone'}
+                                  description="Required geofence check-in perimeter"
+                                  pinColor="#10B981"
+                                />
+                                <Marker
+                                  coordinate={{ latitude: userLoc.lat, longitude: userLoc.lon }}
+                                  title="Your Position"
+                                  description={distText ? `${distText} from zone` : 'Current GPS location'}
+                                  pinColor="#EF4444"
+                                />
+                              </MapView>
+
+                              {/* Distance Badge */}
+                              <View style={{
+                                position: 'absolute',
+                                top: 12,
+                                left: 12,
+                                backgroundColor: 'rgba(15, 23, 42, 0.88)',
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                borderRadius: 10,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                zIndex: 10,
+                                elevation: 5
+                              }}>
+                                <Feather name="map-pin" size={13} color="#FBBF24" style={{ marginRight: 6 }} />
+                                <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '700' }}>
+                                  {distText ? `${distText} outside zone` : 'Outside Geofence'}
+                                </Text>
+                              </View>
+
+                              {/* Google Maps Turn-By-Turn Intent Button */}
+                              <TouchableOpacity
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                  if (targetLat && targetLon) {
+                                    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLon}`);
+                                  } else if (schedule?.location) {
+                                    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(schedule.location)}`);
+                                  }
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  bottom: 12,
+                                  right: 12,
+                                  backgroundColor: colors.brandBlue,
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 8,
+                                  borderRadius: 10,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  zIndex: 10,
+                                  elevation: 5
+                                }}
+                              >
+                                <Feather name="navigation" size={13} color="#FFF" style={{ marginRight: 5 }} />
+                                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>Navigate</Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      </>
+                    );
+                  })()}
+                  <TouchableOpacity style={[styles.fallbackBtn, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} onPress={handleVisualOverride} disabled={uploadingSelfie}>
                     {uploadingSelfie ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.fallbackBtnText}>Submit Photo Override</Text>
+                      <>
+                        <Feather name="camera" size={18} color="#fff" style={{ marginRight: 8 }} />
+                        <Text style={styles.fallbackBtnText}>Submit Photo Override</Text>
+                      </>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -2702,16 +2774,33 @@ export default function HomeScreen() {
                 </View>
 
                 {schedule && userLoc && (
-                  <View style={{ height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
-                    <MapView provider={'google'} style={{ flex: 1 }} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: Math.abs((schedule.geofence_lat || userLoc.lat) - userLoc.lat) * 2.5 || 0.05, longitudeDelta: Math.abs((schedule.geofence_lon || userLoc.lon) - userLoc.lon) * 2.5 || 0.05 }}>
-                      <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} pinColor='blue' />
+                  <View style={{ height: 260, borderRadius: 16, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
+                    <MapView 
+                      provider={'google'} 
+                      style={{ flex: 1 }} 
+                      initialRegion={{ 
+                        latitude: ((userLoc.lat + (schedule.geofence_lat || userLoc.lat)) / 2), 
+                        longitude: ((userLoc.lon + (schedule.geofence_lon || userLoc.lon)) / 2), 
+                        latitudeDelta: Math.max(Math.abs((schedule.geofence_lat || userLoc.lat) - userLoc.lat) * 2.2, 0.01), 
+                        longitudeDelta: Math.max(Math.abs((schedule.geofence_lon || userLoc.lon) - userLoc.lon) * 2.2, 0.01) 
+                      }}
+                    >
+                      <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} title="Your Position" pinColor='blue' />
                       {schedule.geofence_lat && schedule.geofence_lon && (
                         <>
-                          <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} pinColor='red' />
+                          <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} title={schedule.client_name || schedule.title || 'Destination'} pinColor='red' />
                           <Polyline coordinates={[{latitude: userLoc.lat, longitude: userLoc.lon}, {latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}]} strokeColor={colors.brandBlue} strokeWidth={4} lineDashPattern={[10, 10]} />
                         </>
                       )}
                     </MapView>
+                    {/* Floating distance pill */}
+                    <View style={{ position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(15, 23, 42, 0.85)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, flexDirection: 'row', alignItems: 'center' }}>
+                      <Feather name="navigation" size={12} color="#38BDF8" style={{ marginRight: 6 }} />
+                      <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '700' }}>
+                        {schedule.location || 'Dispatch Location'}
+                        {schedule.geofence_lat && userLoc ? ` • ${(getDistance({ latitude: userLoc.lat, longitude: userLoc.lon }, { latitude: schedule.geofence_lat, longitude: schedule.geofence_lon }) / 1000).toFixed(1)} km away` : ''}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
@@ -4307,8 +4396,8 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   fallbackState: { padding: 24 },
   fallbackHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   fallbackTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text },
-  fallbackSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, marginBottom: 24 },
-  mapContainer: { height: 200, borderRadius: 16, overflow: 'hidden', backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginBottom: 24 },
+  fallbackSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, marginBottom: 14 },
+  mapContainer: { height: 280, borderRadius: 20, overflow: 'hidden', backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginBottom: 16, borderWidth: 1, borderColor: colors.cardBorder },
   map: { width: '100%', height: '100%' },
   fallbackBtn: { backgroundColor: colors.brandBlue, paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
   fallbackBtnText: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#fff' },
