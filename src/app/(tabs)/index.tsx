@@ -836,6 +836,25 @@ export default function HomeScreen() {
   const [userLoc, setUserLoc] = useState<{lat: number, lon: number} | null>(null);
   const [uploadingSelfie, setUploadingSelfie] = useState(false);
   
+  // Chunk 45: Clock-In Resilience & Fallback Error Modal
+  const [clockInErrorModalVisible, setClockInErrorModalVisible] = useState(false);
+  const [clockInErrorData, setClockInErrorData] = useState<{
+    title: string;
+    message: string;
+    gpsStatus: 'ok' | 'failed';
+    photoStatus: 'captured' | 'failed' | 'skipped';
+    syncStatus: 'failed';
+  }>({
+    title: 'Attendance Verification Interrupted',
+    message: 'We were unable to record your punch due to a network or cloud storage delay.',
+    gpsStatus: 'ok',
+    photoStatus: 'captured',
+    syncStatus: 'failed'
+  });
+  const [lastCapturedSelfieUri, setLastCapturedSelfieUri] = useState<string | null>(null);
+  const [retryingClockIn, setRetryingClockIn] = useState(false);
+  const [submittingReviewTicket, setSubmittingReviewTicket] = useState(false);
+
   const [profile, setProfile] = useState<any>(null);
   const [schedule, setSchedule] = useState<any>(null);
 
@@ -1343,6 +1362,14 @@ export default function HomeScreen() {
       }
     } catch (e: any) {
       console.error("Clock in error:", e);
+      setClockInErrorData({
+        title: 'Clock-In Connection Interrupted',
+        message: 'Could not communicate with the attendance server. You can retry, or take a verification photo to log your punch.',
+        gpsStatus: userLoc ? 'ok' : 'failed',
+        photoStatus: 'skipped',
+        syncStatus: 'failed'
+      });
+      setClockInErrorModalVisible(true);
       setLocationStatus('fallback');
     }
   };
@@ -1361,6 +1388,7 @@ export default function HomeScreen() {
     });
 
     if (!result.canceled && result.assets[0].uri) {
+      setLastCapturedSelfieUri(result.assets[0].uri);
       setUploadingSelfie(true);
       try {
         const fileExt = result.assets[0].uri.split('.').pop() || 'jpeg';
@@ -1369,7 +1397,9 @@ export default function HomeScreen() {
         const response = await fetch(result.assets[0].uri);
         const blob = await response.blob();
         
-        await supabase.storage.from('dtr-selfies').upload(fileName, blob);
+        const { error: uploadError } = await supabase.storage.from('dtr-selfies').upload(fileName, blob);
+        if (uploadError) throw uploadError;
+
         const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
 
         const now = new Date().toISOString();
@@ -1431,9 +1461,134 @@ export default function HomeScreen() {
         setTodayCompletedLog(null);
       } catch (err: any) {
         console.error("Photo override error:", err);
-        safeAlert('Upload Failed', 'There was an issue uploading your photo. Please try again.');
+        setClockInErrorData({
+          title: 'Verification Upload Interrupted',
+          message: err?.message || 'A network error occurred while uploading your verification selfie. You can retry with your saved photo or submit an immediate review ticket to HR.',
+          gpsStatus: userLoc ? 'ok' : 'failed',
+          photoStatus: 'captured',
+          syncStatus: 'failed'
+        });
+        setClockInErrorModalVisible(true);
       }
       setUploadingSelfie(false);
+    }
+  };
+
+  const retryVisualOverrideSubmission = async () => {
+    if (!lastCapturedSelfieUri) {
+      setClockInErrorModalVisible(false);
+      handleVisualOverride();
+      return;
+    }
+
+    setRetryingClockIn(true);
+    try {
+      const fileExt = lastCapturedSelfieUri.split('.').pop() || 'jpeg';
+      const fileName = `${profile?.id}-${Date.now()}.${fileExt}`;
+      
+      const response = await fetch(lastCapturedSelfieUri);
+      const blob = await response.blob();
+      
+      const { error: uploadErr } = await supabase.storage.from('dtr-selfies').upload(fileName, blob);
+      if (uploadErr) throw uploadErr;
+
+      const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
+
+      const now = new Date().toISOString();
+      const techId = profile?.id;
+      const currentLoc = userLoc || { lat: 0, lon: 0 };
+
+      const { data: insertedLog, error: logError } = await supabase
+        .from('time_logs')
+        .insert({
+          technician_id: techId,
+          app_time_in: now,
+          latitude: currentLoc.lat,
+          longitude: currentLoc.lon,
+          status: 'pending_review',
+          geofence_status: 'outside',
+          photo_url: publicUrlData.publicUrl || fileName,
+          photo_status: 'pending',
+          is_manual_entry: false,
+        })
+        .select()
+        .single();
+
+      if (logError) throw logError;
+
+      if (techId) {
+        await supabase
+          .from('technician_locations')
+          .upsert({
+            technician_id: techId,
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lon,
+            status: 'working',
+            updated_at: now,
+          });
+
+        const trackingChannel = supabase.channel('fleet-tracking');
+        await trackingChannel.send({
+          type: 'broadcast',
+          event: 'location_update',
+          payload: {
+            technician_id: techId,
+            full_name: profile?.full_name || 'Technician',
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lon,
+            status: 'working',
+            action: 'clock_in_override',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        });
+      }
+
+      setClockInErrorModalVisible(false);
+      setClockInModal(false);
+      setHasClockedInToday(true);
+      setActiveTimeLog(insertedLog);
+      setTodayCompletedLog(null);
+      safeAlert('Verification Recorded', 'Your attendance verification has been recorded successfully and submitted for review.');
+    } catch (err: any) {
+      console.error("Retry failed:", err);
+      safeAlert('Retry Incomplete', 'Could not upload photo to server. You can tap "Submit for Review" to log this attempt directly to HR without losing your shift.');
+    } finally {
+      setRetryingClockIn(false);
+    }
+  };
+
+  const submitReviewTicket = async () => {
+    if (!profile?.id) return;
+    setSubmittingReviewTicket(true);
+    try {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const currentLoc = userLoc ? `Lat: ${userLoc.lat.toFixed(5)}, Lon: ${userLoc.lon.toFixed(5)}` : 'GPS Acquired';
+
+      const { error } = await supabase
+        .from('tickets')
+        .insert({
+          technician_id: profile.id,
+          category: 'Attendance / DTR',
+          title: `[CLOCK-IN REVIEW] Punch Verification Glitch - ${profile.full_name || 'Technician'}`,
+          description: `Technician attempted clock-in at ${timeStr}. Photo verification was captured locally but server upload timed out. Coordinates: ${currentLoc}. Please verify physical attendance manually.`,
+          priority: 'medium',
+          status: 'open'
+        });
+
+      if (error) throw error;
+
+      setClockInErrorModalVisible(false);
+      setClockInModal(false);
+      safeAlert(
+        'Review Ticket Filed',
+        'Your attendance verification request has been escalated to HR. Your shift attempt is timestamped and documented.'
+      );
+    } catch (err: any) {
+      console.error("Failed to submit review ticket:", err);
+      safeAlert('Submission Error', 'Failed to dispatch ticket. Please inform your coordinator directly.');
+    } finally {
+      setSubmittingReviewTicket(false);
     }
   };
 
@@ -1821,6 +1976,105 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
               )}
+            </View>
+          </View>
+        </RNModal>
+
+        {/* CHUNK 45: CLOCK-IN FALLBACK & RESILIENCE ERROR MODAL */}
+        <RNModal
+          isVisible={clockInErrorModalVisible}
+          onBackdropPress={() => setClockInErrorModalVisible(false)}
+          onBackButtonPress={() => setClockInErrorModalVisible(false)}
+          style={{ margin: 20, justifyContent: 'center' }}
+        >
+          <View style={[styles.clockInErrorCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            {/* Header Icon + Title */}
+            <View style={styles.clockInErrorHeader}>
+              <View style={[styles.clockInErrorIconBox, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2' }]}>
+                <Feather name="alert-triangle" size={28} color={BRAND.red} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.clockInErrorTitle, { color: colors.text }]}>{clockInErrorData.title}</Text>
+                <Text style={[styles.clockInErrorSubtitle, { color: colors.textMuted }]}>Attendance Dispatch Safeguard</Text>
+              </View>
+            </View>
+
+            {/* Error Message */}
+            <Text style={[styles.clockInErrorMessage, { color: colors.text }]}>
+              {clockInErrorData.message}
+            </Text>
+
+            {/* Status Checklist Box */}
+            <View style={[styles.clockInErrorStatusBox, { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderColor: colors.cardBorder }]}>
+              <View style={styles.clockInStatusRow}>
+                <Feather 
+                  name={clockInErrorData.gpsStatus === 'ok' ? 'check-circle' : 'x-circle'} 
+                  size={16} 
+                  color={clockInErrorData.gpsStatus === 'ok' ? BRAND.green : BRAND.red} 
+                />
+                <Text style={[styles.clockInStatusText, { color: colors.text }]}>
+                  GPS Coordinates: {clockInErrorData.gpsStatus === 'ok' ? 'Acquired (Within Zone)' : 'Unavailable'}
+                </Text>
+              </View>
+
+              <View style={styles.clockInStatusRow}>
+                <Feather 
+                  name={clockInErrorData.photoStatus === 'captured' ? 'check-circle' : clockInErrorData.photoStatus === 'skipped' ? 'minus-circle' : 'x-circle'} 
+                  size={16} 
+                  color={clockInErrorData.photoStatus === 'captured' ? BRAND.green : '#94A3B8'} 
+                />
+                <Text style={[styles.clockInStatusText, { color: colors.text }]}>
+                  Verification Selfie: {clockInErrorData.photoStatus === 'captured' ? 'Captured Locally' : 'Not Required'}
+                </Text>
+              </View>
+
+              <View style={styles.clockInStatusRow}>
+                <Feather name="alert-circle" size={16} color={BRAND.red} />
+                <Text style={[styles.clockInStatusText, { color: BRAND.red }]}>
+                  Cloud Database Sync: Interrupted
+                </Text>
+              </View>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={{ gap: 10, marginTop: 18 }}>
+              <TouchableOpacity
+                style={[styles.clockInRetryBtn, { backgroundColor: BRAND.blue }]}
+                onPress={retryVisualOverrideSubmission}
+                disabled={retryingClockIn || submittingReviewTicket}
+              >
+                {retryingClockIn ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Feather name="refresh-cw" size={16} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.clockInRetryBtnText}>Retry Server Verification</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.clockInTicketBtn, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF', borderColor: BRAND.blue }]}
+                onPress={submitReviewTicket}
+                disabled={retryingClockIn || submittingReviewTicket}
+              >
+                {submittingReviewTicket ? (
+                  <ActivityIndicator size="small" color={BRAND.blue} />
+                ) : (
+                  <>
+                    <Feather name="shield" size={16} color={BRAND.blue} style={{ marginRight: 8 }} />
+                    <Text style={[styles.clockInTicketBtnText, { color: BRAND.blue }]}>Submit Shift for Review</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.clockInDismissBtn}
+                onPress={() => setClockInErrorModalVisible(false)}
+                disabled={retryingClockIn || submittingReviewTicket}
+              >
+                <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>Dismiss & Re-attempt Later</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </RNModal>
@@ -3776,7 +4030,7 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   safeArea: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
   headerBtnOutline: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? colors.subCard : 'transparent' },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   headerTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, letterSpacing: -0.5 },
   notificationDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: BRAND.red },
   mainContent: { paddingHorizontal: 24, flex: 1, paddingTop: 8 },
@@ -4168,6 +4422,93 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   payslipFooterText: { fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textSubtle },
   payslipSectionCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
   payslipLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+
+  // Chunk 45: Clock-In Error & Fallback Modal Styles
+  clockInErrorCard: {
+    borderRadius: 24,
+    padding: 22,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  clockInErrorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  clockInErrorIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clockInErrorTitle: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 17,
+  },
+  clockInErrorSubtitle: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  clockInErrorMessage: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  clockInErrorStatusBox: {
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    gap: 8,
+  },
+  clockInStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  clockInStatusText: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 13,
+  },
+  clockInRetryBtn: {
+    height: 48,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clockInRetryBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 15,
+    color: '#fff',
+  },
+  clockInTicketBtn: {
+    height: 48,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  clockInTicketBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 15,
+  },
+  clockInDismissBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clockInDismissBtnText: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 14,
+  },
 });
 
 
