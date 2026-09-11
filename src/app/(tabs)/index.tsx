@@ -2672,7 +2672,7 @@ export default function HomeScreen() {
                             </View>
                           </View>
 
-                          {member.phone ? (
+                          {member.phone && member.id !== profile?.id ? (
                             <TouchableOpacity
                               style={{
                                 width: 36,
@@ -2690,6 +2690,10 @@ export default function HomeScreen() {
                             >
                               <Feather name="phone" size={16} color={BRAND.green} />
                             </TouchableOpacity>
+                          ) : member.id === profile?.id ? (
+                            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginLeft: 8 }}>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>You</Text>
+                            </View>
                           ) : null}
                         </View>
                       ))}
@@ -3439,7 +3443,7 @@ export default function HomeScreen() {
                             </View>
                           </View>
 
-                          {member.phone ? (
+                          {member.phone && member.id !== profile?.id ? (
                             <TouchableOpacity
                               style={{
                                 width: 36,
@@ -3457,6 +3461,10 @@ export default function HomeScreen() {
                             >
                               <Feather name="phone" size={16} color={BRAND.green} />
                             </TouchableOpacity>
+                          ) : member.id === profile?.id ? (
+                            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginLeft: 8 }}>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>You</Text>
+                            </View>
                           ) : null}
                         </View>
                       ))}
