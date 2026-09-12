@@ -325,7 +325,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState('');
   const [ticketCategory, setTicketCategory] = useState('Payroll Issue');
-  const [formStep, setFormStep] = useState<'category' | 'details'>('category');
+  const [formStep, setFormStep] = useState<'category' | 'details' | 'tool_picker'>('category');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<'date'|'time'>('date');
   const [dateTarget, setDateTarget] = useState('');
@@ -340,7 +340,54 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     { id: 'Others', label: 'Other Inquiry', icon: 'help-circle-outline', color: '#8B5CF6', desc: 'General reports & inquiries' },
   ];
 
-  const TOOL_PRESETS = ['Makita Drill #4', 'Fluke Multimeter', 'Bosch Angle Grinder', 'Hilti Rotary Hammer', 'Other Tool'];
+  interface ToolItem {
+    id: string;
+    name: string;
+    category?: string;
+  }
+
+  const FALLBACK_TOOLS: ToolItem[] = [
+    { id: 't1', name: 'Makita Cordless Drill #4', category: 'Power Tools' },
+    { id: 't2', name: 'Fluke 117 Multimeter', category: 'Diagnostics' },
+    { id: 't3', name: 'Robinair 5CFM Vacuum Pump', category: 'HVAC / Refrigeration' },
+    { id: 't4', name: 'Digital Manifold Gauge', category: 'HVAC / Refrigeration' },
+    { id: 't5', name: 'Bosch Angle Grinder', category: 'Power Tools' },
+    { id: 't6', name: 'Yellow Jacket Flaring Tool', category: 'Hand Tools' },
+    { id: 't7', name: 'DeWalt 20V Max Hammer Drill', category: 'Power Tools' },
+    { id: 't8', name: 'Milwaukee M18 Impact Wrench', category: 'Power Tools' },
+    { id: 't9', name: 'Honda EU2200i Generator', category: 'Power Tools' },
+  ];
+
+  const [toolsCatalog, setToolsCatalog] = useState<ToolItem[]>(FALLBACK_TOOLS);
+  const [toolSearchQuery, setToolSearchQuery] = useState('');
+
+  // Fetch live tool catalog from Supabase
+  useEffect(() => {
+    async function fetchToolCatalog() {
+      try {
+        const { data, error } = await supabase
+          .from('tool_catalog')
+          .select('id, name, category')
+          .order('name');
+        if (!error && data && data.length > 0) {
+          setToolsCatalog(data);
+        }
+      } catch (err) {
+        console.log('Tool catalog fetch fallback to defaults');
+      }
+    }
+    fetchToolCatalog();
+  }, []);
+
+  const filteredTools = useMemo(() => {
+    if (!toolSearchQuery.trim()) return toolsCatalog;
+    const q = toolSearchQuery.toLowerCase();
+    return toolsCatalog.filter(
+      t => t.name.toLowerCase().includes(q) || (t.category && t.category.toLowerCase().includes(q))
+    );
+  }, [toolsCatalog, toolSearchQuery]);
+
+  const TOOL_PRESETS = ['Makita Cordless Drill #4', 'Fluke 117 Multimeter', 'Robinair 5CFM Vacuum Pump', 'Digital Manifold Gauge', 'Other Tool'];
   const ISSUE_TYPE_PRESETS = [
     { label: 'Damaged / Broken', value: 'Damaged' },
     { label: 'Malfunctioning', value: 'Malfunctioning' },
@@ -425,40 +472,17 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   };
 
   const openTicketForm = (explicitCategory?: string) => {
-    let targetCategory = explicitCategory;
-    
-    // Auto-harvest context from recent user messages if category is not explicitly passed
-    const userMsgs = messages.filter(m => m.role === 'user');
-    const lastUserMsg = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].text : inputText;
-    const lower = (lastUserMsg || '').toLowerCase();
-
-    if (!targetCategory) {
-      if (/drill|grinder|hammer|multimeter|tool|equipment|machine|broken|damaged|stolen/i.test(lower)) {
-        targetCategory = 'Equipment Issue';
-      } else if (/payroll|salary|payslip|overtime|\bot\b|deduction|missing pay|wage/i.test(lower)) {
-        targetCategory = 'Payroll Issue';
-      } else if (/dtr|biometric|time in|time out|clock|attendance|log/i.test(lower)) {
-        targetCategory = 'DTR Issue';
-      } else if (/leave|vacation|sick|absent|emergency/i.test(lower)) {
-        targetCategory = 'File Leave';
-      } else {
-        targetCategory = 'Others';
-      }
-    }
+    const targetCategory = explicitCategory || 'Payroll Issue';
 
     setTicketCategory(targetCategory);
     applyCategoryDefaults(targetCategory);
 
-    // Context Auto-Harvesting: Pre-fill description if empty and there's recent user text
-    if (!ticketDesc && lastUserMsg && lastUserMsg.trim() !== '') {
-      if (!lastUserMsg.includes('FORM SUBMITTED')) {
-        setTicketDesc(lastUserMsg.trim());
-        if (targetCategory === 'Others' && !ticketTitle) {
-          setTicketTitle(lastUserMsg.slice(0, 40).trim());
-        }
-      }
+    // 100% Purge Auto-Harvesting Bug: Clean, empty inputs on every open
+    if (!initialTicketData) {
+      setTicketTitle('');
+      setTicketDesc('');
     }
-
+    setToolSearchQuery('');
     setFormError('');
     setFormStep(explicitCategory ? 'details' : 'category');
     setTicketModalVisible(true);
@@ -1482,9 +1506,13 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         onBackdropPress={() => {
           setTicketModalVisible(false);
           setFormStep('category');
+          setToolSearchQuery('');
         }}
         onBackButtonPress={() => {
-          if (formStep === 'details') {
+          if (formStep === 'tool_picker') {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setFormStep('details');
+          } else if (formStep === 'details') {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             setFormStep('category');
           } else {
@@ -1494,6 +1522,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         onSwipeComplete={() => {
           setTicketModalVisible(false);
           setFormStep('category');
+          setToolSearchQuery('');
         }}
         swipeDirection={['down']} 
         propagateSwipe={true}
@@ -1578,6 +1607,166 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 </View>
               </ScrollView>
             </>
+          ) : formStep === 'tool_picker' ? (
+            /* =========================================================================
+               SCREEN 3: SEARCHABLE EQUIPMENT CATALOG & FAST PICKER
+               ========================================================================= */
+            <View style={{ flex: 1 }}>
+              {/* Top Navigation */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setFormStep('details');
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Feather name="arrow-left" size={18} color={colors.brandBlue} style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.brandBlue }}>Back to Details</Text>
+                </TouchableOpacity>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Select Equipment</Text>
+                <TouchableOpacity 
+                  onPress={() => {
+                    setTicketModalVisible(false);
+                    setFormStep('category');
+                  }} 
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Feather name="x" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Search Bar */}
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: isDark ? colors.subCard : '#F1F5F9',
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                height: 44,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: isDark ? colors.cardBorder : '#E2E8F0'
+              }}>
+                <Feather name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
+                <TextInput
+                  value={toolSearchQuery}
+                  onChangeText={setToolSearchQuery}
+                  placeholder="Search tool name or category..."
+                  placeholderTextColor={colors.textSubtle}
+                  style={{ flex: 1, fontSize: 14, color: colors.text }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {toolSearchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setToolSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <Feather name="x-circle" size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* 1-Tap Quick-Picks for Top Tools */}
+              {!toolSearchQuery && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    ⚡ Frequently Reported
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {toolsCatalog.slice(0, 3).map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                          setTicketDynamic((prev: any) => ({ ...prev, toolName: item.name, customTool: '' }));
+                          setFormStep('details');
+                        }}
+                        style={{
+                          backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7',
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#F59E0B',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#B45309' }}>{item.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Tool List */}
+              <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {filteredTools.map((item) => {
+                  const isSelected = ticketDynamic.toolName === item.name;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setTicketDynamic((prev: any) => ({ ...prev, toolName: item.name, customTool: '' }));
+                        setFormStep('details');
+                      }}
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        paddingVertical: 14,
+                        paddingHorizontal: 10,
+                        borderRadius: 10,
+                        backgroundColor: isSelected ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7') : 'transparent',
+                        borderBottomWidth: 1,
+                        borderBottomColor: isDark ? colors.cardBorder : '#F1F5F9'
+                      }}
+                    >
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={{ fontSize: 14, fontWeight: isSelected ? '800' : '600', color: isSelected ? '#B45309' : colors.text }}>
+                          {item.name}
+                        </Text>
+                        {item.category && (
+                          <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>{item.category}</Text>
+                        )}
+                      </View>
+                      {isSelected && <Ionicons name="checkmark-circle" size={18} color="#F59E0B" />}
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* Permanent Fallback State */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setTicketDynamic((prev: any) => ({ ...prev, toolName: 'Other Tool' }));
+                    setFormStep('details');
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 14,
+                    paddingHorizontal: 12,
+                    marginTop: 10,
+                    marginBottom: 20,
+                    borderRadius: 12,
+                    backgroundColor: ticketDynamic.toolName === 'Other Tool' ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7') : (isDark ? colors.subCard : '#F8FAFC'),
+                    borderWidth: 1.5,
+                    borderColor: ticketDynamic.toolName === 'Other Tool' ? '#F59E0B' : (isDark ? colors.cardBorder : '#CBD5E1')
+                  }}
+                >
+                  <Ionicons name="add-circle-outline" size={22} color={colors.textMuted} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Other / Tool Not Listed</Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Type custom tool name or serial ID</Text>
+                  </View>
+                  <Feather name="chevron-right" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
           ) : (
             /* =========================================================================
                SCREEN 2 (THE DETAILS): CONVERSATIONAL MICROCOPY & 1-TAP PRESETS
@@ -1619,6 +1808,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                   onPress={() => {
                     setTicketModalVisible(false);
                     setFormStep('category');
+                    setToolSearchQuery('');
                   }} 
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
@@ -1758,47 +1948,64 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 {/* Sub-form 2: Equipment Issue */}
                 {ticketCategory === 'Equipment Issue' && (
                   <View style={{ gap: 14 }}>
+                    {/* Tool Selector Trigger Card */}
                     <View>
                       <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Which tool or gear?</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                        {TOOL_PRESETS.map((tool, idx) => {
-                          const isSelected = ticketDynamic.toolName === tool;
-                          return (
-                            <TouchableOpacity
-                              key={idx}
-                              activeOpacity={0.7}
-                              onPress={() => setTicketDynamic((prev: any) => ({ ...prev, toolName: tool }))}
-                              style={{
-                                minHeight: 38,
-                                paddingHorizontal: 12,
-                                paddingVertical: 8,
-                                borderRadius: 10,
-                                borderWidth: isSelected ? 1.5 : 1,
-                                borderColor: isSelected ? '#F59E0B' : (isDark ? colors.cardBorder : '#CBD5E1'),
-                                backgroundColor: isSelected ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7') : (isDark ? colors.subCard : '#FFF'),
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                              }}
-                            >
-                              <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '600', color: isSelected ? '#B45309' : colors.text }}>
-                                {tool}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                          setToolSearchQuery('');
+                          setFormStep('tool_picker');
+                        }}
+                        style={{
+                          minHeight: 48,
+                          paddingHorizontal: 14,
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: ticketDynamic.toolName ? '#F59E0B' : (isDark ? colors.cardBorder : '#CBD5E1'),
+                          backgroundColor: isDark ? colors.subCard : '#FFF',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                            <Ionicons name="construct" size={16} color="#F59E0B" />
+                          </View>
+                          <Text style={{ fontSize: 14, fontWeight: ticketDynamic.toolName ? '700' : '500', color: ticketDynamic.toolName ? colors.text : colors.textSubtle }} numberOfLines={1}>
+                            {ticketDynamic.toolName === 'Other Tool' ? 'Other / Tool Not Listed' : (ticketDynamic.toolName || 'Select equipment from catalog...')}
+                          </Text>
+                        </View>
+                        <Feather name="chevron-down" size={18} color={colors.textMuted} />
+                      </TouchableOpacity>
                     </View>
 
+                    {/* Fallback Custom Tool Input (Smoothly Revealed) */}
                     {ticketDynamic.toolName === 'Other Tool' && (
-                      <TextInput
-                        style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 10, padding: 10, backgroundColor: isDark ? colors.subCard : '#FFF', fontSize: 14, color: colors.text }}
-                        placeholder="Type tool name or serial ID..."
-                        placeholderTextColor={colors.textSubtle}
-                        value={ticketDynamic.customTool || ''}
-                        onChangeText={(val) => setTicketDynamic((prev: any) => ({ ...prev, customTool: val }))}
-                      />
+                      <View>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Please specify the tool name or serial ID</Text>
+                        <TextInput
+                          style={{
+                            borderWidth: 1.5,
+                            borderColor: '#F59E0B',
+                            borderRadius: 12,
+                            padding: 12,
+                            backgroundColor: isDark ? colors.subCard : '#FFF',
+                            fontSize: 14,
+                            color: colors.text
+                          }}
+                          placeholder="e.g. Robinair Manifold Gauge / TC-EQP-0821"
+                          placeholderTextColor={colors.textSubtle}
+                          value={ticketDynamic.customTool || ''}
+                          onChangeText={(val) => setTicketDynamic((prev: any) => ({ ...prev, customTool: val }))}
+                          autoFocus={true}
+                        />
+                      </View>
                     )}
 
+                    {/* Issue Type Chips */}
                     <View>
                       <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 8 }}>What happened to the tool?</Text>
                       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1830,10 +2037,21 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                       </View>
                     </View>
 
+                    {/* Clean Conversational Textarea */}
                     <View>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Describe the defect or damage</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 6 }}>Briefly describe the defect or damage</Text>
                       <TextInput
-                        style={{ borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#CBD5E1', borderRadius: 12, padding: 12, height: 85, textAlignVertical: 'top', backgroundColor: isDark ? colors.subCard : '#FFF', fontSize: 14, color: colors.text }}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: isDark ? colors.cardBorder : '#CBD5E1',
+                          borderRadius: 12,
+                          padding: 12,
+                          height: 85,
+                          textAlignVertical: 'top',
+                          backgroundColor: isDark ? colors.subCard : '#FFF',
+                          fontSize: 14,
+                          color: colors.text
+                        }}
                         value={ticketDesc}
                         onChangeText={setTicketDesc}
                         multiline
