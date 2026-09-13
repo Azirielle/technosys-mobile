@@ -13,7 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDistance } from 'geolib';
 import MapView, { Marker, Circle, Polyline } from '../../components/MapWrapper';
 import { supabase } from '../../lib/supabase';
-import { syncQueue } from '../../lib/syncQueue';
+import { syncQueue, generateUUID } from '../../lib/syncQueue';
 import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -872,6 +872,66 @@ export default function HomeScreen() {
   const [staleShiftData, setStaleShiftData] = useState<any | null>(null);
   const [resolvingStaleShift, setResolvingStaleShift] = useState(false);
   const [staleDepartureTime, setStaleDepartureTime] = useState('17:00');
+  const [showStaleCustomPicker, setShowStaleCustomPicker] = useState(false);
+  const [staleCustomPickerDate, setStaleCustomPickerDate] = useState<Date>(new Date());
+  const [isCustomStaleTimeSelected, setIsCustomStaleTimeSelected] = useState(false);
+
+  const stalePunchStart = useMemo(() => {
+    if (!staleShiftData) return null;
+    return new Date(staleShiftData.app_time_in || staleShiftData.created_at);
+  }, [staleShiftData]);
+
+  const dynamicStalePresets = useMemo(() => {
+    if (!stalePunchStart) {
+      return [
+        { label: '17:00 (Std)', time: '17:00' },
+        { label: '18:00 (+1h)', time: '18:00' },
+        { label: '19:00 (+2h)', time: '19:00' },
+      ];
+    }
+    const fmt = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const d8 = new Date(stalePunchStart.getTime() + 8 * 60 * 60 * 1000);
+    const d9 = new Date(stalePunchStart.getTime() + 9 * 60 * 60 * 1000);
+    const d10 = new Date(stalePunchStart.getTime() + 10 * 60 * 60 * 1000);
+    return [
+      { label: `${fmt(d9)} (Std)`, time: fmt(d9) },
+      { label: `${fmt(d8)} (8h)`, time: fmt(d8) },
+      { label: `${fmt(d10)} (+1h OT)`, time: fmt(d10) },
+    ];
+  }, [stalePunchStart]);
+
+  const staleShiftPreview = useMemo(() => {
+    if (!stalePunchStart) return null;
+    const timeStr = staleDepartureTime || '17:00';
+    const [hoursStr, minsStr] = timeStr.split(':');
+    const outDate = new Date(stalePunchStart);
+    outDate.setHours(parseInt(hoursStr || '17', 10), parseInt(minsStr || '0', 10), 0, 0);
+
+    let outMs = outDate.getTime();
+    if (outMs <= stalePunchStart.getTime()) {
+      outMs += 24 * 60 * 60 * 1000;
+    }
+
+    const diffMs = outMs - stalePunchStart.getTime();
+    const grossHours = diffMs / (1000 * 60 * 60);
+    const mealDeduction = grossHours > 5 ? 1 : 0;
+    const netHours = Math.round(Math.max(0, grossHours - mealDeduction) * 10) / 10;
+    const endDate = new Date(outMs);
+    const isValid = grossHours > 0 && grossHours <= 24;
+    const isExceedinglyLong = grossHours > 16;
+
+    return {
+      punchStart: stalePunchStart,
+      endDate,
+      timeStr,
+      grossHours: Math.round(grossHours * 10) / 10,
+      mealDeduction,
+      netHours,
+      isValid,
+      isExceedinglyLong,
+    };
+  }, [stalePunchStart, staleDepartureTime]);
+
 
   const [profile, setProfile] = useState<any>(null);
   const [schedule, setSchedule] = useState<any>(null);
@@ -927,6 +987,10 @@ export default function HomeScreen() {
         }).catch(() => {});
       } catch (sqErr) {}
 
+      // Check today's attendance logs boundary
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+
       // Check for any stale unclosed shift from previous days
       const { data: openLogs } = await supabase
         .from('time_logs')
@@ -942,12 +1006,14 @@ export default function HomeScreen() {
 
       if (staleUnclosed) {
         setStaleShiftData(staleUnclosed);
+        const punchStart = new Date(staleUnclosed.app_time_in || staleUnclosed.created_at);
+        const defEnd = new Date(punchStart.getTime() + 9 * 60 * 60 * 1000);
+        const defTime = `${String(defEnd.getHours()).padStart(2, '0')}:${String(defEnd.getMinutes()).padStart(2, '0')}`;
+        setStaleDepartureTime(defTime);
+        setStaleCustomPickerDate(defEnd);
+        setIsCustomStaleTimeSelected(false);
         setStaleShiftModalVisible(true);
       }
-
-      // Check today's attendance logs
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
       
       const { data: todaysLogs } = await supabase
         .from('time_logs')
@@ -1046,8 +1112,20 @@ export default function HomeScreen() {
         outMs += 24 * 60 * 60 * 1000;
       }
 
-      const diffMs = Math.max(0, outMs - punchStart.getTime());
+      const diffMs = outMs - punchStart.getTime();
+      if (diffMs <= 0) {
+        safeAlert("Invalid Departure Time", "Departure time cannot be equal to or earlier than clock-in time.");
+        setResolvingStaleShift(false);
+        return;
+      }
+
       const grossHours = diffMs / (1000 * 60 * 60);
+      if (grossHours > 24) {
+        safeAlert("Invalid Duration", "A single shift cannot exceed 24 hours. Please contact HR for manual timesheet correction.");
+        setResolvingStaleShift(false);
+        return;
+      }
+
       const netHours = grossHours > 5 ? Math.max(0, grossHours - 1) : grossHours;
       const totalHours = Math.round(netHours * 10) / 10;
       const outIso = new Date(outMs).toISOString();
@@ -1059,7 +1137,7 @@ export default function HomeScreen() {
           total_hours: totalHours,
           status: 'pending_review',
           is_manual_entry: true,
-          is_suspicious: true,
+          is_suspicious: grossHours > 16,
         })
         .eq('id', staleShiftData.id);
 
@@ -1078,7 +1156,7 @@ export default function HomeScreen() {
       setStaleShiftData(null);
       safeAlert(
         "Previous Shift Reconciled",
-        `Your shift from ${punchStart.toLocaleDateString()} has been closed with ${totalHours}h logged (Departure: ${timeStr}). Submitted for HR audit.`
+        `Your shift from ${punchStart.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} has been closed with ${totalHours}h logged (Departure: ${timeStr}). Submitted for HR audit.`
       );
     } catch (err: any) {
       console.error("Failed to resolve stale shift:", err);
@@ -1461,10 +1539,12 @@ export default function HomeScreen() {
       }
 
       if (distance <= target.radius) {
+        const punchId = generateUUID();
         // --- 1. INSERT TIME LOG (Server-authoritative time via Postgres default timezone('utc', now())) ---
         const { data: insertedLog, error: logError } = await supabase
           .from('time_logs')
           .insert({
+            id: punchId,
             technician_id: techId,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
@@ -1522,9 +1602,29 @@ export default function HomeScreen() {
       }
     } catch (e: any) {
       console.error("Clock in error:", e);
+      // If inside target geofence and network timed out, enqueue idempotent punch
+      if (profile?.id && userLoc) {
+        try {
+          const offlinePunchId = generateUUID();
+          await syncQueue.addToQueue('time_in', {
+            id: offlinePunchId,
+            technician_id: profile.id,
+            latitude: userLoc.lat,
+            longitude: userLoc.lon,
+            geofence_status: 'inside',
+            is_mocked: !!userLoc.isMocked,
+            gps_accuracy: userLoc.accuracy ?? null,
+            status: 'verified',
+            is_manual_entry: false,
+          });
+          console.log("[OFFLINE RESILIENCE] Geofenced clock-in queued into syncQueue with id:", offlinePunchId);
+        } catch (queueErr) {
+          console.error("Failed to enqueue offline punch:", queueErr);
+        }
+      }
       setClockInErrorData({
         title: 'Clock-In Connection Interrupted',
-        message: 'Could not communicate with the attendance server. You can retry, or take a verification photo to log your punch.',
+        message: 'Could not communicate with the attendance server. Your punch has been stored offline and will auto-sync once connection returns.',
         gpsStatus: userLoc ? 'ok' : 'failed',
         photoStatus: 'skipped',
         syncStatus: 'failed'
@@ -1561,6 +1661,7 @@ export default function HomeScreen() {
         isRooted = await Device.isRootedExperimentalAsync();
       } catch (rErr) {}
 
+      const photoPunchId = generateUUID();
       try {
         const fileExt = result.assets[0].uri.split('.').pop() || 'jpeg';
         const fileName = `${profile?.id}-${Date.now()}.${fileExt}`;
@@ -1577,6 +1678,7 @@ export default function HomeScreen() {
         const { data: insertedLog, error: logError } = await supabase
           .from('time_logs')
           .insert({
+            id: photoPunchId,
             technician_id: techId,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
@@ -1635,6 +1737,7 @@ export default function HomeScreen() {
         // Offline resilience: enqueue punch into offline transaction queue
         try {
           await syncQueue.addToQueue('time_in', {
+            id: photoPunchId,
             technician_id: techId,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
@@ -1645,7 +1748,7 @@ export default function HomeScreen() {
             status: 'pending_review',
             photo_status: 'pending',
           });
-          console.log("[OFFLINE RESILIENCE] Clock-in punch successfully saved to offline syncQueue.");
+          console.log("[OFFLINE RESILIENCE] Clock-in punch successfully saved to offline syncQueue with id:", photoPunchId);
         } catch (queueErr) {
           console.error("Failed to enqueue offline punch:", queueErr);
         }
@@ -2401,8 +2504,8 @@ export default function HomeScreen() {
             </View>
 
             <Text style={[styles.clockInErrorMessage, { color: colors.text }]}>
-              {staleShiftData ? (
-                `You have an active shift from ${new Date(staleShiftData.app_time_in || staleShiftData.created_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} started at ${new Date(staleShiftData.app_time_in || staleShiftData.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} that was not clocked out.`
+              {stalePunchStart ? (
+                `You have an active shift from ${stalePunchStart.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} started at ${stalePunchStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} that was not clocked out.`
               ) : (
                 'You have a previous shift that was not clocked out.'
               )}
@@ -2410,47 +2513,159 @@ export default function HomeScreen() {
 
             <View style={[styles.clockInErrorStatusBox, { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderColor: isDark ? colors.cardBorder : '#E2E8F0', padding: 12 }]}>
               <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.text, marginBottom: 8 }}>
-                Select your departure time to close this shift and submit for HR audit:
+                Select departure time to close shift:
               </Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                {['17:00', '18:00', '19:00', '20:00'].map(t => (
-                  <TouchableOpacity
-                    key={t}
-                    onPress={() => setStaleDepartureTime(t)}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      borderRadius: 8,
-                      alignItems: 'center',
-                      backgroundColor: staleDepartureTime === t ? colors.brandBlue : (isDark ? '#1E293B' : '#FFFFFF'),
-                      borderWidth: 1,
-                      borderColor: staleDepartureTime === t ? colors.brandBlue : (isDark ? '#334155' : '#CBD5E1'),
-                    }}
-                  >
-                    <Text style={{
-                      fontFamily: 'DMSans-Bold',
-                      fontSize: 12,
-                      color: staleDepartureTime === t ? '#FFFFFF' : colors.text,
-                    }}>
-                      {t}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+
+              <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                {dynamicStalePresets.map(preset => {
+                  const isSelected = !isCustomStaleTimeSelected && staleDepartureTime === preset.time;
+                  return (
+                    <TouchableOpacity
+                      key={preset.time}
+                      onPress={() => {
+                        setIsCustomStaleTimeSelected(false);
+                        setStaleDepartureTime(preset.time);
+                      }}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        alignItems: 'center',
+                        backgroundColor: isSelected ? colors.brandBlue : (isDark ? '#1E293B' : '#FFFFFF'),
+                        borderWidth: 1,
+                        borderColor: isSelected ? colors.brandBlue : (isDark ? '#334155' : '#CBD5E1'),
+                      }}
+                    >
+                      <Text style={{
+                        fontFamily: 'DMSans-Bold',
+                        fontSize: 11,
+                        color: isSelected ? '#FFFFFF' : colors.text,
+                      }}>
+                        {preset.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* Custom Time Option */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsCustomStaleTimeSelected(true);
+                    setShowStaleCustomPicker(true);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    backgroundColor: isCustomStaleTimeSelected ? colors.brandBlue : (isDark ? '#1E293B' : '#FFFFFF'),
+                    borderWidth: 1,
+                    borderColor: isCustomStaleTimeSelected ? colors.brandBlue : (isDark ? '#334155' : '#CBD5E1'),
+                  }}
+                >
+                  <Text style={{
+                    fontFamily: 'DMSans-Bold',
+                    fontSize: 11,
+                    color: isCustomStaleTimeSelected ? '#FFFFFF' : colors.text,
+                  }}>
+                    {isCustomStaleTimeSelected ? `${staleDepartureTime} ✎` : 'Custom ⏱'}
+                  </Text>
+                </TouchableOpacity>
               </View>
+
+              {/* Dynamic Calculation Live Breakdown */}
+              {staleShiftPreview && (
+                <View style={{
+                  marginTop: 6,
+                  padding: 10,
+                  borderRadius: 8,
+                  backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : '#F1F5F9',
+                  borderWidth: 1,
+                  borderColor: isDark ? colors.cardBorder : '#E2E8F0',
+                }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Departure Date/Time:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text }}>
+                      {staleShiftPreview.endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
+                      {staleShiftPreview.endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Gross Shift Duration:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.text }}>
+                      {staleShiftPreview.grossHours} hrs
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Mandatory Meal Break:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: staleShiftPreview.mealDeduction > 0 ? '#F59E0B' : colors.textMuted }}>
+                      {staleShiftPreview.mealDeduction > 0 ? '-1.0 hr (>5h shift)' : '0.0 hr'}
+                    </Text>
+                  </View>
+
+                  <View style={{ height: 1, backgroundColor: isDark ? '#334155' : '#CBD5E1', marginVertical: 4 }} />
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text }}>Net Auditable Hours:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#10B981' }}>
+                      {staleShiftPreview.netHours} hrs
+                    </Text>
+                  </View>
+
+                  {staleShiftPreview.isExceedinglyLong && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
+                      <Feather name="alert-triangle" size={13} color="#F59E0B" />
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: '#F59E0B', flex: 1 }}>
+                        Exceeds 16h — will be flagged for CEO / HR compliance audit.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
+
+            {/* Native DateTimePicker for Custom Departure */}
+            {showStaleCustomPicker && (
+              <DateTimePicker
+                value={staleCustomPickerDate}
+                mode="time"
+                is24Hour={true}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  setShowStaleCustomPicker(Platform.OS === 'ios');
+                  if (selectedDate) {
+                    setStaleCustomPickerDate(selectedDate);
+                    const hh = String(selectedDate.getHours()).padStart(2, '0');
+                    const mm = String(selectedDate.getMinutes()).padStart(2, '0');
+                    setStaleDepartureTime(`${hh}:${mm}`);
+                    setIsCustomStaleTimeSelected(true);
+                  }
+                }}
+              />
+            )}
 
             <View style={{ gap: 10, marginTop: 18 }}>
               <TouchableOpacity
-                style={[styles.clockInRetryBtn, { backgroundColor: colors.brandBlue }]}
+                style={[
+                  styles.clockInRetryBtn,
+                  {
+                    backgroundColor: staleShiftPreview?.isValid ? colors.brandBlue : '#94A3B8',
+                    opacity: staleShiftPreview?.isValid ? 1 : 0.6
+                  }
+                ]}
                 onPress={() => handleResolveStaleShift()}
-                disabled={resolvingStaleShift}
+                disabled={resolvingStaleShift || !staleShiftPreview?.isValid}
               >
                 {resolvingStaleShift ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>
                     <Feather name="check-circle" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-                    <Text style={styles.clockInRetryBtnText}>Close Shift at {staleDepartureTime}</Text>
+                    <Text style={styles.clockInRetryBtnText}>
+                      Close Shift ({staleShiftPreview?.netHours ?? 0}h Net)
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
