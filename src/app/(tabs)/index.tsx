@@ -867,6 +867,12 @@ export default function HomeScreen() {
   const [retryingClockIn, setRetryingClockIn] = useState(false);
   const [submittingReviewTicket, setSubmittingReviewTicket] = useState(false);
 
+  // Task 28: Stale Shift Lifecycle & Offline Queue Reconciler
+  const [staleShiftModalVisible, setStaleShiftModalVisible] = useState(false);
+  const [staleShiftData, setStaleShiftData] = useState<any | null>(null);
+  const [resolvingStaleShift, setResolvingStaleShift] = useState(false);
+  const [staleDepartureTime, setStaleDepartureTime] = useState('17:00');
+
   const [profile, setProfile] = useState<any>(null);
   const [schedule, setSchedule] = useState<any>(null);
 
@@ -911,6 +917,33 @@ export default function HomeScreen() {
         .maybeSingle();
       
       setSchedule(scheduleData || null);
+
+      // Reactive Sync: Flush pending offline queue to HQ
+      try {
+        syncQueue.syncPendingQueue().then(res => {
+          if (res.syncedCount > 0) {
+            console.log(`[OFFLINE SYNC] Flushed ${res.syncedCount} queued punch(es) to HQ.`);
+          }
+        }).catch(() => {});
+      } catch (sqErr) {}
+
+      // Check for any stale unclosed shift from previous days
+      const { data: openLogs } = await supabase
+        .from('time_logs')
+        .select('*')
+        .eq('technician_id', user.id)
+        .is('app_time_out', null)
+        .order('created_at', { ascending: false });
+
+      const staleUnclosed = openLogs?.find(l => {
+        const punchStart = new Date(l.app_time_in || l.created_at);
+        return punchStart.getTime() < startOfDay.getTime();
+      });
+
+      if (staleUnclosed) {
+        setStaleShiftData(staleUnclosed);
+        setStaleShiftModalVisible(true);
+      }
 
       // Check today's attendance logs
       const startOfDay = new Date();
@@ -982,6 +1015,78 @@ export default function HomeScreen() {
       supabase.removeChannel(notifChannel);
     };
   }, []);
+
+  // Task 28: Reactive Offline Queue Flush on Screen Focus
+  useFocusEffect(
+    React.useCallback(() => {
+      syncQueue.syncPendingQueue().then(res => {
+        if (res.syncedCount > 0) {
+          console.log(`[FOCUS SYNC] Synchronized ${res.syncedCount} queued punch(es) to HQ.`);
+        }
+      }).catch(err => {
+        console.warn("Focus sync error:", err);
+      });
+    }, [])
+  );
+
+  // Task 28: Stale Shift Reconciler Action
+  const handleResolveStaleShift = async (customDepartureTime?: string) => {
+    if (!staleShiftData || !profile?.id) return;
+    setResolvingStaleShift(true);
+    try {
+      const punchStart = new Date(staleShiftData.app_time_in || staleShiftData.created_at);
+      const timeStr = customDepartureTime || staleDepartureTime || '17:00';
+      const [hoursStr, minsStr] = timeStr.split(':');
+      
+      const outDate = new Date(punchStart);
+      outDate.setHours(parseInt(hoursStr, 10), parseInt(minsStr || '0', 10), 0, 0);
+
+      let outMs = outDate.getTime();
+      if (outMs <= punchStart.getTime()) {
+        outMs += 24 * 60 * 60 * 1000;
+      }
+
+      const diffMs = Math.max(0, outMs - punchStart.getTime());
+      const grossHours = diffMs / (1000 * 60 * 60);
+      const netHours = grossHours > 5 ? Math.max(0, grossHours - 1) : grossHours;
+      const totalHours = Math.round(netHours * 10) / 10;
+      const outIso = new Date(outMs).toISOString();
+
+      const { error: updateErr } = await supabase
+        .from('time_logs')
+        .update({
+          app_time_out: outIso,
+          total_hours: totalHours,
+          status: 'pending_review',
+          is_manual_entry: true,
+          is_suspicious: true,
+        })
+        .eq('id', staleShiftData.id);
+
+      if (updateErr) throw updateErr;
+
+      // Reset technician_locations to offline
+      await supabase
+        .from('technician_locations')
+        .upsert({
+          technician_id: profile.id,
+          status: 'offline',
+          updated_at: outIso
+        });
+
+      setStaleShiftModalVisible(false);
+      setStaleShiftData(null);
+      safeAlert(
+        "Previous Shift Reconciled",
+        `Your shift from ${punchStart.toLocaleDateString()} has been closed with ${totalHours}h logged (Departure: ${timeStr}). Submitted for HR audit.`
+      );
+    } catch (err: any) {
+      console.error("Failed to resolve stale shift:", err);
+      safeAlert("Reconciliation Error", err.message || "Failed to close previous shift.");
+    } finally {
+      setResolvingStaleShift(false);
+    }
+  };
 
   // Duty-Bound Live Fleet Tracking: Periodic GPS Heartbeat
   // Active strictly when technician is clocked in with an open shift (app_time_out is null)
@@ -2272,6 +2377,90 @@ export default function HomeScreen() {
                 disabled={retryingClockIn || submittingReviewTicket}
               >
                 <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>Dismiss & Re-attempt Later</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </RNModal>
+
+        {/* STALE SHIFT RECONCILIATION MODAL */}
+        <RNModal
+          isVisible={staleShiftModalVisible}
+          onBackdropPress={() => setStaleShiftModalVisible(false)}
+          onBackButtonPress={() => setStaleShiftModalVisible(false)}
+          style={{ margin: 20, justifyContent: 'center' }}
+        >
+          <View style={[styles.clockInErrorCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <View style={styles.clockInErrorHeader}>
+              <View style={[styles.clockInErrorIconBox, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7' }]}>
+                <Feather name="clock" size={28} color="#D97706" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.clockInErrorTitle, { color: colors.text }]}>Unclosed Shift Detected</Text>
+                <Text style={[styles.clockInErrorSubtitle, { color: colors.textMuted }]}>Attendance Lifecycle Safeguard</Text>
+              </View>
+            </View>
+
+            <Text style={[styles.clockInErrorMessage, { color: colors.text }]}>
+              {staleShiftData ? (
+                `You have an active shift from ${new Date(staleShiftData.app_time_in || staleShiftData.created_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} started at ${new Date(staleShiftData.app_time_in || staleShiftData.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} that was not clocked out.`
+              ) : (
+                'You have a previous shift that was not clocked out.'
+              )}
+            </Text>
+
+            <View style={[styles.clockInErrorStatusBox, { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderColor: isDark ? colors.cardBorder : '#E2E8F0', padding: 12 }]}>
+              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.text, marginBottom: 8 }}>
+                Select your departure time to close this shift and submit for HR audit:
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                {['17:00', '18:00', '19:00', '20:00'].map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    onPress={() => setStaleDepartureTime(t)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      backgroundColor: staleDepartureTime === t ? colors.brandBlue : (isDark ? '#1E293B' : '#FFFFFF'),
+                      borderWidth: 1,
+                      borderColor: staleDepartureTime === t ? colors.brandBlue : (isDark ? '#334155' : '#CBD5E1'),
+                    }}
+                  >
+                    <Text style={{
+                      fontFamily: 'DMSans-Bold',
+                      fontSize: 12,
+                      color: staleDepartureTime === t ? '#FFFFFF' : colors.text,
+                    }}>
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={{ gap: 10, marginTop: 18 }}>
+              <TouchableOpacity
+                style={[styles.clockInRetryBtn, { backgroundColor: colors.brandBlue }]}
+                onPress={() => handleResolveStaleShift()}
+                disabled={resolvingStaleShift}
+              >
+                {resolvingStaleShift ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Feather name="check-circle" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.clockInRetryBtnText}>Close Shift at {staleDepartureTime}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.clockInDismissBtn}
+                onPress={() => setStaleShiftModalVisible(false)}
+                disabled={resolvingStaleShift}
+              >
+                <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>Remind Me Later</Text>
               </TouchableOpacity>
             </View>
           </View>

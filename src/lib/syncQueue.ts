@@ -34,10 +34,25 @@ export const syncQueue = {
   async addToQueue(type: QueueItem['type'], payload: any): Promise<void> {
     try {
       const queue = await this.getQueue();
+      let enrichedPayload = { ...payload };
+
+      if ((type === 'time_in' || type === 'time_out') && enrichedPayload.technician_id) {
+        try {
+          const uptime = await Device.getUptimeAsync();
+          enrichedPayload.uptime_at_creation = uptime;
+          enrichedPayload.signature = await ExpoCrypto.digestStringAsync(
+            ExpoCrypto.CryptoDigestAlgorithm.SHA256,
+            `${enrichedPayload.technician_id}:${uptime}:TECHNO_SECRET_SALT`
+          );
+        } catch (uptimeErr) {
+          console.warn("Failed to capture hardware uptime for offline queue:", uptimeErr);
+        }
+      }
+
       const newItem: QueueItem = {
         id: Math.random().toString(36).substring(2, 9),
         type,
-        payload,
+        payload: enrichedPayload,
         timestamp: new Date().toISOString()
       };
       queue.push(newItem);
