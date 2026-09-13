@@ -8,10 +8,12 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDistance } from 'geolib';
 import MapView, { Marker, Circle, Polyline } from '../../components/MapWrapper';
 import { supabase } from '../../lib/supabase';
+import { syncQueue } from '../../lib/syncQueue';
 import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -843,7 +845,7 @@ export default function HomeScreen() {
   };
   
   const [locationStatus, setLocationStatus] = useState<'verifying' | 'success' | 'fallback'>('verifying');
-  const [userLoc, setUserLoc] = useState<{lat: number, lon: number} | null>(null);
+  const [userLoc, setUserLoc] = useState<{lat: number; lon: number; isMocked?: boolean; accuracy?: number | null} | null>(null);
   const [uploadingSelfie, setUploadingSelfie] = useState(false);
   
   // Chunk 45: Clock-In Resilience & Fallback Error Modal
@@ -872,7 +874,20 @@ export default function HomeScreen() {
 
   useEffect(() => {
     async function loadData() {
-        (async () => { try { const { status } = await Location.requestForegroundPermissionsAsync(); if (status === 'granted') { const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }); setUserLoc({ lat: loc.coords.latitude, lon: loc.coords.longitude }); } } catch (e) {} })();
+        (async () => { 
+          try { 
+            const { status } = await Location.requestForegroundPermissionsAsync(); 
+            if (status === 'granted') { 
+              const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }); 
+              setUserLoc({ 
+                lat: loc.coords.latitude, 
+                lon: loc.coords.longitude, 
+                isMocked: !!(loc as any).mocked, 
+                accuracy: loc.coords.accuracy ?? null 
+              }); 
+            } 
+          } catch (e) {} 
+        })();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
@@ -1300,7 +1315,23 @@ export default function HomeScreen() {
         return;
       }
 
-      const currentLoc = { lat: location.coords.latitude, lon: location.coords.longitude };
+      const isMocked = !!(location as any).mocked;
+      const accuracy = location.coords.accuracy ?? null;
+
+      // Active root/jailbreak detection via native expo-device API
+      let isRooted = false;
+      try {
+        isRooted = await Device.isRootedExperimentalAsync();
+      } catch (rootErr) {
+        console.warn("Hardware root detection check error:", rootErr);
+      }
+
+      const currentLoc = { 
+        lat: location.coords.latitude, 
+        lon: location.coords.longitude,
+        isMocked,
+        accuracy
+      };
       setUserLoc(currentLoc);
       
       const target = await resolveTargetGeofence();
@@ -1311,26 +1342,40 @@ export default function HomeScreen() {
         { latitude: target.lat, longitude: target.lon }
       );
 
-      const now = new Date().toISOString();
       const techId = profile?.id;
 
+      // Anti-Spoofing Interception: Mocked GPS is strictly prohibited from auto-verification
+      if (isMocked) {
+        console.warn("[ANTI-SPOOF] Simulated GPS provider intercepted. Bypassing automatic geofence clearance.");
+        safeAlert(
+          "Mock Location Detected",
+          "Simulated GPS coordinates have been detected on this device. Automated clock-in is disabled. You must submit a photo verification for HR audit."
+        );
+        setLocationStatus('fallback');
+        return;
+      }
+
       if (distance <= target.radius) {
-        // --- 1. INSERT TIME LOG ---
+        // --- 1. INSERT TIME LOG (Server-authoritative time via Postgres default timezone('utc', now())) ---
         const { data: insertedLog, error: logError } = await supabase
           .from('time_logs')
           .insert({
             technician_id: techId,
-            app_time_in: now,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
             status: 'verified',
             geofence_status: 'inside',
+            is_mocked: false,
+            gps_accuracy: accuracy,
+            is_suspicious: isRooted,
             is_manual_entry: false,
           })
           .select()
           .single();
 
         if (logError) throw logError;
+
+        const serverPunchTime = insertedLog?.app_time_in || new Date().toISOString();
 
         // --- 2. DUAL-STREAM: UPSERT TECHNICIAN LOCATIONS ---
         if (techId) {
@@ -1341,7 +1386,7 @@ export default function HomeScreen() {
               latitude: currentLoc.lat,
               longitude: currentLoc.lon,
               status: 'working',
-              updated_at: now,
+              updated_at: serverPunchTime,
             });
 
           // --- 3. REALTIME BROADCAST TO ADMIN ---
@@ -1356,7 +1401,7 @@ export default function HomeScreen() {
               longitude: currentLoc.lon,
               status: 'working',
               action: 'clock_in',
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              time: new Date(serverPunchTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
           });
         }
@@ -1393,13 +1438,24 @@ export default function HomeScreen() {
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.5,
+      quality: 0.3, // Compressed to ~60KB to eliminate slow-network/basement timeouts
       cameraType: ImagePicker.CameraType.front,
     });
 
     if (!result.canceled && result.assets[0].uri) {
       setLastCapturedSelfieUri(result.assets[0].uri);
       setUploadingSelfie(true);
+
+      const techId = profile?.id;
+      const currentLoc = userLoc || { lat: 0, lon: 0 };
+      const isMocked = !!userLoc?.isMocked;
+      const accuracy = userLoc?.accuracy ?? null;
+
+      let isRooted = false;
+      try {
+        isRooted = await Device.isRootedExperimentalAsync();
+      } catch (rErr) {}
+
       try {
         const fileExt = result.assets[0].uri.split('.').pop() || 'jpeg';
         const fileName = `${profile?.id}-${Date.now()}.${fileExt}`;
@@ -1412,28 +1468,28 @@ export default function HomeScreen() {
 
         const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
 
-        const now = new Date().toISOString();
-        const techId = profile?.id;
-        const currentLoc = userLoc || { lat: 0, lon: 0 };
-
-        // 1. Insert time log with pending_review status
+        // 1. Insert time log with pending_review status & server-authoritative time
         const { data: insertedLog, error: logError } = await supabase
           .from('time_logs')
           .insert({
             technician_id: techId,
-            app_time_in: now,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
             status: 'pending_review',
             geofence_status: 'outside',
             photo_url: publicUrlData.publicUrl || fileName,
             photo_status: 'pending',
+            is_mocked: isMocked,
+            gps_accuracy: accuracy,
+            is_suspicious: isRooted || isMocked,
             is_manual_entry: false,
           })
           .select()
           .single();
 
         if (logError) throw logError;
+
+        const serverPunchTime = insertedLog?.app_time_in || new Date().toISOString();
 
         // 2. Dual stream: upsert technician locations
         if (techId) {
@@ -1444,7 +1500,7 @@ export default function HomeScreen() {
               latitude: currentLoc.lat,
               longitude: currentLoc.lon,
               status: 'working',
-              updated_at: now,
+              updated_at: serverPunchTime,
             });
 
           // 3. Realtime broadcast to admin
@@ -1459,7 +1515,7 @@ export default function HomeScreen() {
               longitude: currentLoc.lon,
               status: 'working',
               action: 'clock_in_override',
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              time: new Date(serverPunchTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
           });
         }
@@ -1471,6 +1527,24 @@ export default function HomeScreen() {
         setTodayCompletedLog(null);
       } catch (err: any) {
         console.error("Photo override error:", err);
+        // Offline resilience: enqueue punch into offline transaction queue
+        try {
+          await syncQueue.addToQueue('time_in', {
+            technician_id: techId,
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lon,
+            geofence_status: 'outside',
+            is_mocked: isMocked,
+            gps_accuracy: accuracy,
+            is_suspicious: isRooted || isMocked,
+            status: 'pending_review',
+            photo_status: 'pending',
+          });
+          console.log("[OFFLINE RESILIENCE] Clock-in punch successfully saved to offline syncQueue.");
+        } catch (queueErr) {
+          console.error("Failed to enqueue offline punch:", queueErr);
+        }
+
         setClockInErrorData({
           title: 'Verification Upload Interrupted',
           message: err?.message || 'A network error occurred while uploading your verification selfie. You can retry with your saved photo or submit an immediate review ticket to HR.',
@@ -1492,6 +1566,16 @@ export default function HomeScreen() {
     }
 
     setRetryingClockIn(true);
+    const techId = profile?.id;
+    const currentLoc = userLoc || { lat: 0, lon: 0 };
+    const isMocked = !!userLoc?.isMocked;
+    const accuracy = userLoc?.accuracy ?? null;
+
+    let isRooted = false;
+    try {
+      isRooted = await Device.isRootedExperimentalAsync();
+    } catch (rErr) {}
+
     try {
       const fileExt = lastCapturedSelfieUri.split('.').pop() || 'jpeg';
       const fileName = `${profile?.id}-${Date.now()}.${fileExt}`;
@@ -1504,27 +1588,27 @@ export default function HomeScreen() {
 
       const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
 
-      const now = new Date().toISOString();
-      const techId = profile?.id;
-      const currentLoc = userLoc || { lat: 0, lon: 0 };
-
       const { data: insertedLog, error: logError } = await supabase
         .from('time_logs')
         .insert({
           technician_id: techId,
-          app_time_in: now,
           latitude: currentLoc.lat,
           longitude: currentLoc.lon,
           status: 'pending_review',
           geofence_status: 'outside',
           photo_url: publicUrlData.publicUrl || fileName,
           photo_status: 'pending',
+          is_mocked: isMocked,
+          gps_accuracy: accuracy,
+          is_suspicious: isRooted || isMocked,
           is_manual_entry: false,
         })
         .select()
         .single();
 
       if (logError) throw logError;
+
+      const serverPunchTime = insertedLog?.app_time_in || new Date().toISOString();
 
       if (techId) {
         await supabase
@@ -1534,7 +1618,7 @@ export default function HomeScreen() {
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
             status: 'working',
-            updated_at: now,
+            updated_at: serverPunchTime,
           });
 
         const trackingChannel = supabase.channel('fleet-tracking');
@@ -1548,7 +1632,7 @@ export default function HomeScreen() {
             longitude: currentLoc.lon,
             status: 'working',
             action: 'clock_in_override',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            time: new Date(serverPunchTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }
         });
       }
@@ -1624,25 +1708,57 @@ export default function HomeScreen() {
                 exitLoc = { lat: loc.coords.latitude, lon: loc.coords.longitude };
               } catch (e) {}
 
-              const now = new Date();
-              const nowIso = now.toISOString();
+              // 1. Authoritative server time via get_server_time RPC with fallback
+              let authoritativeOut = new Date().toISOString();
+              let isSuspiciousOut = false;
+              try {
+                const { data: sTime, error: sErr } = await supabase.rpc('get_server_time');
+                if (!sErr && sTime) {
+                  authoritativeOut = new Date(sTime).toISOString();
+                  const skewMs = Math.abs(new Date().getTime() - new Date(sTime).getTime());
+                  if (skewMs > 5 * 60 * 1000) {
+                    console.warn(`[CLOCK INTEGRITY] Device clock skew of ${Math.round(skewMs / 1000)}s detected on clock out.`);
+                    isSuspiciousOut = true;
+                  }
+                }
+              } catch (clockErr) {
+                console.warn("Could not fetch server time for clock out:", clockErr);
+              }
+
               const startMs = new Date(activeTimeLog.app_time_in).getTime();
-              const diffMs = Math.max(0, now.getTime() - startMs);
+              const endMs = new Date(authoritativeOut).getTime();
+              const diffMs = Math.max(0, endMs - startMs);
               const totalHours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10;
               const techId = profile?.id;
 
-              // 1. Update time_logs with app_time_out and total_hours
+              // 2. Update time_logs with app_time_out and total_hours
+              const updatePayload: any = {
+                app_time_out: authoritativeOut,
+                total_hours: totalHours,
+              };
+              if (isSuspiciousOut) {
+                updatePayload.is_suspicious = true;
+              }
+
               const { error: logErr } = await supabase
                 .from('time_logs')
-                .update({
-                  app_time_out: nowIso,
-                  total_hours: totalHours,
-                })
+                .update(updatePayload)
                 .eq('id', activeTimeLog.id);
 
-              if (logErr) throw logErr;
+              if (logErr) {
+                // Offline fallback
+                try {
+                  await syncQueue.addToQueue('time_out', {
+                    log_id: activeTimeLog.id,
+                    app_time_out: authoritativeOut,
+                    total_hours: totalHours,
+                  });
+                } catch (queueErr) {
+                  console.error("Failed to enqueue offline clock-out:", queueErr);
+                }
+              }
 
-              // 2. Update technician_locations to offline
+              // 3. Update technician_locations to offline
               if (techId) {
                 await supabase
                   .from('technician_locations')
@@ -1651,10 +1767,10 @@ export default function HomeScreen() {
                     latitude: exitLoc?.lat || 0,
                     longitude: exitLoc?.lon || 0,
                     status: 'offline',
-                    updated_at: nowIso
+                    updated_at: authoritativeOut
                   });
 
-                // 3. Broadcast clock_out to admin
+                // 4. Broadcast clock_out to admin
                 const trackingChannel = supabase.channel('fleet-tracking');
                 await trackingChannel.send({
                   type: 'broadcast',
@@ -1666,7 +1782,7 @@ export default function HomeScreen() {
                     longitude: exitLoc?.lon || 0,
                     status: 'offline',
                     action: 'clock_out',
-                    time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    time: new Date(authoritativeOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                   }
                 });
               }
@@ -1678,7 +1794,7 @@ export default function HomeScreen() {
 
               setTodayCompletedLog({
                 ...activeTimeLog,
-                app_time_out: nowIso,
+                app_time_out: authoritativeOut,
                 total_hours: totalHours
               });
               setActiveTimeLog(null);
