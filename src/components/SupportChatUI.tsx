@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, ScrollView , LayoutAnimation, UIManager, Image, Linking } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, ScrollView , LayoutAnimation, UIManager, Image, Linking, Animated, Easing } from 'react-native';
 import Modal from 'react-native-modal';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -49,6 +49,63 @@ export interface SupportChatUIProps {
   } | null;
 }
 
+// Kinetic Typing Indicator (Staggered Spring Bounce matching kinetics standard)
+const KineticTypingDots = ({ color = '#6B7280', label }: { color?: string; label?: string }) => {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const createBounce = (anim: Animated.Value, delay: number) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(anim, {
+            toValue: -4,
+            duration: 360,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 480,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.delay(Math.max(0, 360 - delay)),
+        ])
+      );
+    };
+
+    const a1 = createBounce(dot1, 0);
+    const a2 = createBounce(dot2, 160);
+    const a3 = createBounce(dot3, 320);
+
+    a1.start();
+    a2.start();
+    a3.start();
+
+    return () => {
+      a1.stop();
+      a2.stop();
+      a3.stop();
+    };
+  }, []);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 16 }}>
+        <Animated.View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color, transform: [{ translateY: dot1 }] }} />
+        <Animated.View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color, transform: [{ translateY: dot2 }] }} />
+        <Animated.View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color, transform: [{ translateY: dot3 }] }} />
+      </View>
+      {label ? (
+        <Text style={{ fontSize: 11, color: color, fontWeight: '500', opacity: 0.85 }}>{label}</Text>
+      ) : null}
+    </View>
+  );
+};
+
 export default function SupportChatUI({ onClose, initialQuery, ticketId, initialTicketData }: SupportChatUIProps) {
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -67,8 +124,10 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   const [isUploadingChatAttachment, setIsUploadingChatAttachment] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const channelRef = useRef<any>(null);
-
   const broadcastChannelRef = useRef<any>(null);
+  const [isAdminTyping, setIsAdminTyping] = useState(false);
+  const adminTypingWatchdog = useRef<any>(null);
+  const techTypingDebounceRef = useRef<any>(null);
 
   const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.doc', '.xlsx', '.xls'];
   const ALLOWED_MIME_TYPES = [
@@ -145,18 +204,34 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   };
 
   useEffect(() => {
-    // Establish a global broadcast channel for sending updates to Admin
+    // Establish a global broadcast channel for sending updates to Admin and receiving typing status
     const ch = supabase.channel('system-updates', {
       config: {
         broadcast: { self: false },
       },
-    });
+    })
+      .on('broadcast', { event: 'typing_status' }, (payload: any) => {
+        const data = payload?.payload || payload;
+        if (data?.ticket_id && activeTicket?.id === data.ticket_id && data.role === 'admin') {
+          if (data.is_typing) {
+            setIsAdminTyping(true);
+            if (adminTypingWatchdog.current) clearTimeout(adminTypingWatchdog.current);
+            adminTypingWatchdog.current = setTimeout(() => {
+              setIsAdminTyping(false);
+            }, 4000);
+          } else {
+            setIsAdminTyping(false);
+          }
+        }
+      });
     ch.subscribe();
     broadcastChannelRef.current = ch;
     return () => {
+      if (adminTypingWatchdog.current) clearTimeout(adminTypingWatchdog.current);
+      if (techTypingDebounceRef.current) clearTimeout(techTypingDebounceRef.current);
       if (broadcastChannelRef.current) supabase.removeChannel(broadcastChannelRef.current);
     };
-  }, []);
+  }, [activeTicket?.id]);
 
 
   useEffect(() => {
@@ -525,6 +600,28 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     }
   };
 
+  const handleTechnicianInputChange = (text: string) => {
+    setInputText(text);
+    if (!activeTicket?.id) return;
+
+    sendRealtimeBroadcast('typing_status', {
+      ticket_id: activeTicket.id,
+      role: 'technician',
+      user_name: 'Technician',
+      is_typing: true,
+    });
+
+    if (techTypingDebounceRef.current) clearTimeout(techTypingDebounceRef.current);
+    techTypingDebounceRef.current = setTimeout(() => {
+      sendRealtimeBroadcast('typing_status', {
+        ticket_id: activeTicket.id,
+        role: 'technician',
+        user_name: 'Technician',
+        is_typing: false,
+      });
+    }, 2500);
+  };
+
   const sendMessage = async (overrideText?: string) => {
     if (activeTicket && (activeTicket.status === 'closed' || activeTicket.status === 'resolved')) {
       Alert.alert(
@@ -540,6 +637,16 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
 
     const textToSend = (overrideText || inputText).trim();
     if (!textToSend && !chatAttachment) return;
+
+    if (techTypingDebounceRef.current) clearTimeout(techTypingDebounceRef.current);
+    if (activeTicket?.id) {
+      sendRealtimeBroadcast('typing_status', {
+        ticket_id: activeTicket.id,
+        role: 'technician',
+        user_name: 'Technician',
+        is_typing: false,
+      });
+    }
 
     let localAccumulatedAiText = "";
     const stagedAttachment = chatAttachment;
@@ -797,6 +904,18 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           keyExtractor={item => item.id}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           contentContainerStyle={styles.chatContainer}
+          ListFooterComponent={
+            isAdminTyping ? (
+              <View style={[styles.messageRow, styles.messageRowAI, { marginTop: 6, marginBottom: 12 }]}>
+                <View style={[styles.avatarAI, { backgroundColor: '#7C3AED' }]}>
+                  <Ionicons name="shield-checkmark" size={14} color="#FFF" />
+                </View>
+                <View style={[styles.bubble, styles.bubbleAI, { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF', borderWidth: 1, borderTopLeftRadius: 4 }]}>
+                  <KineticTypingDots label="HR Admin is typing..." color="#7C3AED" />
+                </View>
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => {
             if (item.role === 'system') {
               return (
@@ -936,6 +1055,13 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                           <Text style={styles.progressText}>{step}</Text>
                         </View>
                       ))}
+                    </View>
+                  )}
+
+                  {/* Kinetic Typing Dots for initial AI streaming state */}
+                  {!isUser && item.progressSteps.length === 0 && item.text.length === 0 && item.isStreaming && (
+                    <View style={{ paddingVertical: 4 }}>
+                      <KineticTypingDots label="AI Assistant is thinking..." color={BRAND.blue} />
                     </View>
                   )}
                   
@@ -1112,7 +1238,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 style={styles.input} 
                 placeholder="Ask about procedures, manuals..." 
                 value={inputText} 
-                onChangeText={setInputText} 
+                onChangeText={handleTechnicianInputChange} 
                 onSubmitEditing={() => sendMessage()} 
                 multiline={true} 
                 placeholderTextColor={colors.textSubtle} 
