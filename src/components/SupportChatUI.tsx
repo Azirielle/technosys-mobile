@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, ScrollView , LayoutAnimation, UIManager, Image, Linking } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, Alert, ScrollView , LayoutAnimation, UIManager, Image, Linking, Animated, Easing } from 'react-native';
 import Modal from 'react-native-modal';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -11,6 +11,7 @@ import * as Crypto from 'expo-crypto';
 import EventSource from 'react-native-sse';
 import { useFocusEffect } from 'expo-router';
 import { useAppTheme } from '../hooks/use-theme';
+import TicketSubmissionModal from './TicketSubmissionModal';
 
 const BRAND = {
   blue: '#1E3A8A',    
@@ -48,6 +49,63 @@ export interface SupportChatUIProps {
   } | null;
 }
 
+// Kinetic Typing Indicator (Staggered Spring Bounce matching kinetics standard)
+const KineticTypingDots = ({ color = '#6B7280', label }: { color?: string; label?: string }) => {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const createBounce = (anim: Animated.Value, delay: number) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(anim, {
+            toValue: -4,
+            duration: 360,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 480,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.delay(Math.max(0, 360 - delay)),
+        ])
+      );
+    };
+
+    const a1 = createBounce(dot1, 0);
+    const a2 = createBounce(dot2, 160);
+    const a3 = createBounce(dot3, 320);
+
+    a1.start();
+    a2.start();
+    a3.start();
+
+    return () => {
+      a1.stop();
+      a2.stop();
+      a3.stop();
+    };
+  }, []);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 16 }}>
+        <Animated.View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color, transform: [{ translateY: dot1 }] }} />
+        <Animated.View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color, transform: [{ translateY: dot2 }] }} />
+        <Animated.View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: color, transform: [{ translateY: dot3 }] }} />
+      </View>
+      {label ? (
+        <Text style={{ fontSize: 11, color: color, fontWeight: '500', opacity: 0.85 }}>{label}</Text>
+      ) : null}
+    </View>
+  );
+};
+
 export default function SupportChatUI({ onClose, initialQuery, ticketId, initialTicketData }: SupportChatUIProps) {
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -66,8 +124,10 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   const [isUploadingChatAttachment, setIsUploadingChatAttachment] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const channelRef = useRef<any>(null);
-
   const broadcastChannelRef = useRef<any>(null);
+  const [isAdminTyping, setIsAdminTyping] = useState(false);
+  const adminTypingWatchdog = useRef<any>(null);
+  const techTypingDebounceRef = useRef<any>(null);
 
   const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.doc', '.xlsx', '.xls'];
   const ALLOWED_MIME_TYPES = [
@@ -144,18 +204,34 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   };
 
   useEffect(() => {
-    // Establish a global broadcast channel for sending updates to Admin
+    // Establish a global broadcast channel for sending updates to Admin and receiving typing status
     const ch = supabase.channel('system-updates', {
       config: {
         broadcast: { self: false },
       },
-    });
+    })
+      .on('broadcast', { event: 'typing_status' }, (payload: any) => {
+        const data = payload?.payload || payload;
+        if (data?.ticket_id && activeTicket?.id === data.ticket_id && data.role === 'admin') {
+          if (data.is_typing) {
+            setIsAdminTyping(true);
+            if (adminTypingWatchdog.current) clearTimeout(adminTypingWatchdog.current);
+            adminTypingWatchdog.current = setTimeout(() => {
+              setIsAdminTyping(false);
+            }, 4000);
+          } else {
+            setIsAdminTyping(false);
+          }
+        }
+      });
     ch.subscribe();
     broadcastChannelRef.current = ch;
     return () => {
+      if (adminTypingWatchdog.current) clearTimeout(adminTypingWatchdog.current);
+      if (techTypingDebounceRef.current) clearTimeout(techTypingDebounceRef.current);
       if (broadcastChannelRef.current) supabase.removeChannel(broadcastChannelRef.current);
     };
-  }, []);
+  }, [activeTicket?.id]);
 
 
   useEffect(() => {
@@ -325,6 +401,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState('');
   const [ticketCategory, setTicketCategory] = useState('Payroll Issue');
+  const [formStep, setFormStep] = useState<'category' | 'details' | 'tool_picker'>('category');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<'date'|'time'>('date');
   const [dateTarget, setDateTarget] = useState('');
@@ -339,7 +416,54 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     { id: 'Others', label: 'Other Inquiry', icon: 'help-circle-outline', color: '#8B5CF6', desc: 'General reports & inquiries' },
   ];
 
-  const TOOL_PRESETS = ['Makita Drill #4', 'Fluke Multimeter', 'Bosch Angle Grinder', 'Hilti Rotary Hammer', 'Other Tool'];
+  interface ToolItem {
+    id: string;
+    name: string;
+    category?: string;
+  }
+
+  const FALLBACK_TOOLS: ToolItem[] = [
+    { id: 't1', name: 'Makita Cordless Drill #4', category: 'Power Tools' },
+    { id: 't2', name: 'Fluke 117 Multimeter', category: 'Diagnostics' },
+    { id: 't3', name: 'Robinair 5CFM Vacuum Pump', category: 'HVAC / Refrigeration' },
+    { id: 't4', name: 'Digital Manifold Gauge', category: 'HVAC / Refrigeration' },
+    { id: 't5', name: 'Bosch Angle Grinder', category: 'Power Tools' },
+    { id: 't6', name: 'Yellow Jacket Flaring Tool', category: 'Hand Tools' },
+    { id: 't7', name: 'DeWalt 20V Max Hammer Drill', category: 'Power Tools' },
+    { id: 't8', name: 'Milwaukee M18 Impact Wrench', category: 'Power Tools' },
+    { id: 't9', name: 'Honda EU2200i Generator', category: 'Power Tools' },
+  ];
+
+  const [toolsCatalog, setToolsCatalog] = useState<ToolItem[]>(FALLBACK_TOOLS);
+  const [toolSearchQuery, setToolSearchQuery] = useState('');
+
+  // Fetch live tool catalog from Supabase
+  useEffect(() => {
+    async function fetchToolCatalog() {
+      try {
+        const { data, error } = await supabase
+          .from('tool_catalog')
+          .select('id, name, category')
+          .order('name');
+        if (!error && data && data.length > 0) {
+          setToolsCatalog(data);
+        }
+      } catch (err) {
+        console.log('Tool catalog fetch fallback to defaults');
+      }
+    }
+    fetchToolCatalog();
+  }, []);
+
+  const filteredTools = useMemo(() => {
+    if (!toolSearchQuery.trim()) return toolsCatalog;
+    const q = toolSearchQuery.toLowerCase();
+    return toolsCatalog.filter(
+      t => t.name.toLowerCase().includes(q) || (t.category && t.category.toLowerCase().includes(q))
+    );
+  }, [toolsCatalog, toolSearchQuery]);
+
+  const TOOL_PRESETS = ['Makita Cordless Drill #4', 'Fluke 117 Multimeter', 'Robinair 5CFM Vacuum Pump', 'Digital Manifold Gauge', 'Other Tool'];
   const ISSUE_TYPE_PRESETS = [
     { label: 'Damaged / Broken', value: 'Damaged' },
     { label: 'Malfunctioning', value: 'Malfunctioning' },
@@ -380,6 +504,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   // Hydrate formal ticket form from deep-linked initialTicketData
   useEffect(() => {
     if (initialTicketData) {
+      setFormStep('details');
       if (initialTicketData.category) {
         setTicketCategory(initialTicketData.category);
       }
@@ -422,66 +547,11 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     });
   };
 
+  const [selectedCategoryForModal, setSelectedCategoryForModal] = useState<string | undefined>(undefined);
+
   const openTicketForm = (explicitCategory?: string) => {
-    let targetCategory = explicitCategory;
-    
-    // Auto-harvest context from recent user messages if category is not explicitly passed
-    const userMsgs = messages.filter(m => m.role === 'user');
-    const lastUserMsg = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].text : inputText;
-    const lower = (lastUserMsg || '').toLowerCase();
-
-    if (!targetCategory) {
-      if (/drill|grinder|hammer|multimeter|tool|equipment|machine|broken|damaged|stolen/i.test(lower)) {
-        targetCategory = 'Equipment Issue';
-      } else if (/payroll|salary|payslip|overtime|\bot\b|deduction|missing pay|wage/i.test(lower)) {
-        targetCategory = 'Payroll Issue';
-      } else if (/dtr|biometric|time in|time out|clock|attendance|log/i.test(lower)) {
-        targetCategory = 'DTR Issue';
-      } else if (/leave|vacation|sick|absent|emergency/i.test(lower)) {
-        targetCategory = 'File Leave';
-      } else {
-        targetCategory = 'Others';
-      }
-    }
-
-    setTicketCategory(targetCategory);
-    applyCategoryDefaults(targetCategory);
-
-    // Context Auto-Harvesting: Pre-fill description if empty and there's recent user text
-    if (!ticketDesc && lastUserMsg && lastUserMsg.trim() !== '') {
-      if (!lastUserMsg.includes('FORM SUBMITTED')) {
-        setTicketDesc(lastUserMsg.trim());
-        if (targetCategory === 'Others' && !ticketTitle) {
-          setTicketTitle(lastUserMsg.slice(0, 40).trim());
-        }
-      }
-    }
-
-    setFormError('');
+    setSelectedCategoryForModal(explicitCategory);
     setTicketModalVisible(true);
-  };
-
-  const pickModalAttachment = async () => {
-    try {
-      const res = await DocumentPicker.getDocumentAsync({ 
-        type: [
-          "image/*",
-          "application/pdf",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "application/msword",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "application/vnd.ms-excel"
-        ], 
-        copyToCacheDirectory: true 
-      }); 
-      if (!res.canceled && res.assets && res.assets.length > 0) { 
-        const file = res.assets[0]; 
-        if (!validateAttachment(file)) return;
-        setAttachedFile({ uri: file.uri, mimeType: file.mimeType || 'application/octet-stream', name: file.name, size: file.size }); 
-      } 
-    } catch (err: any) {
-      Alert.alert("Error", "Failed to select document: " + err.message);
-    }
   };
 
   const openHistory = async () => {
@@ -493,236 +563,6 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     }
   };
   
-  const submitTicket = async () => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    
-    // Generate UUID synchronously
-    const currentIdempotencyKey = idempotencyKey || Crypto.randomUUID();
-    if (!idempotencyKey) setIdempotencyKey(currentIdempotencyKey);
-    if (ticketCategory === 'Payroll Issue' && (!ticketDynamic.payPeriod || !ticketDesc)) {
-      setFormError('Please fill in pay period and dispute details.'); setTimeout(() => setFormError(''), 3000);
-      setIsSubmitting(false);
-      return;
-    }
-    if (ticketCategory === 'Equipment Issue' && (!ticketDynamic.toolName || !ticketDynamic.issueType || !ticketDesc)) {
-      setFormError('Please specify tool, issue type, and details.'); setTimeout(() => setFormError(''), 3000);
-      setIsSubmitting(false);
-      return;
-    }
-    if (ticketCategory === 'DTR Issue' && (!ticketDynamic.logDate || !ticketDynamic.expectedIn || !ticketDynamic.expectedOut || !ticketDesc)) {
-      setFormError('Please specify date, shift times, and explanation.'); setTimeout(() => setFormError(''), 3000);
-      setIsSubmitting(false);
-      return;
-    }
-    if (ticketCategory === 'File Leave') {
-      if (!ticketDynamic.leaveType || !ticketDynamic.startDate || !ticketDynamic.endDate || !ticketDesc.trim()) {
-        setFormError('Please select leave type, dates, and reason.'); setTimeout(() => setFormError(''), 3000);
-        setIsSubmitting(false);
-        return;
-      }
-      if (ticketDynamic.endDate < ticketDynamic.startDate) {
-        setFormError('End date cannot be earlier than start date.'); setTimeout(() => setFormError(''), 3000);
-        setIsSubmitting(false);
-        return;
-      }
-      if (ticketDynamic.leaveType === 'Vacation Leave' && ticketDynamic.startDate < todayStr) {
-        setFormError('Vacation leaves must be scheduled in advance.'); setTimeout(() => setFormError(''), 3000);
-        setIsSubmitting(false);
-        return;
-      }
-    }
-    if (ticketCategory === 'Others' && (!ticketTitle.trim() || !ticketDesc.trim())) {
-      setFormError('Please enter both subject and description.'); setTimeout(() => setFormError(''), 3000);
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setIsSubmitting(false);
-        return;
-      }
-
-      // --- Anti-Spam Guard: Check for duplicate open tickets ---
-      if (!activeTicket) {
-        const { data: openTickets } = await supabase
-          .from('tickets')
-          .select('id, title, category, description, created_at')
-          .eq('employee_id', session.user.id)
-          .eq('status', 'open')
-          .eq('category', ticketCategory);
-
-        if (openTickets && openTickets.length > 0) {
-          let conflictTicket: any = null;
-
-          if (ticketCategory === 'DTR Issue' && ticketDynamic.logDate) {
-            conflictTicket = openTickets.find(t => 
-              (t.description && t.description.includes(ticketDynamic.logDate)) ||
-              (t.title && t.title.includes(ticketDynamic.logDate))
-            );
-          } else if (ticketCategory === 'Payroll Issue' && ticketDynamic.payPeriod) {
-            conflictTicket = openTickets.find(t => 
-              (t.description && t.description.includes(ticketDynamic.payPeriod)) ||
-              (t.title && t.title.includes(ticketDynamic.payPeriod))
-            );
-          } else if (ticketCategory === 'File Leave' && ticketDynamic.startDate) {
-            conflictTicket = openTickets.find(t => 
-              (t.description && t.description.includes(ticketDynamic.startDate)) ||
-              (t.title && t.title.includes(ticketDynamic.startDate))
-            );
-          }
-
-          if (conflictTicket) {
-            setIsSubmitting(false);
-            Alert.alert(
-              "Active Request in Progress",
-              `You already have an open ticket (#${conflictTicket.id.slice(0, 8).toUpperCase()}) for this ${ticketCategory === 'Payroll Issue' ? 'pay period' : 'date'}. An HR coordinator is reviewing it. Would you like to view that thread?`,
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Open Existing Ticket",
-                  onPress: () => {
-                    setTicketModalVisible(false);
-                    loadActiveTicket(false, conflictTicket.id);
-                  }
-                }
-              ]
-            );
-            return;
-          }
-        }
-      }
-      
-      let uploadedUrl = null;
-      let uploadedType = null;
-      if (attachedFile && attachedFile.uri) {
-        const sanitizedName = attachedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const filePath = `${session.user.id}/${Date.now()}_${sanitizedName}`;
-        const payload = await getFilePayload(attachedFile.uri);
-        
-        const { error: uploadError } = await supabase.storage.from('ticket_attachments').upload(filePath, payload, {
-          contentType: attachedFile.mimeType || 'application/octet-stream',
-          upsert: true
-        });
-        
-        if (!uploadError) {
-          const { data } = supabase.storage.from('ticket_attachments').getPublicUrl(filePath);
-          uploadedUrl = data.publicUrl;
-          uploadedType = attachedFile.mimeType || 'application/octet-stream';
-        } else {
-          console.error("Form attachment upload error:", uploadError);
-        }
-      }
-
-      // Construct dynamic description
-      let finalTitle = ticketTitle;
-      let finalDesc = ticketDesc;
-      
-      if (ticketCategory === 'Payroll Issue') {
-         finalTitle = `Payroll Concern: ${ticketDynamic.payPeriod || 'Current Cutoff'}`;
-         finalDesc = `Pay Period: ${ticketDynamic.payPeriod}\nDetails: ${ticketDesc}`;
-      } else if (ticketCategory === 'Equipment Issue') {
-         const finalTool = ticketDynamic.toolName === 'Other Tool' ? (ticketDynamic.customTool || 'Other Equipment') : (ticketDynamic.toolName || 'Unknown Tool');
-         finalTitle = `Equipment: ${finalTool}`;
-         finalDesc = `Tool / Item: ${finalTool}\nReported Condition: ${ticketDynamic.issueType}\nNotes: ${ticketDesc}`;
-      } else if (ticketCategory === 'DTR Issue') {
-         finalTitle = `DTR Adjustment: ${ticketDynamic.logDate || 'Selected Shift'}`;
-         finalDesc = `Target Shift: ${ticketDynamic.logDate}\nRequested Times: In at ${ticketDynamic.expectedIn}, Out at ${ticketDynamic.expectedOut}\nExplanation: ${ticketDesc}`;
-      } else if (ticketCategory === 'File Leave') {
-         finalTitle = `Leave Filing: ${ticketDynamic.leaveType || 'General'}`;
-         finalDesc = `Leave Type: ${ticketDynamic.leaveType}\nRequested Schedule: ${ticketDynamic.startDate} to ${ticketDynamic.endDate}\nReason: ${ticketDesc}`;
-      } else if (ticketCategory === 'Others') {
-         finalTitle = ticketTitle.trim();
-         finalDesc = ticketDesc.trim();
-      }
-
-      let error;
-      let newTicket = activeTicket;
-      
-      if (activeTicket) {
-        // UPDATE existing ticket instead of creating new
-        const { error: updateError } = await supabase.from('tickets').update({
-          title: finalTitle,
-          category: ticketCategory,
-          description: finalDesc,
-          attachment_url: uploadedUrl || activeTicket.attachment_url,
-          attachment_type: uploadedType || activeTicket.attachment_type,
-          status: 'open',
-        }).eq('id', activeTicket.id);
-        error = updateError;
-        sendRealtimeBroadcast('ticket_update', { ticket_id: activeTicket.id });
-      } else {
-        // CREATE new ticket if none exists
-        const res = await supabase.from('tickets').insert({
-          employee_id: session.user.id,
-          title: finalTitle,
-          category: ticketCategory,
-          description: finalDesc,
-          attachment_url: uploadedUrl,
-          attachment_type: uploadedType,
-          status: 'open',
-          idempotency_key: currentIdempotencyKey,
-        }).select().single();
-        error = res.error;
-        newTicket = res.data;
-        if (newTicket) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setActiveTicket(newTicket);
-          sendRealtimeBroadcast('ticket_update', { ticket_id: newTicket.id });
-        }
-      }
-
-      if (error) {
-          if (error.code === '23505') {
-            console.log('Idempotency prevented duplicate');
-            setIsSubmitting(false);
-            setTicketModalVisible(false);
-            setTimeout(() => loadActiveTicket(), 1000);
-            return;
-          }
-          throw error;
-      }
-
-      const ticketId = activeTicket ? activeTicket.id : newTicket?.id;
-      if (ticketId) {
-        const submissionContent = `📋 Form Submitted: ${ticketCategory}\nSubject: ${finalTitle}\n\n${finalDesc}`;
-          
-        await supabase.from('ticket_comments').insert({
-          ticket_id: ticketId,
-          sender_role: 'technician',
-          content: submissionContent,
-          author_id: session.user.id,
-          attachment_url: uploadedUrl,
-          attachment_type: uploadedType
-        });
-
-        await supabase.from('ticket_comments').insert({
-          ticket_id: ticketId,
-          sender_role: 'ai',
-          content: `✅ Your ${ticketCategory} request has been submitted to HR (Reference #${ticketId.slice(0, 8).toUpperCase()}).\n\nAn HR coordinator has been notified and will review your details. Any updates or decisions will appear directly in this chat thread.`,
-          author_id: session.user.id
-        });
-
-        sendRealtimeBroadcast('ticket_update', { ticket_id: ticketId });
-        sendRealtimeBroadcast('new_comment', { ticket_id: ticketId });
-      }
-
-      setTicketModalVisible(false);
-      setTicketTitle('');
-      setTicketDesc('');
-      setAttachedFile(null);
-      setIsSubmitting(false);
-
-      // Reload to connect the channel and display the newly inserted comments
-      setTimeout(() => loadActiveTicket(false, ticketId), 300);
-    } catch (err: any) {
-      setIsSubmitting(false);
-      Alert.alert("Error", err.message);
-    }
-  };
-
   const flatListRef = useRef<FlatList>(null);
   const formScrollRef = useRef<ScrollView>(null);
 
@@ -760,6 +600,28 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     }
   };
 
+  const handleTechnicianInputChange = (text: string) => {
+    setInputText(text);
+    if (!activeTicket?.id) return;
+
+    sendRealtimeBroadcast('typing_status', {
+      ticket_id: activeTicket.id,
+      role: 'technician',
+      user_name: 'Technician',
+      is_typing: true,
+    });
+
+    if (techTypingDebounceRef.current) clearTimeout(techTypingDebounceRef.current);
+    techTypingDebounceRef.current = setTimeout(() => {
+      sendRealtimeBroadcast('typing_status', {
+        ticket_id: activeTicket.id,
+        role: 'technician',
+        user_name: 'Technician',
+        is_typing: false,
+      });
+    }, 2500);
+  };
+
   const sendMessage = async (overrideText?: string) => {
     if (activeTicket && (activeTicket.status === 'closed' || activeTicket.status === 'resolved')) {
       Alert.alert(
@@ -775,6 +637,16 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
 
     const textToSend = (overrideText || inputText).trim();
     if (!textToSend && !chatAttachment) return;
+
+    if (techTypingDebounceRef.current) clearTimeout(techTypingDebounceRef.current);
+    if (activeTicket?.id) {
+      sendRealtimeBroadcast('typing_status', {
+        ticket_id: activeTicket.id,
+        role: 'technician',
+        user_name: 'Technician',
+        is_typing: false,
+      });
+    }
 
     let localAccumulatedAiText = "";
     const stagedAttachment = chatAttachment;
@@ -1032,6 +904,18 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           keyExtractor={item => item.id}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           contentContainerStyle={styles.chatContainer}
+          ListFooterComponent={
+            isAdminTyping ? (
+              <View style={[styles.messageRow, styles.messageRowAI, { marginTop: 6, marginBottom: 12 }]}>
+                <View style={[styles.avatarAI, { backgroundColor: '#7C3AED' }]}>
+                  <Ionicons name="shield-checkmark" size={14} color="#FFF" />
+                </View>
+                <View style={[styles.bubble, styles.bubbleAI, { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF', borderWidth: 1, borderTopLeftRadius: 4 }]}>
+                  <KineticTypingDots label="HR Admin is typing..." color="#7C3AED" />
+                </View>
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => {
             if (item.role === 'system') {
               return (
@@ -1171,6 +1055,13 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                           <Text style={styles.progressText}>{step}</Text>
                         </View>
                       ))}
+                    </View>
+                  )}
+
+                  {/* Kinetic Typing Dots for initial AI streaming state */}
+                  {!isUser && item.progressSteps.length === 0 && item.text.length === 0 && item.isStreaming && (
+                    <View style={{ paddingVertical: 4 }}>
+                      <KineticTypingDots label="AI Assistant is thinking..." color={BRAND.blue} />
                     </View>
                   )}
                   
@@ -1318,8 +1209,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 </View>
                 <TouchableOpacity 
                   onPress={() => {
-                    setTicketCategory('DTR Issue');
-                    setTicketModalVisible(true);
+                    openTicketForm('DTR Issue');
                   }}
                   style={{
                     backgroundColor: '#6366F1',
@@ -1348,7 +1238,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                 style={styles.input} 
                 placeholder="Ask about procedures, manuals..." 
                 value={inputText} 
-                onChangeText={setInputText} 
+                onChangeText={handleTechnicianInputChange} 
                 onSubmitEditing={() => sendMessage()} 
                 multiline={true} 
                 placeholderTextColor={colors.textSubtle} 
@@ -1472,651 +1362,23 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         </View>
       </Modal>
 
-      <Modal 
-        isVisible={ticketModalVisible} 
-        onBackdropPress={() => setTicketModalVisible(false)} 
-        onSwipeComplete={() => setTicketModalVisible(false)} 
-        swipeDirection={['down']} 
-        propagateSwipe={true}
-        swipeThreshold={50}
-        style={{ justifyContent: 'flex-end', margin: 0 }}
-      >
-        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 30 : 16, maxHeight: '90%', flex: 1 }}>
-          {/* Sheet Drag Handle */}
-          <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: colors.cardBorder, alignSelf: 'center', marginBottom: 12 }} />
-          
-          {/* Modal Header */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: getCatColor(ticketCategory) + '20', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                <Ionicons 
-                  name={
-                    ticketCategory === 'Payroll Issue' ? 'card' :
-                    ticketCategory === 'Equipment Issue' ? 'construct' :
-                    ticketCategory === 'DTR Issue' ? 'time' :
-                    ticketCategory === 'File Leave' ? 'calendar' : 'help-circle'
-                  } 
-                  size={18} 
-                  color={getCatColor(ticketCategory)} 
-                />
-              </View>
-              <View>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>Quick Ticket Form</Text>
-                <Text style={{ fontSize: 11, color: '#64748B' }}>5-Second Submission • HR Dispatch</Text>
-              </View>
-            </View>
-            <TouchableOpacity onPress={() => setTicketModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Feather name="x" size={22} color="#64748B" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Form Body ScrollView */}
-          <ScrollView ref={formScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            
-            {/* Step 1: Category Selection with Instant Auto-Cascade */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                1. Select Category
-              </Text>
-              <View style={{ backgroundColor: getCatColor(ticketCategory) + '18', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: getCatColor(ticketCategory) }}>
-                  {ticketCategory} Selected
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 }}>
-              {CATEGORY_ITEMS.map((cat, idx) => {
-                const isSelected = ticketCategory === cat.id;
-                const isWide = idx === 4;
-                return (
-                  <TouchableOpacity
-                    key={cat.id}
-                    activeOpacity={0.75}
-                    onPress={() => {
-                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                      setTicketCategory(cat.id);
-                      applyCategoryDefaults(cat.id);
-                      setTimeout(() => {
-                        formScrollRef.current?.scrollTo({ y: 150, animated: true });
-                      }, 120);
-                    }}
-                    style={{
-                      width: isWide ? '100%' : '48.5%',
-                      marginBottom: 8,
-                      paddingVertical: 10,
-                      paddingHorizontal: 12,
-                      borderRadius: 12,
-                      borderWidth: isSelected ? 2 : 1,
-                      borderColor: isSelected ? cat.color : '#E2E8F0',
-                      backgroundColor: isSelected ? cat.color + '14' : '#F8FAFC',
-                      flexDirection: isWide ? 'row' : 'column',
-                      alignItems: isWide ? 'center' : 'flex-start',
-                      justifyContent: isWide ? 'space-between' : 'flex-start',
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 7,
-                        backgroundColor: isSelected ? cat.color : cat.color + '22',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: isWide ? 10 : 0,
-                        marginBottom: isWide ? 0 : 6
-                      }}>
-                        <Ionicons name={cat.icon as any} size={15} color={isSelected ? '#FFF' : cat.color} />
-                      </View>
-                      <View>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: isSelected ? cat.color : '#1E293B' }}>
-                          {cat.label}
-                        </Text>
-                        {isWide && (
-                          <Text style={{ fontSize: 11, color: '#64748B' }}>{cat.desc}</Text>
-                        )}
-                      </View>
-                    </View>
-                    {isSelected && (
-                      <Ionicons 
-                        name="checkmark-circle" 
-                        size={16} 
-                        color={cat.color} 
-                        style={{ position: isWide ? 'relative' : 'absolute', top: isWide ? 0 : 8, right: isWide ? 0 : 8 }} 
-                      />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Date Time Picker Modal */}
-            {showDatePicker && (
-              <DateTimePicker
-                value={dateVal}
-                mode={pickerMode}
-                display="default"
-                minimumDate={
-                  pickerMode === 'time'
-                    ? undefined
-                    : ticketCategory === 'File Leave'
-                    ? (ticketDynamic.leaveType === 'Vacation Leave'
-                        ? new Date()
-                        : new Date(Date.now() - 3 * 86400000))
-                    : undefined
-                }
-                onChange={(event, selectedDate) => {
-                  setShowDatePicker(false);
-                  if (selectedDate) {
-                    const formatted = pickerMode === 'time' 
-                      ? selectedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-                      : selectedDate.toISOString().split('T')[0];
-                    setTicketDynamic((prev: any) => {
-                      const next = { ...prev, [dateTarget]: formatted };
-                      if (dateTarget === 'startDate' && prev.endDate && prev.endDate < formatted) {
-                        next.endDate = formatted;
-                      }
-                      return next;
-                    });
-                  }
-                }}
-              />
-            )}
-
-            {/* Step 2: Category-Specific Dynamic Form Cards (1-Tap Chips) */}
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
-              2. Specific Details
-            </Text>
-
-            {/* Payroll Issue Form */}
-            {ticketCategory === 'Payroll Issue' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Pay Period Cutoff</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {[
-                    `${isFirstHalf ? '1st - 15th' : '16th - End'} ${currentMonth}`,
-                    `${isFirstHalf ? '16th - End' : '1st - 15th'} ${isFirstHalf ? prevMonth : currentMonth}`,
-                    'Custom Date...'
-                  ].map((preset, idx) => {
-                    const isSelected = ticketDynamic.payPeriod === preset || (idx === 2 && ticketDynamic.payPeriod && !preset.includes(ticketDynamic.payPeriod));
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        onPress={() => {
-                          if (idx === 2) {
-                            setDateTarget('payPeriod');
-                            setDateVal(new Date());
-                            setPickerMode('date');
-                            setShowDatePicker(true);
-                          } else {
-                            setTicketDynamic((prev: any) => ({ ...prev, payPeriod: preset }));
-                          }
-                        }}
-                        style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: isSelected ? '#10B981' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#ECFDF5' : '#FFF'
-                        }}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#047857' : '#475569' }}>
-                          {idx === 2 && ticketDynamic.payPeriod && !ticketDynamic.payPeriod.includes('Cutoff') && !ticketDynamic.payPeriod.includes(currentMonth) ? ticketDynamic.payPeriod : preset}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Common Discrepancies (1-Tap Preset)</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {PAYROLL_PRESETS.map((chip, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      onPress={() => {
-                        setTicketDesc((prev: string) => prev.trim() ? (prev.includes(chip) ? prev : `${prev}, ${chip}`) : chip);
-                      }}
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 5,
-                        borderRadius: 8,
-                        backgroundColor: ticketDesc.includes(chip) ? '#D1FAE5' : '#FFF',
-                        borderWidth: 1,
-                        borderColor: ticketDesc.includes(chip) ? '#10B981' : '#CBD5E1'
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: ticketDesc.includes(chip) ? '700' : '500', color: ticketDesc.includes(chip) ? '#065F46' : '#475569' }}>
-                        + {chip}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Dispute Details / Explanation</Text>
-                <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 75, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
-                  value={ticketDesc}
-                  onChangeText={setTicketDesc}
-                  multiline
-                  placeholder="State the missing amount, hours, or deductions..."
-                />
-              </View>
-            )}
-
-            {/* Equipment Issue Form */}
-            {ticketCategory === 'Equipment Issue' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Select Tool / Equipment</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {TOOL_PRESETS.map((tool, idx) => {
-                    const isSelected = ticketDynamic.toolName === tool;
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        onPress={() => setTicketDynamic((prev: any) => ({ ...prev, toolName: tool }))}
-                        style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: isSelected ? '#F59E0B' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#FEF3C7' : '#FFF'
-                        }}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#92400E' : '#475569' }}>
-                          {tool}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                {ticketDynamic.toolName === 'Other Tool' && (
-                  <TextInput
-                    style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, marginBottom: 10, backgroundColor: '#FFF', fontSize: 13 }}
-                    placeholder="Enter custom tool name or serial ID..."
-                    value={ticketDynamic.customTool || ''}
-                    onChangeText={(val) => setTicketDynamic((prev: any) => ({ ...prev, customTool: val }))}
-                  />
-                )}
-
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Issue Classification</Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                  {ISSUE_TYPE_PRESETS.map((item, idx) => {
-                    const isSelected = ticketDynamic.issueType === item.value;
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        onPress={() => setTicketDynamic((prev: any) => ({ ...prev, issueType: item.value }))}
-                        style={{
-                          flex: 1,
-                          paddingVertical: 8,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          alignItems: 'center',
-                          borderColor: isSelected ? '#F59E0B' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#FEF3C7' : '#FFF'
-                        }}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#92400E' : '#475569' }}>
-                          {item.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Damage / Defect Details</Text>
-                <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 75, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
-                  value={ticketDesc}
-                  onChangeText={setTicketDesc}
-                  multiline
-                  placeholder="How did the damage or failure occur? Location..."
-                />
-              </View>
-            )}
-
-            {/* DTR / Attendance Issue Form */}
-            {ticketCategory === 'DTR Issue' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Log Date</Text>
-                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
-                  {[
-                    { label: 'Today', val: todayStr },
-                    { label: 'Yesterday', val: yesterdayStr },
-                    { label: 'Pick Date...', val: 'custom' }
-                  ].map((item, idx) => {
-                    const isSelected = ticketDynamic.logDate === item.val || (item.val === 'custom' && ticketDynamic.logDate && ticketDynamic.logDate !== todayStr && ticketDynamic.logDate !== yesterdayStr);
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        onPress={() => {
-                          if (item.val === 'custom') {
-                            setDateTarget('logDate');
-                            setDateVal(new Date());
-                            setPickerMode('date');
-                            setShowDatePicker(true);
-                          } else {
-                            setTicketDynamic((prev: any) => ({ ...prev, logDate: item.val }));
-                          }
-                        }}
-                        style={{
-                          flex: 1,
-                          paddingVertical: 7,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          alignItems: 'center',
-                          borderColor: isSelected ? '#6366F1' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#EEF2FF' : '#FFF'
-                        }}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#4338CA' : '#475569' }}>
-                          {item.val === 'custom' && ticketDynamic.logDate && ticketDynamic.logDate !== todayStr && ticketDynamic.logDate !== yesterdayStr ? ticketDynamic.logDate : item.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Dispute Preset (1-Tap)</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {DTR_PRESETS.map((preset, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      onPress={() => {
-                        setTicketDesc((prev: string) => prev.trim() ? (prev.includes(preset) ? prev : `${prev}, ${preset}`) : preset);
-                      }}
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 5,
-                        borderRadius: 8,
-                        backgroundColor: ticketDesc.includes(preset) ? '#E0E7FF' : '#FFF',
-                        borderWidth: 1,
-                        borderColor: ticketDesc.includes(preset) ? '#6366F1' : '#CBD5E1'
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: ticketDesc.includes(preset) ? '700' : '500', color: ticketDesc.includes(preset) ? '#3730A3' : '#475569' }}>
-                        + {preset}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Expected In</Text>
-                    <TouchableOpacity
-                      onPress={() => { setDateTarget('expectedIn'); setDateVal(new Date()); setPickerMode('time'); setShowDatePicker(true); }}
-                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
-                    >
-                      <Text style={{ fontSize: 12, color: ticketDynamic.expectedIn ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
-                        {ticketDynamic.expectedIn || '08:00 AM'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Expected Out</Text>
-                    <TouchableOpacity
-                      onPress={() => { setDateTarget('expectedOut'); setDateVal(new Date()); setPickerMode('time'); setShowDatePicker(true); }}
-                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
-                    >
-                      <Text style={{ fontSize: 12, color: ticketDynamic.expectedOut ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
-                        {ticketDynamic.expectedOut || '05:00 PM'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Explanation</Text>
-                <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 70, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
-                  value={ticketDesc}
-                  onChangeText={setTicketDesc}
-                  multiline
-                  placeholder="Reason for missing time log or dispute..."
-                />
-              </View>
-            )}
-
-            {/* File Leave Form */}
-            {ticketCategory === 'File Leave' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Leave Type</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {LEAVE_TYPES.map((leave, idx) => {
-                    const isSelected = ticketDynamic.leaveType === leave;
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        onPress={() => setTicketDynamic((prev: any) => ({ ...prev, leaveType: leave }))}
-                        style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: isSelected ? '#EF4444' : '#CBD5E1',
-                          backgroundColor: isSelected ? '#FEE2E2' : '#FFF'
-                        }}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '700' : '500', color: isSelected ? '#991B1B' : '#475569' }}>
-                          {leave}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Start Date</Text>
-                    <TouchableOpacity
-                      onPress={() => { setDateTarget('startDate'); setDateVal(new Date()); setPickerMode('date'); setShowDatePicker(true); }}
-                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
-                    >
-                      <Text style={{ fontSize: 12, color: ticketDynamic.startDate ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
-                        {ticketDynamic.startDate || tomorrowStr}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>End Date</Text>
-                    <TouchableOpacity
-                      onPress={() => { setDateTarget('endDate'); setDateVal(new Date()); setPickerMode('date'); setShowDatePicker(true); }}
-                      style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, backgroundColor: '#FFF', alignItems: 'center' }}
-                    >
-                      <Text style={{ fontSize: 12, color: ticketDynamic.endDate ? '#1E293B' : '#94A3B8', fontWeight: '600' }}>
-                        {ticketDynamic.endDate || tomorrowStr}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Reason for Leave</Text>
-                <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 70, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
-                  value={ticketDesc}
-                  onChangeText={setTicketDesc}
-                  multiline
-                  placeholder="Medical appointment, family emergency, etc."
-                />
-              </View>
-            )}
-
-            {/* Others / General Form */}
-            {ticketCategory === 'Others' && (
-              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Subject / Concern</Text>
-                <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: '#FFF', fontSize: 13 }}
-                  value={ticketTitle}
-                  onChangeText={setTicketTitle}
-                  placeholder="Brief summary of your concern..."
-                />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Detailed Description</Text>
-                <TextInput
-                  style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 10, height: 85, textAlignVertical: 'top', backgroundColor: '#FFF', fontSize: 13 }}
-                  value={ticketDesc}
-                  onChangeText={setTicketDesc}
-                  multiline
-                  placeholder="Explain the details of your inquiry or report to HR..."
-                />
-              </View>
-            )}
-
-            {/* Step 3: Modern Attachment Card */}
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
-              3. Proof / Attachment (Optional)
-            </Text>
-            {attachedFile ? (
-              <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: '#F0FDF4',
-                borderWidth: 1,
-                borderColor: '#86EFAC',
-                borderRadius: 12,
-                padding: 10,
-                marginBottom: 14
-              }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
-                    <Ionicons name="document-attach" size={18} color="#16A34A" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#166534' }} numberOfLines={1}>
-                      {attachedFile.name}
-                    </Text>
-                    <Text style={{ fontSize: 10, color: '#15803D' }}>Ready for upload • 1 file attached</Text>
-                  </View>
-                </View>
-                <TouchableOpacity onPress={() => setAttachedFile(null)} style={{ padding: 4 }}>
-                  <Feather name="trash-2" size={18} color="#DC2626" />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={pickModalAttachment}
-                style={{
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: '#CBD5E1',
-                  borderRadius: 12,
-                  backgroundColor: '#F8FAFC',
-                  paddingVertical: 12,
-                  paddingHorizontal: 14,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  marginBottom: 14
-                }}
-              >
-                <View style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: '#EEF2F6', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                  <Feather name="paperclip" size={18} color="#64748B" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Tap to upload attachment</Text>
-                  <Text style={{ fontSize: 11, color: '#94A3B8' }}>Images, PDF, Word, Excel (Max 5MB)</Text>
-                </View>
-                <Feather name="upload-cloud" size={18} color="#64748B" />
-              </TouchableOpacity>
-            )}
-
-            {/* Step 4: Request Overview Card */}
-            <View style={{
-              backgroundColor: '#F8FAFC',
-              borderWidth: 1,
-              borderColor: '#CBD5E1',
-              borderRadius: 14,
-              padding: 12,
-              marginBottom: 12,
-              borderLeftWidth: 4,
-              borderLeftColor: getCatColor(ticketCategory)
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="document-text-outline" size={16} color={getCatColor(ticketCategory)} style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
-                    4. Request Overview
-                  </Text>
-                </View>
-                <View style={{ backgroundColor: getCatColor(ticketCategory) + '15', paddingHorizontal: 7, paddingVertical: 2.5, borderRadius: 6 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: getCatColor(ticketCategory) }}>
-                    Review Details
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ gap: 4 }}>
-                <Text style={{ fontSize: 11, color: '#475569' }}>
-                  <Text style={{ fontWeight: '700', color: '#1E293B' }}>Target / Scope: </Text>
-                  {ticketCategory === 'Payroll Issue' ? (ticketDynamic.payPeriod || 'Current Cutoff') :
-                   ticketCategory === 'Equipment Issue' ? `${ticketDynamic.toolName === 'Other Tool' ? (ticketDynamic.customTool || 'Other Equipment') : (ticketDynamic.toolName || 'Makita Drill #4')} • ${ticketDynamic.issueType || 'Damaged'}` :
-                   ticketCategory === 'DTR Issue' ? `${ticketDynamic.logDate || todayStr} • ${ticketDynamic.expectedIn || '08:00 AM'} - ${ticketDynamic.expectedOut || '05:00 PM'}` :
-                   ticketCategory === 'File Leave' ? `${ticketDynamic.leaveType || 'Sick Leave'} (${ticketDynamic.startDate || tomorrowStr} to ${ticketDynamic.endDate || tomorrowStr})` :
-                   (ticketTitle.trim() || 'General Concern')}
-                </Text>
-
-                <Text style={{ fontSize: 11, color: '#475569' }} numberOfLines={2}>
-                  <Text style={{ fontWeight: '700', color: '#1E293B' }}>Reason / Notes: </Text>
-                  {ticketDesc.trim() || '(No extra notes entered)'}
-                </Text>
-
-                <Text style={{ fontSize: 10, color: attachedFile ? '#16A34A' : '#94A3B8', fontWeight: attachedFile ? '600' : '400' }}>
-                  📎 Attachment: {attachedFile ? attachedFile.name : 'None attached (Optional)'}
-                </Text>
-              </View>
-            </View>
-
-            {/* Error Message */}
-            {formError ? (
-              <View style={{ backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA', padding: 10, borderRadius: 10, marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="alert-circle" size={16} color="#DC2626" style={{ marginRight: 6 }} />
-                <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600', flex: 1 }}>{formError}</Text>
-              </View>
-            ) : null}
-
-          </ScrollView>
-
-          {/* Sticky Thumb-Zone Submit Bar (Fitts' Law) */}
-          <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
-            <TouchableOpacity 
-              disabled={isSubmitting} 
-              activeOpacity={0.85}
-              style={{ 
-                backgroundColor: isSubmitting ? '#94A3B8' : getCatColor(ticketCategory), 
-                paddingVertical: 14, 
-                borderRadius: 14, 
-                alignItems: 'center',
-                flexDirection: 'row',
-                justifyContent: 'center',
-                shadowColor: getCatColor(ticketCategory),
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.25,
-                shadowRadius: 6,
-                elevation: 3
-              }} 
-              onPress={submitTicket}
-            >
-              {isSubmitting ? (
-                <>
-                  <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 15 }}>Submitting Request...</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="paper-plane" size={18} color="#FFF" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 15 }}>
-                    Submit Request to HR
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* Field-First Ticket Submission Modal */}
+      <TicketSubmissionModal
+        isVisible={ticketModalVisible}
+        onClose={() => {
+          setTicketModalVisible(false);
+          setSelectedCategoryForModal(undefined);
+        }}
+        activeTicket={activeTicket}
+        initialCategory={selectedCategoryForModal}
+        initialTicketData={initialTicketData}
+        toolsCatalog={toolsCatalog}
+        onSubmissionSuccess={(newTicketId) => {
+          setTicketModalVisible(false);
+          setSelectedCategoryForModal(undefined);
+          setTimeout(() => loadActiveTicket(false, newTicketId), 300);
+        }}
+      />
 
       {/* Fullscreen Image Lightbox Modal */}
       <Modal

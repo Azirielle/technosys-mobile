@@ -8,10 +8,12 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDistance } from 'geolib';
 import MapView, { Marker, Circle, Polyline } from '../../components/MapWrapper';
 import { supabase } from '../../lib/supabase';
+import { syncQueue, generateUUID } from '../../lib/syncQueue';
 import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -543,6 +545,7 @@ export default function HomeScreen() {
 
   // Timesheets & Live Attendance Feature
   const [timesheetModalVisible, setTimesheetModalVisible] = useState(false);
+  const [shiftDisputeModalVisible, setShiftDisputeModalVisible] = useState(false);
   const [hasClockedInToday, setHasClockedInToday] = useState(false);
   const [activeTimeLog, setActiveTimeLog] = useState<any | null>(null);
   const [todayCompletedLog, setTodayCompletedLog] = useState<any | null>(null);
@@ -728,25 +731,34 @@ export default function HomeScreen() {
     } else {
       // Called from list view when no specific log is selected
       if (timeLogs && timeLogs.length > 0) {
-        safeAlert(
-          "Select a Shift to Dispute",
-          "Please tap on the specific shift entry from the list below that you would like to dispute so we can attach the exact time log and GPS details to your request."
-        );
+        setShiftDisputeModalVisible(true);
       } else {
-        // No time logs exist, allow general DTR inquiry
-        setAiInitialQuery("I would like to file a general inquiry regarding my DTR and attendance logs: ");
-        setAiInitialTicketData({
-          category: 'DTR Issue',
-          logDate: new Date().toISOString().split('T')[0],
-          expectedIn: '08:00 AM',
-          expectedOut: '05:00 PM',
-        });
-        setTimesheetModalVisible(false);
-        setTimeout(() => {
-          setSupportModalVisible(true);
-        }, 350);
+        handleDisputeMissingShift();
       }
     }
+  };
+
+  const handleSelectShiftToDispute = (log: any) => {
+    setShiftDisputeModalVisible(false);
+    handleDisputeTimeLog(log);
+  };
+
+  const handleDisputeMissingShift = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const queryText = `I would like to file an attendance dispute for an unrecorded shift on ${today}. My shift is missing from my timesheets. Reason for dispute: `;
+    setAiInitialQuery(queryText);
+    setAiInitialTicketData({
+      category: 'DTR Issue',
+      logDate: today,
+      expectedIn: '08:00 AM',
+      expectedOut: '05:00 PM',
+      reason: queryText,
+    });
+    setShiftDisputeModalVisible(false);
+    setTimesheetModalVisible(false);
+    setTimeout(() => {
+      setSupportModalVisible(true);
+    }, 350);
   };
 
   const fetchSchedulesList = async () => {
@@ -833,9 +845,94 @@ export default function HomeScreen() {
   };
   
   const [locationStatus, setLocationStatus] = useState<'verifying' | 'success' | 'fallback'>('verifying');
-  const [userLoc, setUserLoc] = useState<{lat: number, lon: number} | null>(null);
+  const [userLoc, setUserLoc] = useState<{lat: number; lon: number; isMocked?: boolean; accuracy?: number | null} | null>(null);
   const [uploadingSelfie, setUploadingSelfie] = useState(false);
   
+  // Chunk 45: Clock-In Resilience & Fallback Error Modal
+  const [clockInErrorModalVisible, setClockInErrorModalVisible] = useState(false);
+  const [clockInErrorData, setClockInErrorData] = useState<{
+    title: string;
+    message: string;
+    gpsStatus: 'ok' | 'failed';
+    photoStatus: 'captured' | 'failed' | 'skipped';
+    syncStatus: 'failed';
+  }>({
+    title: 'Attendance Verification Interrupted',
+    message: 'We were unable to record your punch due to a network or cloud storage delay.',
+    gpsStatus: 'ok',
+    photoStatus: 'captured',
+    syncStatus: 'failed'
+  });
+  const [lastCapturedSelfieUri, setLastCapturedSelfieUri] = useState<string | null>(null);
+  const [retryingClockIn, setRetryingClockIn] = useState(false);
+  const [submittingReviewTicket, setSubmittingReviewTicket] = useState(false);
+
+  // Task 28: Stale Shift Lifecycle & Offline Queue Reconciler
+  const [staleShiftModalVisible, setStaleShiftModalVisible] = useState(false);
+  const [staleShiftData, setStaleShiftData] = useState<any | null>(null);
+  const [resolvingStaleShift, setResolvingStaleShift] = useState(false);
+  const [staleDepartureTime, setStaleDepartureTime] = useState('17:00');
+  const [showStaleCustomPicker, setShowStaleCustomPicker] = useState(false);
+  const [staleCustomPickerDate, setStaleCustomPickerDate] = useState<Date>(new Date());
+  const [isCustomStaleTimeSelected, setIsCustomStaleTimeSelected] = useState(false);
+
+  const stalePunchStart = useMemo(() => {
+    if (!staleShiftData) return null;
+    return new Date(staleShiftData.app_time_in || staleShiftData.created_at);
+  }, [staleShiftData]);
+
+  const dynamicStalePresets = useMemo(() => {
+    if (!stalePunchStart) {
+      return [
+        { label: '17:00 (Std)', time: '17:00' },
+        { label: '18:00 (+1h)', time: '18:00' },
+        { label: '19:00 (+2h)', time: '19:00' },
+      ];
+    }
+    const fmt = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const d8 = new Date(stalePunchStart.getTime() + 8 * 60 * 60 * 1000);
+    const d9 = new Date(stalePunchStart.getTime() + 9 * 60 * 60 * 1000);
+    const d10 = new Date(stalePunchStart.getTime() + 10 * 60 * 60 * 1000);
+    return [
+      { label: `${fmt(d9)} (Std)`, time: fmt(d9) },
+      { label: `${fmt(d8)} (8h)`, time: fmt(d8) },
+      { label: `${fmt(d10)} (+1h OT)`, time: fmt(d10) },
+    ];
+  }, [stalePunchStart]);
+
+  const staleShiftPreview = useMemo(() => {
+    if (!stalePunchStart) return null;
+    const timeStr = staleDepartureTime || '17:00';
+    const [hoursStr, minsStr] = timeStr.split(':');
+    const outDate = new Date(stalePunchStart);
+    outDate.setHours(parseInt(hoursStr || '17', 10), parseInt(minsStr || '0', 10), 0, 0);
+
+    let outMs = outDate.getTime();
+    if (outMs <= stalePunchStart.getTime()) {
+      outMs += 24 * 60 * 60 * 1000;
+    }
+
+    const diffMs = outMs - stalePunchStart.getTime();
+    const grossHours = diffMs / (1000 * 60 * 60);
+    const mealDeduction = grossHours > 5 ? 1 : 0;
+    const netHours = Math.round(Math.max(0, grossHours - mealDeduction) * 10) / 10;
+    const endDate = new Date(outMs);
+    const isValid = grossHours > 0 && grossHours <= 24;
+    const isExceedinglyLong = grossHours > 16;
+
+    return {
+      punchStart: stalePunchStart,
+      endDate,
+      timeStr,
+      grossHours: Math.round(grossHours * 10) / 10,
+      mealDeduction,
+      netHours,
+      isValid,
+      isExceedinglyLong,
+    };
+  }, [stalePunchStart, staleDepartureTime]);
+
+
   const [profile, setProfile] = useState<any>(null);
   const [schedule, setSchedule] = useState<any>(null);
 
@@ -843,7 +940,20 @@ export default function HomeScreen() {
 
   useEffect(() => {
     async function loadData() {
-        (async () => { try { const { status } = await Location.requestForegroundPermissionsAsync(); if (status === 'granted') { const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }); setUserLoc({ lat: loc.coords.latitude, lon: loc.coords.longitude }); } } catch (e) {} })();
+        (async () => { 
+          try { 
+            const { status } = await Location.requestForegroundPermissionsAsync(); 
+            if (status === 'granted') { 
+              const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }); 
+              setUserLoc({ 
+                lat: loc.coords.latitude, 
+                lon: loc.coords.longitude, 
+                isMocked: !!(loc as any).mocked, 
+                accuracy: loc.coords.accuracy ?? null 
+              }); 
+            } 
+          } catch (e) {} 
+        })();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
@@ -868,9 +978,42 @@ export default function HomeScreen() {
       
       setSchedule(scheduleData || null);
 
-      // Check today's attendance logs
+      // Reactive Sync: Flush pending offline queue to HQ
+      try {
+        syncQueue.syncPendingQueue().then(res => {
+          if (res.syncedCount > 0) {
+            console.log(`[OFFLINE SYNC] Flushed ${res.syncedCount} queued punch(es) to HQ.`);
+          }
+        }).catch(() => {});
+      } catch (sqErr) {}
+
+      // Check today's attendance logs boundary
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
+
+      // Check for any stale unclosed shift from previous days
+      const { data: openLogs } = await supabase
+        .from('time_logs')
+        .select('*')
+        .eq('technician_id', user.id)
+        .is('app_time_out', null)
+        .order('created_at', { ascending: false });
+
+      const staleUnclosed = openLogs?.find(l => {
+        const punchStart = new Date(l.app_time_in || l.created_at);
+        return punchStart.getTime() < startOfDay.getTime();
+      });
+
+      if (staleUnclosed) {
+        setStaleShiftData(staleUnclosed);
+        const punchStart = new Date(staleUnclosed.app_time_in || staleUnclosed.created_at);
+        const defEnd = new Date(punchStart.getTime() + 9 * 60 * 60 * 1000);
+        const defTime = `${String(defEnd.getHours()).padStart(2, '0')}:${String(defEnd.getMinutes()).padStart(2, '0')}`;
+        setStaleDepartureTime(defTime);
+        setStaleCustomPickerDate(defEnd);
+        setIsCustomStaleTimeSelected(false);
+        setStaleShiftModalVisible(true);
+      }
       
       const { data: todaysLogs } = await supabase
         .from('time_logs')
@@ -938,6 +1081,90 @@ export default function HomeScreen() {
       supabase.removeChannel(notifChannel);
     };
   }, []);
+
+  // Task 28: Reactive Offline Queue Flush on Screen Focus
+  useFocusEffect(
+    React.useCallback(() => {
+      syncQueue.syncPendingQueue().then(res => {
+        if (res.syncedCount > 0) {
+          console.log(`[FOCUS SYNC] Synchronized ${res.syncedCount} queued punch(es) to HQ.`);
+        }
+      }).catch(err => {
+        console.warn("Focus sync error:", err);
+      });
+    }, [])
+  );
+
+  // Task 28: Stale Shift Reconciler Action
+  const handleResolveStaleShift = async (customDepartureTime?: string) => {
+    if (!staleShiftData || !profile?.id) return;
+    setResolvingStaleShift(true);
+    try {
+      const punchStart = new Date(staleShiftData.app_time_in || staleShiftData.created_at);
+      const timeStr = customDepartureTime || staleDepartureTime || '17:00';
+      const [hoursStr, minsStr] = timeStr.split(':');
+      
+      const outDate = new Date(punchStart);
+      outDate.setHours(parseInt(hoursStr, 10), parseInt(minsStr || '0', 10), 0, 0);
+
+      let outMs = outDate.getTime();
+      if (outMs <= punchStart.getTime()) {
+        outMs += 24 * 60 * 60 * 1000;
+      }
+
+      const diffMs = outMs - punchStart.getTime();
+      if (diffMs <= 0) {
+        safeAlert("Invalid Departure Time", "Departure time cannot be equal to or earlier than clock-in time.");
+        setResolvingStaleShift(false);
+        return;
+      }
+
+      const grossHours = diffMs / (1000 * 60 * 60);
+      if (grossHours > 24) {
+        safeAlert("Invalid Duration", "A single shift cannot exceed 24 hours. Please contact HR for manual timesheet correction.");
+        setResolvingStaleShift(false);
+        return;
+      }
+
+      const netHours = grossHours > 5 ? Math.max(0, grossHours - 1) : grossHours;
+      const totalHours = Math.round(netHours * 10) / 10;
+      const outIso = new Date(outMs).toISOString();
+
+      const { error: updateErr } = await supabase
+        .from('time_logs')
+        .update({
+          app_time_out: outIso,
+          total_hours: totalHours,
+          status: 'pending_review',
+          is_manual_entry: true,
+          is_suspicious: grossHours > 16,
+        })
+        .eq('id', staleShiftData.id);
+
+      if (updateErr) throw updateErr;
+
+      // Reset technician_locations to offline
+      await supabase
+        .from('technician_locations')
+        .upsert({
+          technician_id: profile.id,
+          status: 'offline',
+          updated_at: outIso
+        });
+
+      setStaleShiftModalVisible(false);
+      setStaleShiftData(null);
+      safeAlert(
+        "Previous Shift Reconciled",
+        `Your shift from ${punchStart.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} has been closed with ${totalHours}h logged (Departure: ${timeStr}). Submitted for HR audit.`
+      );
+    } catch (err: any) {
+      console.error("Failed to resolve stale shift:", err);
+      safeAlert("Reconciliation Error", err.message || "Failed to close previous shift.");
+    } finally {
+      setResolvingStaleShift(false);
+    }
+  };
 
   // Duty-Bound Live Fleet Tracking: Periodic GPS Heartbeat
   // Active strictly when technician is clocked in with an open shift (app_time_out is null)
@@ -1271,7 +1498,23 @@ export default function HomeScreen() {
         return;
       }
 
-      const currentLoc = { lat: location.coords.latitude, lon: location.coords.longitude };
+      const isMocked = !!(location as any).mocked;
+      const accuracy = location.coords.accuracy ?? null;
+
+      // Active root/jailbreak detection via native expo-device API
+      let isRooted = false;
+      try {
+        isRooted = await Device.isRootedExperimentalAsync();
+      } catch (rootErr) {
+        console.warn("Hardware root detection check error:", rootErr);
+      }
+
+      const currentLoc = { 
+        lat: location.coords.latitude, 
+        lon: location.coords.longitude,
+        isMocked,
+        accuracy
+      };
       setUserLoc(currentLoc);
       
       const target = await resolveTargetGeofence();
@@ -1282,26 +1525,42 @@ export default function HomeScreen() {
         { latitude: target.lat, longitude: target.lon }
       );
 
-      const now = new Date().toISOString();
       const techId = profile?.id;
 
+      // Anti-Spoofing Interception: Mocked GPS is strictly prohibited from auto-verification
+      if (isMocked) {
+        console.warn("[ANTI-SPOOF] Simulated GPS provider intercepted. Bypassing automatic geofence clearance.");
+        safeAlert(
+          "Mock Location Detected",
+          "Simulated GPS coordinates have been detected on this device. Automated clock-in is disabled. You must submit a photo verification for HR audit."
+        );
+        setLocationStatus('fallback');
+        return;
+      }
+
       if (distance <= target.radius) {
-        // --- 1. INSERT TIME LOG ---
+        const punchId = generateUUID();
+        // --- 1. INSERT TIME LOG (Server-authoritative time via Postgres default timezone('utc', now())) ---
         const { data: insertedLog, error: logError } = await supabase
           .from('time_logs')
           .insert({
+            id: punchId,
             technician_id: techId,
-            app_time_in: now,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
             status: 'verified',
             geofence_status: 'inside',
+            is_mocked: false,
+            gps_accuracy: accuracy,
+            is_suspicious: isRooted,
             is_manual_entry: false,
           })
           .select()
           .single();
 
         if (logError) throw logError;
+
+        const serverPunchTime = insertedLog?.app_time_in || new Date().toISOString();
 
         // --- 2. DUAL-STREAM: UPSERT TECHNICIAN LOCATIONS ---
         if (techId) {
@@ -1312,7 +1571,7 @@ export default function HomeScreen() {
               latitude: currentLoc.lat,
               longitude: currentLoc.lon,
               status: 'working',
-              updated_at: now,
+              updated_at: serverPunchTime,
             });
 
           // --- 3. REALTIME BROADCAST TO ADMIN ---
@@ -1327,7 +1586,7 @@ export default function HomeScreen() {
               longitude: currentLoc.lon,
               status: 'working',
               action: 'clock_in',
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              time: new Date(serverPunchTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
           });
         }
@@ -1343,6 +1602,34 @@ export default function HomeScreen() {
       }
     } catch (e: any) {
       console.error("Clock in error:", e);
+      // If inside target geofence and network timed out, enqueue idempotent punch
+      if (profile?.id && userLoc) {
+        try {
+          const offlinePunchId = generateUUID();
+          await syncQueue.addToQueue('time_in', {
+            id: offlinePunchId,
+            technician_id: profile.id,
+            latitude: userLoc.lat,
+            longitude: userLoc.lon,
+            geofence_status: 'inside',
+            is_mocked: !!userLoc.isMocked,
+            gps_accuracy: userLoc.accuracy ?? null,
+            status: 'verified',
+            is_manual_entry: false,
+          });
+          console.log("[OFFLINE RESILIENCE] Geofenced clock-in queued into syncQueue with id:", offlinePunchId);
+        } catch (queueErr) {
+          console.error("Failed to enqueue offline punch:", queueErr);
+        }
+      }
+      setClockInErrorData({
+        title: 'Clock-In Connection Interrupted',
+        message: 'Could not communicate with the attendance server. Your punch has been stored offline and will auto-sync once connection returns.',
+        gpsStatus: userLoc ? 'ok' : 'failed',
+        photoStatus: 'skipped',
+        syncStatus: 'failed'
+      });
+      setClockInErrorModalVisible(true);
       setLocationStatus('fallback');
     }
   };
@@ -1356,12 +1643,25 @@ export default function HomeScreen() {
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.5,
+      quality: 0.3, // Compressed to ~60KB to eliminate slow-network/basement timeouts
       cameraType: ImagePicker.CameraType.front,
     });
 
     if (!result.canceled && result.assets[0].uri) {
+      setLastCapturedSelfieUri(result.assets[0].uri);
       setUploadingSelfie(true);
+
+      const techId = profile?.id;
+      const currentLoc = userLoc || { lat: 0, lon: 0 };
+      const isMocked = !!userLoc?.isMocked;
+      const accuracy = userLoc?.accuracy ?? null;
+
+      let isRooted = false;
+      try {
+        isRooted = await Device.isRootedExperimentalAsync();
+      } catch (rErr) {}
+
+      const photoPunchId = generateUUID();
       try {
         const fileExt = result.assets[0].uri.split('.').pop() || 'jpeg';
         const fileName = `${profile?.id}-${Date.now()}.${fileExt}`;
@@ -1369,31 +1669,34 @@ export default function HomeScreen() {
         const response = await fetch(result.assets[0].uri);
         const blob = await response.blob();
         
-        await supabase.storage.from('dtr-selfies').upload(fileName, blob);
+        const { error: uploadError } = await supabase.storage.from('dtr-selfies').upload(fileName, blob);
+        if (uploadError) throw uploadError;
+
         const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
 
-        const now = new Date().toISOString();
-        const techId = profile?.id;
-        const currentLoc = userLoc || { lat: 0, lon: 0 };
-
-        // 1. Insert time log with pending_review status
+        // 1. Insert time log with pending_review status & server-authoritative time
         const { data: insertedLog, error: logError } = await supabase
           .from('time_logs')
           .insert({
+            id: photoPunchId,
             technician_id: techId,
-            app_time_in: now,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
             status: 'pending_review',
             geofence_status: 'outside',
             photo_url: publicUrlData.publicUrl || fileName,
             photo_status: 'pending',
+            is_mocked: isMocked,
+            gps_accuracy: accuracy,
+            is_suspicious: isRooted || isMocked,
             is_manual_entry: false,
           })
           .select()
           .single();
 
         if (logError) throw logError;
+
+        const serverPunchTime = insertedLog?.app_time_in || new Date().toISOString();
 
         // 2. Dual stream: upsert technician locations
         if (techId) {
@@ -1404,7 +1707,7 @@ export default function HomeScreen() {
               latitude: currentLoc.lat,
               longitude: currentLoc.lon,
               status: 'working',
-              updated_at: now,
+              updated_at: serverPunchTime,
             });
 
           // 3. Realtime broadcast to admin
@@ -1419,7 +1722,7 @@ export default function HomeScreen() {
               longitude: currentLoc.lon,
               status: 'working',
               action: 'clock_in_override',
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              time: new Date(serverPunchTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
           });
         }
@@ -1431,9 +1734,163 @@ export default function HomeScreen() {
         setTodayCompletedLog(null);
       } catch (err: any) {
         console.error("Photo override error:", err);
-        safeAlert('Upload Failed', 'There was an issue uploading your photo. Please try again.');
+        // Offline resilience: enqueue punch into offline transaction queue
+        try {
+          await syncQueue.addToQueue('time_in', {
+            id: photoPunchId,
+            technician_id: techId,
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lon,
+            geofence_status: 'outside',
+            is_mocked: isMocked,
+            gps_accuracy: accuracy,
+            is_suspicious: isRooted || isMocked,
+            status: 'pending_review',
+            photo_status: 'pending',
+          });
+          console.log("[OFFLINE RESILIENCE] Clock-in punch successfully saved to offline syncQueue with id:", photoPunchId);
+        } catch (queueErr) {
+          console.error("Failed to enqueue offline punch:", queueErr);
+        }
+
+        setClockInErrorData({
+          title: 'Verification Upload Interrupted',
+          message: err?.message || 'A network error occurred while uploading your verification selfie. You can retry with your saved photo or submit an immediate review ticket to HR.',
+          gpsStatus: userLoc ? 'ok' : 'failed',
+          photoStatus: 'captured',
+          syncStatus: 'failed'
+        });
+        setClockInErrorModalVisible(true);
       }
       setUploadingSelfie(false);
+    }
+  };
+
+  const retryVisualOverrideSubmission = async () => {
+    if (!lastCapturedSelfieUri) {
+      setClockInErrorModalVisible(false);
+      handleVisualOverride();
+      return;
+    }
+
+    setRetryingClockIn(true);
+    const techId = profile?.id;
+    const currentLoc = userLoc || { lat: 0, lon: 0 };
+    const isMocked = !!userLoc?.isMocked;
+    const accuracy = userLoc?.accuracy ?? null;
+
+    let isRooted = false;
+    try {
+      isRooted = await Device.isRootedExperimentalAsync();
+    } catch (rErr) {}
+
+    try {
+      const fileExt = lastCapturedSelfieUri.split('.').pop() || 'jpeg';
+      const fileName = `${profile?.id}-${Date.now()}.${fileExt}`;
+      
+      const response = await fetch(lastCapturedSelfieUri);
+      const blob = await response.blob();
+      
+      const { error: uploadErr } = await supabase.storage.from('dtr-selfies').upload(fileName, blob);
+      if (uploadErr) throw uploadErr;
+
+      const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
+
+      const { data: insertedLog, error: logError } = await supabase
+        .from('time_logs')
+        .insert({
+          technician_id: techId,
+          latitude: currentLoc.lat,
+          longitude: currentLoc.lon,
+          status: 'pending_review',
+          geofence_status: 'outside',
+          photo_url: publicUrlData.publicUrl || fileName,
+          photo_status: 'pending',
+          is_mocked: isMocked,
+          gps_accuracy: accuracy,
+          is_suspicious: isRooted || isMocked,
+          is_manual_entry: false,
+        })
+        .select()
+        .single();
+
+      if (logError) throw logError;
+
+      const serverPunchTime = insertedLog?.app_time_in || new Date().toISOString();
+
+      if (techId) {
+        await supabase
+          .from('technician_locations')
+          .upsert({
+            technician_id: techId,
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lon,
+            status: 'working',
+            updated_at: serverPunchTime,
+          });
+
+        const trackingChannel = supabase.channel('fleet-tracking');
+        await trackingChannel.send({
+          type: 'broadcast',
+          event: 'location_update',
+          payload: {
+            technician_id: techId,
+            full_name: profile?.full_name || 'Technician',
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lon,
+            status: 'working',
+            action: 'clock_in_override',
+            time: new Date(serverPunchTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        });
+      }
+
+      setClockInErrorModalVisible(false);
+      setClockInModal(false);
+      setHasClockedInToday(true);
+      setActiveTimeLog(insertedLog);
+      setTodayCompletedLog(null);
+      safeAlert('Verification Recorded', 'Your attendance verification has been recorded successfully and submitted for review.');
+    } catch (err: any) {
+      console.error("Retry failed:", err);
+      safeAlert('Retry Incomplete', 'Could not upload photo to server. You can tap "Submit for Review" to log this attempt directly to HR without losing your shift.');
+    } finally {
+      setRetryingClockIn(false);
+    }
+  };
+
+  const submitReviewTicket = async () => {
+    if (!profile?.id) return;
+    setSubmittingReviewTicket(true);
+    try {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const currentLoc = userLoc ? `Lat: ${userLoc.lat.toFixed(5)}, Lon: ${userLoc.lon.toFixed(5)}` : 'GPS Acquired';
+
+      const { error } = await supabase
+        .from('tickets')
+        .insert({
+          technician_id: profile.id,
+          category: 'Attendance / DTR',
+          title: `[CLOCK-IN REVIEW] Punch Verification Glitch - ${profile.full_name || 'Technician'}`,
+          description: `Technician attempted clock-in at ${timeStr}. Photo verification was captured locally but server upload timed out. Coordinates: ${currentLoc}. Please verify physical attendance manually.`,
+          priority: 'medium',
+          status: 'open'
+        });
+
+      if (error) throw error;
+
+      setClockInErrorModalVisible(false);
+      setClockInModal(false);
+      safeAlert(
+        'Review Ticket Filed',
+        'Your attendance verification request has been escalated to HR. Your shift attempt is timestamped and documented.'
+      );
+    } catch (err: any) {
+      console.error("Failed to submit review ticket:", err);
+      safeAlert('Submission Error', 'Failed to dispatch ticket. Please inform your coordinator directly.');
+    } finally {
+      setSubmittingReviewTicket(false);
     }
   };
 
@@ -1459,25 +1916,57 @@ export default function HomeScreen() {
                 exitLoc = { lat: loc.coords.latitude, lon: loc.coords.longitude };
               } catch (e) {}
 
-              const now = new Date();
-              const nowIso = now.toISOString();
+              // 1. Authoritative server time via get_server_time RPC with fallback
+              let authoritativeOut = new Date().toISOString();
+              let isSuspiciousOut = false;
+              try {
+                const { data: sTime, error: sErr } = await supabase.rpc('get_server_time');
+                if (!sErr && sTime) {
+                  authoritativeOut = new Date(sTime).toISOString();
+                  const skewMs = Math.abs(new Date().getTime() - new Date(sTime).getTime());
+                  if (skewMs > 5 * 60 * 1000) {
+                    console.warn(`[CLOCK INTEGRITY] Device clock skew of ${Math.round(skewMs / 1000)}s detected on clock out.`);
+                    isSuspiciousOut = true;
+                  }
+                }
+              } catch (clockErr) {
+                console.warn("Could not fetch server time for clock out:", clockErr);
+              }
+
               const startMs = new Date(activeTimeLog.app_time_in).getTime();
-              const diffMs = Math.max(0, now.getTime() - startMs);
+              const endMs = new Date(authoritativeOut).getTime();
+              const diffMs = Math.max(0, endMs - startMs);
               const totalHours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10;
               const techId = profile?.id;
 
-              // 1. Update time_logs with app_time_out and total_hours
+              // 2. Update time_logs with app_time_out and total_hours
+              const updatePayload: any = {
+                app_time_out: authoritativeOut,
+                total_hours: totalHours,
+              };
+              if (isSuspiciousOut) {
+                updatePayload.is_suspicious = true;
+              }
+
               const { error: logErr } = await supabase
                 .from('time_logs')
-                .update({
-                  app_time_out: nowIso,
-                  total_hours: totalHours,
-                })
+                .update(updatePayload)
                 .eq('id', activeTimeLog.id);
 
-              if (logErr) throw logErr;
+              if (logErr) {
+                // Offline fallback
+                try {
+                  await syncQueue.addToQueue('time_out', {
+                    log_id: activeTimeLog.id,
+                    app_time_out: authoritativeOut,
+                    total_hours: totalHours,
+                  });
+                } catch (queueErr) {
+                  console.error("Failed to enqueue offline clock-out:", queueErr);
+                }
+              }
 
-              // 2. Update technician_locations to offline
+              // 3. Update technician_locations to offline
               if (techId) {
                 await supabase
                   .from('technician_locations')
@@ -1486,10 +1975,10 @@ export default function HomeScreen() {
                     latitude: exitLoc?.lat || 0,
                     longitude: exitLoc?.lon || 0,
                     status: 'offline',
-                    updated_at: nowIso
+                    updated_at: authoritativeOut
                   });
 
-                // 3. Broadcast clock_out to admin
+                // 4. Broadcast clock_out to admin
                 const trackingChannel = supabase.channel('fleet-tracking');
                 await trackingChannel.send({
                   type: 'broadcast',
@@ -1501,7 +1990,7 @@ export default function HomeScreen() {
                     longitude: exitLoc?.lon || 0,
                     status: 'offline',
                     action: 'clock_out',
-                    time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    time: new Date(authoritativeOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                   }
                 });
               }
@@ -1513,7 +2002,7 @@ export default function HomeScreen() {
 
               setTodayCompletedLog({
                 ...activeTimeLog,
-                app_time_out: nowIso,
+                app_time_out: authoritativeOut,
                 total_hours: totalHours
               });
               setActiveTimeLog(null);
@@ -1769,58 +2258,425 @@ export default function HomeScreen() {
                   <View style={styles.fallbackHeader}>
                     <Text style={styles.fallbackTitle}>Location Proximity</Text>
                     <TouchableOpacity onPress={() => setClockInModal(false)}>
-                      <Feather name="x" size={24} color="#64748B" />
+                      <Feather name="x" size={24} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.fallbackSub}>
-                    You are outside {targetGeofence?.name ? `"${targetGeofence.name}"` : 'the target green zone'}.
-                  </Text>
-                  <View style={styles.mapContainer}>
-                    {userLoc && (targetGeofence || schedule) && (
-                      <MapView
-                        provider={'google'}
-                        style={styles.map}
-                        initialRegion={{
-                          latitude: userLoc.lat,
-                          longitude: userLoc.lon,
-                          latitudeDelta: 0.01,
-                          longitudeDelta: 0.01,
-                        }}
-                      >
-                        <Circle
-                          center={{
-                            latitude: targetGeofence?.lat ?? schedule?.geofence_lat,
-                            longitude: targetGeofence?.lon ?? schedule?.geofence_lon,
-                          }}
-                          radius={targetGeofence?.radius ?? schedule?.geofence_radius ?? 100}
-                          strokeColor="rgba(16, 185, 129, 0.6)"
-                          fillColor="rgba(16, 185, 129, 0.2)"
-                        />
-                        <Marker
-                          coordinate={{
-                            latitude: targetGeofence?.lat ?? schedule?.geofence_lat,
-                            longitude: targetGeofence?.lon ?? schedule?.geofence_lon,
-                          }}
-                          title={targetGeofence?.name || schedule?.client_name || 'Target Zone'}
-                          pinColor="#10B981"
-                        />
-                        <Marker
-                          coordinate={{ latitude: userLoc.lat, longitude: userLoc.lon }}
-                          title="Your Location"
-                          pinColor="#EF4444"
-                        />
-                      </MapView>
-                    )}
-                  </View>
-                  <TouchableOpacity style={styles.fallbackBtn} onPress={handleVisualOverride} disabled={uploadingSelfie}>
+                  {(() => {
+                    const targetLat = targetGeofence?.lat ?? schedule?.geofence_lat;
+                    const targetLon = targetGeofence?.lon ?? schedule?.geofence_lon;
+                    const distM = (userLoc && targetLat && targetLon) 
+                      ? getDistance(
+                          { latitude: userLoc.lat, longitude: userLoc.lon },
+                          { latitude: targetLat, longitude: targetLon }
+                        )
+                      : null;
+                    const distText = distM != null ? (distM >= 1000 ? `${(distM / 1000).toFixed(1)} km` : `${distM} m`) : null;
+                    
+                    return (
+                      <>
+                        <Text style={styles.fallbackSub}>
+                          You are outside {targetGeofence?.name ? `"${targetGeofence.name}"` : 'the target green zone'}
+                          {distText ? ` (~${distText} away)` : ''}.
+                        </Text>
+                        <View style={styles.mapContainer}>
+                          {userLoc && (targetGeofence || schedule) && targetLat && targetLon && (
+                            <>
+                              <MapView
+                                provider={'google'}
+                                style={styles.map}
+                                initialRegion={{
+                                  latitude: (userLoc.lat + targetLat) / 2,
+                                  longitude: (userLoc.lon + targetLon) / 2,
+                                  latitudeDelta: Math.max(Math.abs(userLoc.lat - targetLat) * 2.2, 0.008),
+                                  longitudeDelta: Math.max(Math.abs(userLoc.lon - targetLon) * 2.2, 0.008),
+                                }}
+                              >
+                                <Circle
+                                  center={{
+                                    latitude: targetLat,
+                                    longitude: targetLon,
+                                  }}
+                                  radius={targetGeofence?.radius ?? schedule?.geofence_radius ?? 100}
+                                  strokeColor="rgba(16, 185, 129, 0.8)"
+                                  fillColor="rgba(16, 185, 129, 0.25)"
+                                />
+                                <Marker
+                                  coordinate={{
+                                    latitude: targetLat,
+                                    longitude: targetLon,
+                                  }}
+                                  title={targetGeofence?.name || schedule?.client_name || 'Target Zone'}
+                                  description="Required geofence check-in perimeter"
+                                  pinColor="#10B981"
+                                />
+                                <Marker
+                                  coordinate={{ latitude: userLoc.lat, longitude: userLoc.lon }}
+                                  title="Your Position"
+                                  description={distText ? `${distText} from zone` : 'Current GPS location'}
+                                  pinColor="#EF4444"
+                                />
+                              </MapView>
+
+                              {/* Distance Badge */}
+                              <View style={{
+                                position: 'absolute',
+                                top: 12,
+                                left: 12,
+                                backgroundColor: 'rgba(15, 23, 42, 0.88)',
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                borderRadius: 10,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                zIndex: 10,
+                                elevation: 5
+                              }}>
+                                <Feather name="map-pin" size={13} color="#FBBF24" style={{ marginRight: 6 }} />
+                                <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '700' }}>
+                                  {distText ? `${distText} outside zone` : 'Outside Geofence'}
+                                </Text>
+                              </View>
+
+                              {/* Google Maps Turn-By-Turn Intent Button */}
+                              <TouchableOpacity
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                  if (targetLat && targetLon) {
+                                    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLon}`);
+                                  } else if (schedule?.location) {
+                                    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(schedule.location)}`);
+                                  }
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  bottom: 12,
+                                  right: 12,
+                                  backgroundColor: colors.brandBlue,
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 8,
+                                  borderRadius: 10,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  zIndex: 10,
+                                  elevation: 5
+                                }}
+                              >
+                                <Feather name="navigation" size={13} color="#FFF" style={{ marginRight: 5 }} />
+                                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>Navigate</Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      </>
+                    );
+                  })()}
+                  <TouchableOpacity style={[styles.fallbackBtn, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} onPress={handleVisualOverride} disabled={uploadingSelfie}>
                     {uploadingSelfie ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.fallbackBtnText}>Submit Photo Override</Text>
+                      <>
+                        <Feather name="camera" size={18} color="#fff" style={{ marginRight: 8 }} />
+                        <Text style={styles.fallbackBtnText}>Submit Photo Override</Text>
+                      </>
                     )}
                   </TouchableOpacity>
                 </View>
               )}
+            </View>
+          </View>
+        </RNModal>
+
+        {/* CHUNK 45: CLOCK-IN FALLBACK & RESILIENCE ERROR MODAL */}
+        <RNModal
+          isVisible={clockInErrorModalVisible}
+          onBackdropPress={() => setClockInErrorModalVisible(false)}
+          onBackButtonPress={() => setClockInErrorModalVisible(false)}
+          style={{ margin: 20, justifyContent: 'center' }}
+        >
+          <View style={[styles.clockInErrorCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            {/* Header Icon + Title */}
+            <View style={styles.clockInErrorHeader}>
+              <View style={[styles.clockInErrorIconBox, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2' }]}>
+                <Feather name="alert-triangle" size={28} color={BRAND.red} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.clockInErrorTitle, { color: colors.text }]}>{clockInErrorData.title}</Text>
+                <Text style={[styles.clockInErrorSubtitle, { color: colors.textMuted }]}>Attendance Dispatch Safeguard</Text>
+              </View>
+            </View>
+
+            {/* Error Message */}
+            <Text style={[styles.clockInErrorMessage, { color: colors.text }]}>
+              {clockInErrorData.message}
+            </Text>
+
+            {/* Status Checklist Box */}
+            <View style={[styles.clockInErrorStatusBox, { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderColor: colors.cardBorder }]}>
+              <View style={styles.clockInStatusRow}>
+                <Feather 
+                  name={clockInErrorData.gpsStatus === 'ok' ? 'check-circle' : 'x-circle'} 
+                  size={16} 
+                  color={clockInErrorData.gpsStatus === 'ok' ? BRAND.green : BRAND.red} 
+                />
+                <Text style={[styles.clockInStatusText, { color: colors.text }]}>
+                  GPS Coordinates: {clockInErrorData.gpsStatus === 'ok' ? 'Acquired (Within Zone)' : 'Unavailable'}
+                </Text>
+              </View>
+
+              <View style={styles.clockInStatusRow}>
+                <Feather 
+                  name={clockInErrorData.photoStatus === 'captured' ? 'check-circle' : clockInErrorData.photoStatus === 'skipped' ? 'minus-circle' : 'x-circle'} 
+                  size={16} 
+                  color={clockInErrorData.photoStatus === 'captured' ? BRAND.green : '#94A3B8'} 
+                />
+                <Text style={[styles.clockInStatusText, { color: colors.text }]}>
+                  Verification Selfie: {clockInErrorData.photoStatus === 'captured' ? 'Captured Locally' : 'Not Required'}
+                </Text>
+              </View>
+
+              <View style={styles.clockInStatusRow}>
+                <Feather name="alert-circle" size={16} color={BRAND.red} />
+                <Text style={[styles.clockInStatusText, { color: BRAND.red }]}>
+                  Cloud Database Sync: Interrupted
+                </Text>
+              </View>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={{ gap: 10, marginTop: 18 }}>
+              <TouchableOpacity
+                style={[styles.clockInRetryBtn, { backgroundColor: BRAND.blue }]}
+                onPress={retryVisualOverrideSubmission}
+                disabled={retryingClockIn || submittingReviewTicket}
+              >
+                {retryingClockIn ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Feather name="refresh-cw" size={16} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.clockInRetryBtnText}>Retry Server Verification</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.clockInTicketBtn, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF', borderColor: BRAND.blue }]}
+                onPress={submitReviewTicket}
+                disabled={retryingClockIn || submittingReviewTicket}
+              >
+                {submittingReviewTicket ? (
+                  <ActivityIndicator size="small" color={BRAND.blue} />
+                ) : (
+                  <>
+                    <Feather name="shield" size={16} color={BRAND.blue} style={{ marginRight: 8 }} />
+                    <Text style={[styles.clockInTicketBtnText, { color: BRAND.blue }]}>Submit Shift for Review</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.clockInDismissBtn}
+                onPress={() => setClockInErrorModalVisible(false)}
+                disabled={retryingClockIn || submittingReviewTicket}
+              >
+                <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>Dismiss & Re-attempt Later</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </RNModal>
+
+        {/* STALE SHIFT RECONCILIATION MODAL */}
+        <RNModal
+          isVisible={staleShiftModalVisible}
+          onBackdropPress={() => setStaleShiftModalVisible(false)}
+          onBackButtonPress={() => setStaleShiftModalVisible(false)}
+          style={{ margin: 20, justifyContent: 'center' }}
+        >
+          <View style={[styles.clockInErrorCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <View style={styles.clockInErrorHeader}>
+              <View style={[styles.clockInErrorIconBox, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7' }]}>
+                <Feather name="clock" size={28} color="#D97706" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.clockInErrorTitle, { color: colors.text }]}>Unclosed Shift Detected</Text>
+                <Text style={[styles.clockInErrorSubtitle, { color: colors.textMuted }]}>Attendance Lifecycle Safeguard</Text>
+              </View>
+            </View>
+
+            <Text style={[styles.clockInErrorMessage, { color: colors.text }]}>
+              {stalePunchStart ? (
+                `You have an active shift from ${stalePunchStart.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} started at ${stalePunchStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} that was not clocked out.`
+              ) : (
+                'You have a previous shift that was not clocked out.'
+              )}
+            </Text>
+
+            <View style={[styles.clockInErrorStatusBox, { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderColor: isDark ? colors.cardBorder : '#E2E8F0', padding: 12 }]}>
+              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.text, marginBottom: 8 }}>
+                Select departure time to close shift:
+              </Text>
+
+              <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                {dynamicStalePresets.map(preset => {
+                  const isSelected = !isCustomStaleTimeSelected && staleDepartureTime === preset.time;
+                  return (
+                    <TouchableOpacity
+                      key={preset.time}
+                      onPress={() => {
+                        setIsCustomStaleTimeSelected(false);
+                        setStaleDepartureTime(preset.time);
+                      }}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        alignItems: 'center',
+                        backgroundColor: isSelected ? colors.brandBlue : (isDark ? '#1E293B' : '#FFFFFF'),
+                        borderWidth: 1,
+                        borderColor: isSelected ? colors.brandBlue : (isDark ? '#334155' : '#CBD5E1'),
+                      }}
+                    >
+                      <Text style={{
+                        fontFamily: 'DMSans-Bold',
+                        fontSize: 11,
+                        color: isSelected ? '#FFFFFF' : colors.text,
+                      }}>
+                        {preset.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* Custom Time Option */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsCustomStaleTimeSelected(true);
+                    setShowStaleCustomPicker(true);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    backgroundColor: isCustomStaleTimeSelected ? colors.brandBlue : (isDark ? '#1E293B' : '#FFFFFF'),
+                    borderWidth: 1,
+                    borderColor: isCustomStaleTimeSelected ? colors.brandBlue : (isDark ? '#334155' : '#CBD5E1'),
+                  }}
+                >
+                  <Text style={{
+                    fontFamily: 'DMSans-Bold',
+                    fontSize: 11,
+                    color: isCustomStaleTimeSelected ? '#FFFFFF' : colors.text,
+                  }}>
+                    {isCustomStaleTimeSelected ? `${staleDepartureTime} ✎` : 'Custom ⏱'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Dynamic Calculation Live Breakdown */}
+              {staleShiftPreview && (
+                <View style={{
+                  marginTop: 6,
+                  padding: 10,
+                  borderRadius: 8,
+                  backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : '#F1F5F9',
+                  borderWidth: 1,
+                  borderColor: isDark ? colors.cardBorder : '#E2E8F0',
+                }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Departure Date/Time:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text }}>
+                      {staleShiftPreview.endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
+                      {staleShiftPreview.endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Gross Shift Duration:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.text }}>
+                      {staleShiftPreview.grossHours} hrs
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Mandatory Meal Break:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: staleShiftPreview.mealDeduction > 0 ? '#F59E0B' : colors.textMuted }}>
+                      {staleShiftPreview.mealDeduction > 0 ? '-1.0 hr (>5h shift)' : '0.0 hr'}
+                    </Text>
+                  </View>
+
+                  <View style={{ height: 1, backgroundColor: isDark ? '#334155' : '#CBD5E1', marginVertical: 4 }} />
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text }}>Net Auditable Hours:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#10B981' }}>
+                      {staleShiftPreview.netHours} hrs
+                    </Text>
+                  </View>
+
+                  {staleShiftPreview.isExceedinglyLong && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
+                      <Feather name="alert-triangle" size={13} color="#F59E0B" />
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: '#F59E0B', flex: 1 }}>
+                        Exceeds 16h — will be flagged for CEO / HR compliance audit.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Native DateTimePicker for Custom Departure */}
+            {showStaleCustomPicker && (
+              <DateTimePicker
+                value={staleCustomPickerDate}
+                mode="time"
+                is24Hour={true}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  setShowStaleCustomPicker(Platform.OS === 'ios');
+                  if (selectedDate) {
+                    setStaleCustomPickerDate(selectedDate);
+                    const hh = String(selectedDate.getHours()).padStart(2, '0');
+                    const mm = String(selectedDate.getMinutes()).padStart(2, '0');
+                    setStaleDepartureTime(`${hh}:${mm}`);
+                    setIsCustomStaleTimeSelected(true);
+                  }
+                }}
+              />
+            )}
+
+            <View style={{ gap: 10, marginTop: 18 }}>
+              <TouchableOpacity
+                style={[
+                  styles.clockInRetryBtn,
+                  {
+                    backgroundColor: staleShiftPreview?.isValid ? colors.brandBlue : '#94A3B8',
+                    opacity: staleShiftPreview?.isValid ? 1 : 0.6
+                  }
+                ]}
+                onPress={() => handleResolveStaleShift()}
+                disabled={resolvingStaleShift || !staleShiftPreview?.isValid}
+              >
+                {resolvingStaleShift ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Feather name="check-circle" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.clockInRetryBtnText}>
+                      Close Shift ({staleShiftPreview?.netHours ?? 0}h Net)
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.clockInDismissBtn}
+                onPress={() => setStaleShiftModalVisible(false)}
+                disabled={resolvingStaleShift}
+              >
+                <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>Remind Me Later</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </RNModal>
@@ -2408,7 +3264,7 @@ export default function HomeScreen() {
                             </View>
                           </View>
 
-                          {member.phone ? (
+                          {member.phone && member.id !== profile?.id ? (
                             <TouchableOpacity
                               style={{
                                 width: 36,
@@ -2426,6 +3282,10 @@ export default function HomeScreen() {
                             >
                               <Feather name="phone" size={16} color={BRAND.green} />
                             </TouchableOpacity>
+                          ) : member.id === profile?.id ? (
+                            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginLeft: 8 }}>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>You</Text>
+                            </View>
                           ) : null}
                         </View>
                       ))}
@@ -2434,16 +3294,33 @@ export default function HomeScreen() {
                 </View>
 
                 {schedule && userLoc && (
-                  <View style={{ height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
-                    <MapView provider={'google'} style={{ flex: 1 }} initialRegion={{ latitude: userLoc.lat, longitude: userLoc.lon, latitudeDelta: Math.abs((schedule.geofence_lat || userLoc.lat) - userLoc.lat) * 2.5 || 0.05, longitudeDelta: Math.abs((schedule.geofence_lon || userLoc.lon) - userLoc.lon) * 2.5 || 0.05 }}>
-                      <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} pinColor='blue' />
+                  <View style={{ height: 260, borderRadius: 16, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
+                    <MapView 
+                      provider={'google'} 
+                      style={{ flex: 1 }} 
+                      initialRegion={{ 
+                        latitude: ((userLoc.lat + (schedule.geofence_lat || userLoc.lat)) / 2), 
+                        longitude: ((userLoc.lon + (schedule.geofence_lon || userLoc.lon)) / 2), 
+                        latitudeDelta: Math.max(Math.abs((schedule.geofence_lat || userLoc.lat) - userLoc.lat) * 2.2, 0.01), 
+                        longitudeDelta: Math.max(Math.abs((schedule.geofence_lon || userLoc.lon) - userLoc.lon) * 2.2, 0.01) 
+                      }}
+                    >
+                      <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} title="Your Position" pinColor='blue' />
                       {schedule.geofence_lat && schedule.geofence_lon && (
                         <>
-                          <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} pinColor='red' />
+                          <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} title={schedule.client_name || schedule.title || 'Destination'} pinColor='red' />
                           <Polyline coordinates={[{latitude: userLoc.lat, longitude: userLoc.lon}, {latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}]} strokeColor={colors.brandBlue} strokeWidth={4} lineDashPattern={[10, 10]} />
                         </>
                       )}
                     </MapView>
+                    {/* Floating distance pill */}
+                    <View style={{ position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(15, 23, 42, 0.85)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, flexDirection: 'row', alignItems: 'center' }}>
+                      <Feather name="navigation" size={12} color="#38BDF8" style={{ marginRight: 6 }} />
+                      <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '700' }}>
+                        {schedule.location || 'Dispatch Location'}
+                        {schedule.geofence_lat && userLoc ? ` • ${(getDistance({ latitude: userLoc.lat, longitude: userLoc.lon }, { latitude: schedule.geofence_lat, longitude: schedule.geofence_lon }) / 1000).toFixed(1)} km away` : ''}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
@@ -3175,7 +4052,7 @@ export default function HomeScreen() {
                             </View>
                           </View>
 
-                          {member.phone ? (
+                          {member.phone && member.id !== profile?.id ? (
                             <TouchableOpacity
                               style={{
                                 width: 36,
@@ -3193,6 +4070,10 @@ export default function HomeScreen() {
                             >
                               <Feather name="phone" size={16} color={BRAND.green} />
                             </TouchableOpacity>
+                          ) : member.id === profile?.id ? (
+                            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginLeft: 8 }}>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>You</Text>
+                            </View>
                           ) : null}
                         </View>
                       ))}
@@ -3399,6 +4280,122 @@ export default function HomeScreen() {
               </View>
             </View>
           )}
+        </RNModal>
+
+        {/* CHUNK 46: SHIFT DISPUTE BOTTOM SHEET PICKER */}
+        <RNModal
+          isVisible={shiftDisputeModalVisible}
+          onBackdropPress={() => setShiftDisputeModalVisible(false)}
+          onBackButtonPress={() => setShiftDisputeModalVisible(false)}
+          onSwipeComplete={() => setShiftDisputeModalVisible(false)}
+          swipeDirection={['down']}
+          propagateSwipe={true}
+          swipeThreshold={50}
+          style={{ margin: 0, justifyContent: 'flex-end' }}
+        >
+          <View style={styles.profileOverlay}>
+            <View style={[styles.profileSheet, { maxHeight: '80%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
+              
+              {/* Header */}
+              <View style={styles.modalHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 }}>
+                  <View style={[styles.clockInErrorIconBox, { width: 38, height: 38, borderRadius: 10, backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2' }]}>
+                    <Feather name="alert-triangle" size={20} color={BRAND.red} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalTitle, { color: colors.text, fontSize: 18 }]}>Select Shift to Dispute</Text>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted }}>Choose a shift to pre-fill your dispute ticket</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setShiftDisputeModalVisible(false)}>
+                  <Feather name="x" size={24} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Missing Shift Quick Action */}
+              <TouchableOpacity
+                style={[
+                  styles.disputeMissingBtn,
+                  { 
+                    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.12)' : '#EFF6FF',
+                    borderColor: isDark ? 'rgba(59, 130, 246, 0.3)' : '#BFDBFE',
+                  }
+                ]}
+                onPress={handleDisputeMissingShift}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Feather name="help-circle" size={20} color={BRAND.blue} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.disputeMissingBtnText, { color: BRAND.blue }]}>Shift Missing from List?</Text>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Dispute an unrecorded workday or cloud sync delay</Text>
+                  </View>
+                </View>
+                <Feather name="arrow-right" size={16} color={BRAND.blue} />
+              </TouchableOpacity>
+
+              {/* Shifts List */}
+              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.textMuted, marginTop: 16, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Recorded Shifts ({timeLogs?.length || 0})
+              </Text>
+
+              <FlatList
+                data={timeLogs}
+                keyExtractor={(item) => `dispute-${item.id}`}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 32 }}
+                ListEmptyComponent={() => (
+                  <View style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 14, color: colors.textMuted, textAlign: 'center' }}>
+                      No shifts recorded yet. Use the missing shift option above to report your attendance.
+                    </Text>
+                  </View>
+                )}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.disputeShiftCard,
+                      {
+                        backgroundColor: isDark ? colors.subCard : '#F8FAFC',
+                        borderColor: colors.cardBorder,
+                      }
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => handleSelectShiftToDispute(item)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.disputeShiftDate, { color: colors.text }]}>
+                        {new Date(item.created_at || item.app_time_in).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                      <Text style={[styles.disputeShiftTimes, { color: colors.textMuted }]}>
+                        {item.app_time_in ? new Date(item.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
+                        {' → '}
+                        {item.app_time_out ? new Date(item.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ongoing / Missing'}
+                      </Text>
+
+                      <View style={{ flexDirection: 'row', marginTop: 8, gap: 6, alignItems: 'center' }}>
+                        <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: colors.brandBlue }}>
+                            {item.total_hours ? `${item.total_hours} hrs` : 'Incomplete'}
+                          </Text>
+                        </View>
+                        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: item.status === 'approved' || item.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2') }}>
+                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: item.status === 'approved' || item.status === 'verified' ? BRAND.green : BRAND.red }}>
+                            {item.status ? item.status.replace('_', ' ').toUpperCase() : 'LOGGED'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 13, color: BRAND.red }}>Dispute</Text>
+                      <Feather name="chevron-right" size={16} color={BRAND.red} />
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          </View>
         </RNModal>
 
         {/* LEAVE MODAL */}
@@ -3776,7 +4773,7 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   safeArea: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
   headerBtnOutline: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? colors.subCard : 'transparent' },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   headerTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, letterSpacing: -0.5 },
   notificationDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: BRAND.red },
   mainContent: { paddingHorizontal: 24, flex: 1, paddingTop: 8 },
@@ -3919,8 +4916,8 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   fallbackState: { padding: 24 },
   fallbackHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   fallbackTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text },
-  fallbackSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, marginBottom: 24 },
-  mapContainer: { height: 200, borderRadius: 16, overflow: 'hidden', backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginBottom: 24 },
+  fallbackSub: { fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, marginBottom: 14 },
+  mapContainer: { height: 280, borderRadius: 20, overflow: 'hidden', backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginBottom: 16, borderWidth: 1, borderColor: colors.cardBorder },
   map: { width: '100%', height: '100%' },
   fallbackBtn: { backgroundColor: colors.brandBlue, paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
   fallbackBtnText: { fontFamily: 'DMSans-Bold', fontSize: 16, color: '#fff' },
@@ -4168,6 +5165,126 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   payslipFooterText: { fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textSubtle },
   payslipSectionCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
   payslipLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+
+  // Chunk 45: Clock-In Error & Fallback Modal Styles
+  clockInErrorCard: {
+    borderRadius: 24,
+    padding: 22,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  clockInErrorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  clockInErrorIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clockInErrorTitle: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 17,
+  },
+  clockInErrorSubtitle: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  clockInErrorMessage: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  clockInErrorStatusBox: {
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    gap: 8,
+  },
+  clockInStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  clockInStatusText: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 13,
+  },
+  clockInRetryBtn: {
+    height: 48,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clockInRetryBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 15,
+    color: '#fff',
+  },
+  clockInTicketBtn: {
+    height: 48,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  clockInTicketBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 15,
+  },
+  clockInDismissBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clockInDismissBtnText: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 14,
+  },
+
+  // Chunk 46: Shift Dispute Bottom Sheet Styles
+  disputeMissingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  disputeMissingBtnText: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 14,
+  },
+  disputeShiftCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  disputeShiftDate: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  disputeShiftTimes: {
+    fontFamily: 'DMSans-Medium',
+    fontSize: 12,
+  },
 });
 
 
