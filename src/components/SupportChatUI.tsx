@@ -12,6 +12,7 @@ import EventSource from 'react-native-sse';
 import { useFocusEffect } from 'expo-router';
 import { useAppTheme } from '../hooks/use-theme';
 import TicketSubmissionModal from './TicketSubmissionModal';
+import { formatMobileError } from '../lib/errorSanitizer';
 
 const BRAND = {
   blue: '#1E3A8A',    
@@ -596,7 +597,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
         });
       }
     } catch (err: any) {
-      Alert.alert("Error", "Failed to select document: " + err.message);
+      Alert.alert("Attachment Error", formatMobileError(err, "Failed to select document. Please try again."));
     }
   };
 
@@ -805,7 +806,12 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
           }
           else if (data.type === "done" || data.type === "error") {
              if (data.type === "error") {
-               setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: m.text + "\n\n**Error:** " + data.message, isStreaming: false } : m));
+               const failureNotice = "\n\n*Unable to generate complete response. Please try again shortly or contact your coordinator.*";
+               setMessages(prev => prev.map(m => m.id === aiMessageId ? { 
+                 ...m, 
+                 text: m.text ? (m.text + failureNotice) : "Unable to generate response. Please try again shortly or contact your coordinator.", 
+                 isStreaming: false 
+               } : m));
              } else {
                setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, isStreaming: false } : m));
                
@@ -1020,7 +1026,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
                         <TouchableOpacity 
                           onPress={() => {
                             const target = item.attachment_url || item.attachment?.uri;
-                            if (target) Linking.openURL(target).catch(e => Alert.alert("Cannot open file", e.message));
+                            if (target) Linking.openURL(target).catch(e => Alert.alert("Cannot open file", formatMobileError(e, "Unable to open attachment.")));
                           }}
                           style={{
                             flexDirection: 'row',

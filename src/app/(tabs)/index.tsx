@@ -25,6 +25,9 @@ import { AppThemeColors } from '../../constants/theme';
 import * as Sharing from 'expo-sharing';
 import ViewShot from 'react-native-view-shot';
 import { sanitizeNotification, formatRelativeTime } from '../../utils/notification-sanitizer';
+import PolicyReaderModal, { CompanyPolicy } from '../../components/PolicyReaderModal';
+import PolicyEnforcementModal from '../../components/PolicyEnforcementModal';
+import { formatMobileError } from '../../lib/errorSanitizer';
 
 const { width, height } = Dimensions.get('window');
 
@@ -180,10 +183,11 @@ export default function HomeScreen() {
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   
   const safeAlert = (title: string, msg: string) => {
+    const cleanMsg = formatMobileError(msg);
     if (Platform.OS === 'web') {
-      window.alert(`${title}\n\n${msg}`);
+      window.alert(`${title}\n\n${cleanMsg}`);
     } else {
-      Alert.alert(title, msg);
+      Alert.alert(title, cleanMsg);
     }
   };
 
@@ -192,6 +196,122 @@ export default function HomeScreen() {
   const [formsModalVisible, setFormsModalVisible] = useState(false);
   const [dtrLogs, setDtrLogs] = useState<any[]>([]);
   const [dtrLoading, setDtrLoading] = useState(false);
+
+  // Task 37: TechnoCycle Policy Registry & Clickwrap Compliance States
+  const [policies, setPolicies] = useState<CompanyPolicy[]>([]);
+  const [policyAcks, setPolicyAcks] = useState<Record<string, { version: string; acknowledged_at: string }>>({});
+  const [unacknowledgedPolicies, setUnacknowledgedPolicies] = useState<CompanyPolicy[]>([]);
+  const [selectedPolicyForReader, setSelectedPolicyForReader] = useState<CompanyPolicy | null>(null);
+  const [policyReaderModalVisible, setPolicyReaderModalVisible] = useState(false);
+  const [policyEnforcementVisible, setPolicyEnforcementVisible] = useState(false);
+  const [policyEnforcementReason, setPolicyEnforcementReason] = useState<'post_punch' | 'module_access' | 'initial_login'>('post_punch');
+  const [policyLoading, setPolicyLoading] = useState(false);
+
+  const fetchPoliciesAndAcks = async (userId?: string) => {
+    try {
+      setPolicyLoading(true);
+      const targetUid = userId || profile?.id;
+
+      // 1. Fetch active company policies
+      let loadedPolicies: CompanyPolicy[] = [];
+      const { data: policiesData, error: polError } = await supabase
+        .from('company_policies')
+        .select('*')
+        .eq('is_active', true)
+        .order('category', { ascending: true });
+
+      if (!polError && policiesData && policiesData.length > 0) {
+        loadedPolicies = policiesData as CompanyPolicy[];
+        await AsyncStorage.setItem('@technocycle_cached_policies', JSON.stringify(policiesData)).catch(() => {});
+      } else {
+        const cached = await AsyncStorage.getItem('@technocycle_cached_policies');
+        if (cached) {
+          try {
+            loadedPolicies = JSON.parse(cached);
+          } catch (e) {}
+        }
+      }
+      setPolicies(loadedPolicies);
+
+      // 2. Fetch acknowledgments for this user
+      if (targetUid) {
+        const { data: acksData, error: ackError } = await supabase
+          .from('policy_acknowledgments')
+          .select('policy_id, policy_version, acknowledged_at')
+          .eq('user_id', targetUid);
+
+        const ackMap: Record<string, { version: string; acknowledged_at: string }> = {};
+        if (!ackError && acksData) {
+          acksData.forEach((a: any) => {
+            ackMap[a.policy_id] = {
+              version: a.policy_version,
+              acknowledged_at: a.acknowledged_at,
+            };
+          });
+          setPolicyAcks(ackMap);
+        }
+
+        // 3. Compute unacknowledged mandatory policies
+        const pendingMandatory = loadedPolicies.filter(p => {
+          if (!p.is_mandatory) return false;
+          if (p.target_audience === 'admin') return false;
+          const userAck = ackMap[p.id];
+          return !userAck || userAck.version !== p.version;
+        });
+
+        setUnacknowledgedPolicies(pendingMandatory);
+        return pendingMandatory;
+      }
+    } catch (err) {
+      console.warn("Failed to fetch policies and acknowledgments:", err);
+    } finally {
+      setPolicyLoading(false);
+    }
+    return [];
+  };
+
+  const handleAcknowledgePolicy = async (policyId: string, version: string): Promise<boolean> => {
+    const targetUid = profile?.id;
+    if (!targetUid) {
+      safeAlert('Error', 'User profile not identified.');
+      return false;
+    }
+
+    try {
+      const userAgent = `TechnoCycle Mobile (${Platform.OS}; ${Device.modelName || 'Device'})`;
+      const { error } = await supabase
+        .from('policy_acknowledgments')
+        .upsert(
+          {
+            user_id: targetUid,
+            policy_id: policyId,
+            policy_version: version,
+            acknowledged_at: new Date().toISOString(),
+            ip_address: userLoc ? `${userLoc.lat},${userLoc.lon}` : 'Mobile Session',
+            user_agent: userAgent,
+          },
+          { onConflict: 'user_id, policy_id, policy_version' }
+        );
+
+      if (error) throw error;
+
+      await fetchPoliciesAndAcks(targetUid);
+      return true;
+    } catch (err: any) {
+      console.error("Error acknowledging policy:", err);
+      safeAlert('Submission Error', err.message || 'Could not record acknowledgment.');
+      return false;
+    }
+  };
+
+  const checkPolicyGateBeforeAction = (actionCallback: () => void) => {
+    if (unacknowledgedPolicies.length > 0) {
+      setPolicyEnforcementReason('module_access');
+      setPolicyEnforcementVisible(true);
+      return;
+    }
+    actionCallback();
+  };
 
   // Chunk 14: Notifications
   const [notifVisible, setNotifVisible] = useState(false);
@@ -332,7 +452,7 @@ export default function HomeScreen() {
           categoryColor: '#3B82F6',
           categoryBgLight: '#EFF6FF',
           categoryBgDark: 'rgba(59, 130, 246, 0.2)',
-          statusTag: 'Live',
+          statusTag: 'Active',
           actionLabel: 'Explore System',
           actionType: 'general',
         });
@@ -959,6 +1079,7 @@ export default function HomeScreen() {
       
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       setProfile(profileData);
+      fetchPoliciesAndAcks(user.id);
 
       const { data: scheduleData } = await supabase
         .from('schedules')
@@ -1092,6 +1213,7 @@ export default function HomeScreen() {
       }).catch(err => {
         console.warn("Focus sync error:", err);
       });
+      fetchPoliciesAndAcks();
     }, [])
   );
 
@@ -1595,7 +1717,14 @@ export default function HomeScreen() {
         setHasClockedInToday(true);
         setActiveTimeLog(insertedLog);
         setTodayCompletedLog(null);
-        setTimeout(() => setClockInModal(false), 1800);
+        setTimeout(() => {
+          setClockInModal(false);
+          // Hybrid Post-Punch Gate: check if unacknowledged mandatory policies exist
+          if (unacknowledgedPolicies.length > 0) {
+            setPolicyEnforcementReason('post_punch');
+            setTimeout(() => setPolicyEnforcementVisible(true), 400);
+          }
+        }, 1800);
       } else {
         // Outside target radius -> fallback to map & photo override
         setLocationStatus('fallback');
@@ -1732,6 +1861,10 @@ export default function HomeScreen() {
         setHasClockedInToday(true);
         setActiveTimeLog(insertedLog);
         setTodayCompletedLog(null);
+        if (unacknowledgedPolicies.length > 0) {
+          setPolicyEnforcementReason('post_punch');
+          setTimeout(() => setPolicyEnforcementVisible(true), 500);
+        }
       } catch (err: any) {
         console.error("Photo override error:", err);
         // Offline resilience: enqueue punch into offline transaction queue
@@ -2130,7 +2263,7 @@ export default function HomeScreen() {
           )}
 
           <View style={styles.bubbleRow}>
-            <TouchableOpacity style={styles.bubbleBtn} onPress={() => { fetchEquipment(); setEquipModalVisible(true); }}>
+            <TouchableOpacity style={styles.bubbleBtn} onPress={() => { checkPolicyGateBeforeAction(() => { fetchEquipment(); setEquipModalVisible(true); }); }}>
               <View style={[styles.bubbleCircle, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.yellow }]}>
                 <Feather name="tool" size={24} color={BRAND.yellow} />
               </View>
@@ -2206,15 +2339,15 @@ export default function HomeScreen() {
                 <ScrollView contentContainerStyle={styles.menuScroll} showsVerticalScrollIndicator={false}>
                   <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>{t('my_operations')}</Text>
                   <View style={styles.menuGrid}>
-                    <MenuGridItem icon="calendar" label={t('schedules')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { fetchSchedulesList(); setSchedulesModalVisible(true); }} />
-                    <MenuGridItem icon="tool" label={t('my_tools')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { fetchEquipment(); setEquipModalVisible(true); }} />
-                    <MenuGridItem icon="clipboard" label={t('work_orders')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { fetchWorkOrders(); setWorkOrdersModalVisible(true); }} />
+                    <MenuGridItem icon="calendar" label={t('schedules')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { checkPolicyGateBeforeAction(() => { fetchSchedulesList(); setSchedulesModalVisible(true); }); }} />
+                    <MenuGridItem icon="tool" label={t('my_tools')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { checkPolicyGateBeforeAction(() => { fetchEquipment(); setEquipModalVisible(true); }); }} />
+                    <MenuGridItem icon="clipboard" label={t('work_orders')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { checkPolicyGateBeforeAction(() => { fetchWorkOrders(); setWorkOrdersModalVisible(true); }); }} />
                   </View>
                   <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>My HR & Pay</Text>
                   <View style={styles.menuGrid}>
-                    <MenuGridItem icon="dollar-sign" label={t('payslips')} fontFamily={activeFontBold} color={BRAND.green} onPress={() => { fetchPayslips(); setPayslipsModalVisible(true); }} />
-                    <MenuGridItem icon="sun" label={t('file_leave')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { setMenuVisible(false); setAiInitialQuery('I would like to file a leave of absence.'); setTimeout(() => setSupportModalVisible(true), 500); }} />
-                    <MenuGridItem icon="clock" label={t('timesheets')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { fetchTimeLogs(); setTimesheetModalVisible(true); }} />
+                    <MenuGridItem icon="dollar-sign" label={t('payslips')} fontFamily={activeFontBold} color={BRAND.green} onPress={() => { checkPolicyGateBeforeAction(() => { fetchPayslips(); setPayslipsModalVisible(true); }); }} />
+                    <MenuGridItem icon="sun" label={t('file_leave')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { checkPolicyGateBeforeAction(() => { setMenuVisible(false); setAiInitialQuery('I would like to file a leave of absence.'); setTimeout(() => setSupportModalVisible(true), 500); }); }} />
+                    <MenuGridItem icon="clock" label={t('timesheets')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { checkPolicyGateBeforeAction(() => { fetchTimeLogs(); setTimesheetModalVisible(true); }); }} />
                   </View>
                   <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>Company & Support</Text>
                   <View style={styles.menuGrid}>
@@ -2437,7 +2570,7 @@ export default function HomeScreen() {
               <View style={styles.clockInStatusRow}>
                 <Feather name="alert-circle" size={16} color={BRAND.red} />
                 <Text style={[styles.clockInStatusText, { color: BRAND.red }]}>
-                  Cloud Database Sync: Interrupted
+                  Status: Sync Pending (Saved Locally)
                 </Text>
               </View>
             </View>
@@ -2454,7 +2587,7 @@ export default function HomeScreen() {
                 ) : (
                   <>
                     <Feather name="refresh-cw" size={16} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.clockInRetryBtnText}>Retry Server Verification</Text>
+                    <Text style={styles.clockInRetryBtnText}>Retry Clock In</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -2709,7 +2842,7 @@ export default function HomeScreen() {
 
               {/* Menu Items */}
               <View style={styles.profileMenu}>
-                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => { setProfileModalVisible(false); fetchTimeLogs(); setTimesheetModalVisible(true); }}>
+                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => { checkPolicyGateBeforeAction(() => { setProfileModalVisible(false); fetchTimeLogs(); setTimesheetModalVisible(true); }); }}>
                   <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#E0F2FE' }]}>
                     <Feather name="clock" size={20} color="#0EA5E9" />
                   </View>
@@ -2717,11 +2850,18 @@ export default function HomeScreen() {
                   <Feather name="chevron-right" size={20} color={colors.textSubtle} />
                 </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => { setFormsModalVisible(true); }}>
+                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => { fetchPoliciesAndAcks(); setFormsModalVisible(true); }}>
                   <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#FEF3C7' }]}>
                     <Feather name="file-text" size={20} color="#F59E0B" />
                   </View>
-                  <Text style={[styles.profileMenuText, { color: colors.text }]}>Company Forms and handbooks</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.profileMenuText, { color: colors.text }]}>Company Forms and handbooks</Text>
+                    {unacknowledgedPolicies.length > 0 && (
+                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: '#D97706', marginTop: 2 }}>
+                        {unacknowledgedPolicies.length} signature{unacknowledgedPolicies.length > 1 ? 's' : ''} pending
+                      </Text>
+                    )}
+                  </View>
                   <Feather name="chevron-right" size={20} color={colors.textSubtle} />
                 </TouchableOpacity>
 
@@ -2787,27 +2927,157 @@ export default function HomeScreen() {
           </View>
         </RNModal>
 
-        {/* FORMS MODAL */}
-        <RNModal isVisible={formsModalVisible}   onBackdropPress={() => setFormsModalVisible(false)} onBackButtonPress={() => setFormsModalVisible(false)} onSwipeComplete={() => setFormsModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        {/* POLICIES & HANDBOOKS MODAL */}
+        <RNModal
+          isVisible={formsModalVisible}
+          onBackdropPress={() => setFormsModalVisible(false)}
+          onBackButtonPress={() => setFormsModalVisible(false)}
+          onSwipeComplete={() => setFormsModalVisible(false)}
+          swipeDirection={['down']}
+          propagateSwipe={true}
+          swipeThreshold={50}
+          style={{ margin: 0, justifyContent: 'flex-end' }}
+        >
           <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '60%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+            <View style={[styles.profileSheet, { height: '75%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
               <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               <View style={styles.modalHeaderRow}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>Company Forms</Text>
-                <TouchableOpacity onPress={() => setFormsModalVisible(false)}><Feather name="x" size={24} color={colors.textMuted} /></TouchableOpacity>
+                <View>
+                  <Text style={[styles.modalTitle, { color: colors.text, fontFamily: activeFontBold }]}>
+                    Policies & Handbooks
+                  </Text>
+                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
+                    TechnoCycle Administrative & Safety Compliance
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setFormsModalVisible(false)}>
+                  <Feather name="x" size={24} color={colors.textMuted} />
+                </TouchableOpacity>
               </View>
-              <ScrollView style={{ marginTop: 16 }} showsVerticalScrollIndicator={false}>
-                {['Employee Code of Conduct', 'Leave Policy', 'Equipment Handling Manual'].map((form, idx) => (
-                  <TouchableOpacity key={idx} style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => safeAlert('Coming Soon', 'This document is not yet available.')}>
-                    <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#F1F5F9' }]}><Feather name="file" size={20} color={colors.brandBlue} /></View>
-                    <Text style={[styles.profileMenuText, { color: colors.text }]}>{form}</Text>
-                    <Feather name="download" size={20} color={colors.brandBlue} />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+
+              {policyLoading && policies.length === 0 ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color={BRAND.blue} />
+                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textMuted, marginTop: 12 }}>
+                    Loading company documents...
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={{ marginTop: 14 }} showsVerticalScrollIndicator={false}>
+                  {policies.map((p) => {
+                    const isAck = policyAcks[p.id]?.version === p.version;
+                    const getIconAndBg = (cat: string) => {
+                      switch (cat) {
+                        case 'legal':
+                          return { icon: 'file-text' as const, color: '#3B82F6', bg: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' };
+                        case 'field_ops':
+                          return { icon: 'shield' as const, color: '#10B981', bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5' };
+                        case 'hr_attendance':
+                          return { icon: 'clock' as const, color: '#F59E0B', bg: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7' };
+                        case 'inventory':
+                          return { icon: 'tool' as const, color: '#06B6D4', bg: isDark ? 'rgba(6, 182, 212, 0.15)' : '#ECFEFF' };
+                        case 'executive':
+                          return { icon: 'award' as const, color: '#8B5CF6', bg: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F5F3FF' };
+                        default:
+                          return { icon: 'file' as const, color: '#64748B', bg: isDark ? 'rgba(100, 116, 139, 0.15)' : '#F8FAFC' };
+                      }
+                    };
+                    const meta = getIconAndBg(p.category);
+
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[
+                          styles.profileMenuItem,
+                          {
+                            borderBottomColor: isDark ? colors.border : '#F1F5F9',
+                            paddingVertical: 14,
+                          },
+                        ]}
+                        onPress={() => {
+                          setSelectedPolicyForReader(p);
+                          setPolicyReaderModalVisible(true);
+                        }}
+                      >
+                        <View style={[styles.profileMenuIcon, { backgroundColor: meta.bg }]}>
+                          <Feather name={meta.icon} size={20} color={meta.color} />
+                        </View>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                            <Text style={[styles.profileMenuText, { color: colors.text, fontFamily: activeFontBold, flex: 1 }]} numberOfLines={1}>
+                              {p.title}
+                            </Text>
+                            <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }}>
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textMuted }}>{p.version}</Text>
+                            </View>
+                          </View>
+
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                            <View
+                              style={{
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 4,
+                                backgroundColor: isAck
+                                  ? isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5'
+                                  : isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontFamily: 'DMSans-Bold',
+                                  fontSize: 10,
+                                  color: isAck ? BRAND.green : '#D97706',
+                                  textTransform: 'uppercase',
+                                }}
+                              >
+                                {isAck ? '✓ Acknowledged' : '• Signature Required'}
+                              </Text>
+                            </View>
+
+                            <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 11, color: colors.textSubtle }}>
+                              Effective {p.effective_date}
+                            </Text>
+                          </View>
+                        </View>
+                        <Feather name="chevron-right" size={20} color={colors.textSubtle} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {policies.length === 0 && !policyLoading && (
+                    <Text style={{ textAlign: 'center', color: colors.textMuted, marginTop: 40, fontFamily: 'DMSans-Regular' }}>
+                      No company policies published yet.
+                    </Text>
+                  )}
+                  <View style={{ height: 40 }} />
+                </ScrollView>
+              )}
             </View>
           </View>
         </RNModal>
+
+        {/* POLICY READER MODAL */}
+        <PolicyReaderModal
+          visible={policyReaderModalVisible}
+          policy={selectedPolicyForReader}
+          isAcknowledged={!!(selectedPolicyForReader && policyAcks[selectedPolicyForReader.id]?.version === selectedPolicyForReader.version)}
+          acknowledgedAt={selectedPolicyForReader ? policyAcks[selectedPolicyForReader.id]?.acknowledged_at : null}
+          onClose={() => setPolicyReaderModalVisible(false)}
+          onAcknowledge={handleAcknowledgePolicy}
+        />
+
+        {/* HYBRID POST-PUNCH & MODULE CLICKWRAP ENFORCEMENT MODAL */}
+        <PolicyEnforcementModal
+          visible={policyEnforcementVisible}
+          unacknowledgedPolicies={unacknowledgedPolicies}
+          reason={policyEnforcementReason}
+          onReview={(policy) => {
+            setPolicyEnforcementVisible(false);
+            setSelectedPolicyForReader(policy);
+            setTimeout(() => setPolicyReaderModalVisible(true), 250);
+          }}
+          onDismiss={() => setPolicyEnforcementVisible(false)}
+        />
 
         {/* UNIFIED CANONICAL PREFERENCES MODAL */}
         <RNModal 
@@ -2930,7 +3200,7 @@ export default function HomeScreen() {
                   })}
                 </View>
 
-                {/* APP TELEMETRY & BUILD INFO */}
+                {/* APP VERSION & STATUS */}
                 <View style={{ 
                   backgroundColor: colors.subCard, 
                   borderRadius: 14, 
@@ -2947,11 +3217,11 @@ export default function HomeScreen() {
                     </View>
                     <View>
                       <Text style={{ fontFamily: activeFontBold, fontSize: 13, color: colors.text }}>TechnoCycle Mobile</Text>
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>v0.5.0 • Channel: preview</Text>
+                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>Version 0.5.0</Text>
                     </View>
                   </View>
                   <View style={{ backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}>
-                    <Text style={{ fontFamily: activeFontBold, fontSize: 11, color: BRAND.green }}>ONLINE</Text>
+                    <Text style={{ fontFamily: activeFontBold, fontSize: 11, color: BRAND.green }}>Active</Text>
                   </View>
                 </View>
                 

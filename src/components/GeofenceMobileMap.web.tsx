@@ -131,8 +131,7 @@ export default function GeofenceMobileMap({
         <circle cx={ux} cy={uy} r="5" fill="#3b82f6" stroke="#ffffff" strokeWidth="1.5" />
 
         {/* Label Overlays */}
-        <text x="10" y="20" fill="#94a3b8" fontSize="8" fontFamily="monospace">RADAR RESOLUTION: 50m</text>
-        <text x="10" y="32" fill={isInside ? "#10b981" : "#ef4444"} fontSize="9" fontFamily="sans-serif" fontWeight="bold">
+        <text x="10" y="20" fill={isInside ? "#10b981" : "#ef4444"} fontSize="9" fontFamily="sans-serif" fontWeight="bold">
           {isInside ? "🟢 INSIDE BOUNDARY" : "🔴 OUTSIDE BOUNDARY"}
         </text>
         
@@ -149,7 +148,7 @@ export default function GeofenceMobileMap({
       </svg>
       <View style={styles.footerLabel}>
         <Text style={styles.footerText}>
-          🛰️ <Text style={{ fontWeight: 'bold' }}>TechnoSys Radar Map:</Text> Showing relative distance to {branchName} ({radius}m geofence).
+          <Text style={{ fontWeight: 'bold' }}>Branch Geofence:</Text> Showing relative distance to {branchName} ({radius}m radius).
         </Text>
       </View>
     </View>

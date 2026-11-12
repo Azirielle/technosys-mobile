@@ -135,17 +135,17 @@ export function useGeofence() {
           officesRef.current = data;
           await AsyncStorage.setItem('CACHED_OFFICE_LOCATIONS', JSON.stringify(data));
         } else {
-          throw new Error('No active office locations in database.');
+          throw new Error('No active branch locations found.');
         }
       } catch (err) {
-        console.warn('DB geofence fetch failed. Loading cached locations...', err);
+        console.warn('Branch location fetch failed. Loading cached locations...', err);
         const cached = await AsyncStorage.getItem('CACHED_OFFICE_LOCATIONS');
         if (cached) {
           fetchedOffices = JSON.parse(cached);
           setOffices(fetchedOffices);
           officesRef.current = fetchedOffices;
         } else {
-          const errorMsg = 'No office locations found in cache or database. Connect to network to download coordinates.';
+          const errorMsg = 'No branch locations found. Please connect to the network to download branch coordinates.';
           setResult(prev => ({ ...prev, status: 'error', error: errorMsg }));
           return { status: 'error', error: errorMsg } as const;
         }

@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAppTheme } from '../hooks/use-theme';
+import PolicyReaderModal, { CompanyPolicy } from '../components/PolicyReaderModal';
+import { formatMobileError } from '../lib/errorSanitizer';
 
 const BRAND = {
   blue: '#1E3A8A',
@@ -34,6 +36,32 @@ export default function RootLoginScreen() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [legalModalPolicy, setLegalModalPolicy] = useState<CompanyPolicy | null>(null);
+  const [legalModalVisible, setLegalModalVisible] = useState(false);
+  const [loadingPolicy, setLoadingPolicy] = useState(false);
+
+  const openPublicPolicy = async (policyId: 'terms_of_service' | 'privacy_policy') => {
+    setLoadingPolicy(true);
+    try {
+      const { data, error } = await supabase
+        .from('company_policies')
+        .select('*')
+        .eq('id', policyId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error || !data) {
+        Alert.alert('Notice', 'Policy document could not be loaded. Please ensure you are connected to the network.');
+        return;
+      }
+      setLegalModalPolicy(data as CompanyPolicy);
+      setLegalModalVisible(true);
+    } catch (e) {
+      Alert.alert('Notice', 'Unable to fetch policy at this time.');
+    } finally {
+      setLoadingPolicy(false);
+    }
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -84,11 +112,11 @@ export default function RootLoginScreen() {
       });
 
       if (authError) {
-        Alert.alert('Auth Error', 'Number found, but failed to generate session. (Check test passwords)');
+        Alert.alert('Sign In Error', 'Unable to complete sign-in. Please contact HR or try again.');
         setLoading(false);
       }
     } catch (err) {
-      Alert.alert('Error', 'Could not verify number.');
+      Alert.alert('Verification Error', 'Could not verify contact number. Please check your connection.');
       setLoading(false);
     }
   };
@@ -106,7 +134,7 @@ export default function RootLoginScreen() {
     });
 
     if (error) {
-      setLoginError(error.message);
+      setLoginError(formatMobileError(error, 'Invalid email or password. Please verify your credentials and try again.'));
       setLoading(false);
     }
   };
@@ -197,8 +225,32 @@ export default function RootLoginScreen() {
             )}
 
           </View>
+
+          {/* Legal Compliance Footer Links */}
+          <View style={styles.legalFooter}>
+            <Text style={[styles.legalText, { color: colors.textMuted }]}>
+              By signing in, you agree to TechnoCycle's
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 }}>
+              <TouchableOpacity onPress={() => openPublicPolicy('terms_of_service')} disabled={loadingPolicy}>
+                <Text style={[styles.legalLink, { color: isDark ? colors.brandBlue : BRAND.blue }]}>Terms of Service</Text>
+              </TouchableOpacity>
+              <Text style={{ color: colors.textSubtle }}>•</Text>
+              <TouchableOpacity onPress={() => openPublicPolicy('privacy_policy')} disabled={loadingPolicy}>
+                <Text style={[styles.legalLink, { color: isDark ? colors.brandBlue : BRAND.blue }]}>Privacy Policy</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </SafeAreaView>
+
+      <PolicyReaderModal
+        visible={legalModalVisible}
+        policy={legalModalPolicy}
+        isAcknowledged={false}
+        readOnly={true}
+        onClose={() => setLegalModalVisible(false)}
+      />
     </View>
   );
 }
@@ -308,5 +360,18 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     fontFamily: 'DMSans-Medium',
     fontSize: 14,
     color: isDark ? colors.brandBlue : BRAND.blue,
-  }
+  },
+  legalFooter: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  legalText: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 12,
+  },
+  legalLink: {
+    fontFamily: 'DMSans-Bold',
+    fontSize: 12,
+    textDecorationLine: 'underline',
+  },
 });

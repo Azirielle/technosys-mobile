@@ -21,6 +21,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '../lib/supabase';
 import { useAppTheme } from '../hooks/use-theme';
+import { formatMobileError } from '../lib/errorSanitizer';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -284,7 +285,7 @@ export default function TicketSubmissionModal({
         setAttachedFile({ uri: file.uri, mimeType: file.mimeType || 'application/octet-stream', name: file.name, size: file.size });
       }
     } catch (err: any) {
-      Alert.alert('Upload Error', 'Could not select file: ' + err.message);
+      Alert.alert('Upload Error', formatMobileError(err, 'Could not select file. Please try again.'));
     }
   };
 
@@ -518,7 +519,7 @@ export default function TicketSubmissionModal({
       }
     } catch (err: any) {
       setIsSubmitting(false);
-      setFormError(err.message || 'Submission failed. Please try again.');
+      setFormError(formatMobileError(err, 'Submission failed. Please try again.'));
     }
   };
 

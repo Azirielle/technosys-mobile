@@ -118,7 +118,6 @@ export default function GeofenceMobileMap({
       </MapView>
 
       <View style={styles.radarOverlay}>
-        <Text style={styles.radarText}>RADAR RESOLUTION: 50m</Text>
         <Text style={[styles.radarStatus, { color: isInside ? '#10b981' : '#ef4444' }]}>
           {isInside ? '● INSIDE BOUNDARY' : '○ OUTSIDE BOUNDARY'}
         </Text>
