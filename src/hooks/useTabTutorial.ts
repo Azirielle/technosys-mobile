@@ -27,7 +27,7 @@ export function useTabTutorial(tabName: string) {
 
           if (error) throw error;
 
-          const prefs = data?.user_preferences || {};
+          const prefs = (data?.user_preferences || {}) as Record<string, any>;
           const key = "has_seen_" + tabName.toLowerCase() + "_tutorial";
           const seen = !!prefs[key];
           setHasSeen(seen);
@@ -61,7 +61,7 @@ export function useTabTutorial(tabName: string) {
             .eq('id', user.id)
             .single();
             
-          const currentPrefs = profile?.user_preferences || {};
+          const currentPrefs = (profile?.user_preferences || {}) as Record<string, any>;
           const updatedPrefs = { ...currentPrefs, [key]: true };
 
           await supabase

@@ -15,7 +15,7 @@ export function generateUUID(): string {
 
 export interface QueueItem {
   id: string;
-  type: 'time_in' | 'time_out' | 'parts_checkout' | 'leave_request' | 'ticket_submission' | 'post_comment' | 'close_ticket';
+  type: 'time_in' | 'time_out' | 'leave_request' | 'ticket_submission' | 'post_comment' | 'close_ticket';
   payload: any;
   timestamp: string;
 }
@@ -167,7 +167,7 @@ export const syncQueue = {
 
             if (item.type === 'time_in') {
               const punchId = item.payload.id || item.id;
-              const { error: err } = await supabase.from('time_logs').upsert({
+              const { error: err } = await supabase.from('attendance_logs').upsert({
                 id: punchId,
                 technician_id: item.payload.technician_id,
                 app_time_in: calculatedTimeIn,
@@ -186,7 +186,7 @@ export const syncQueue = {
               }, { onConflict: 'id' });
               error = err;
             } else {
-              const { error: err } = await supabase.from('time_logs')
+              const { error: err } = await supabase.from('attendance_logs')
                 .update({
                   app_time_out: calculatedTimeOut,
                   total_hours: calculatedHours,
@@ -207,56 +207,6 @@ export const syncQueue = {
               status: 'pending'
             }, { onConflict: 'id' });
             error = err;
-          } else if (item.type === 'parts_checkout') {
-            // 1. Double check current stock level from Supabase
-            const { data: dbItem, error: fetchErr } = await supabase
-              .from('inventory_items')
-              .select('quantity')
-              .eq('id', item.payload.item_id)
-              .single();
-
-            if (fetchErr) {
-              error = fetchErr;
-            } else {
-              const currentQty = dbItem?.quantity ?? 0;
-              const checkoutQty = item.payload.quantity;
-
-              // 2. Decrement stock
-              const { error: updateErr } = await supabase
-                .from('inventory_items')
-                .update({ quantity: Math.max(0, currentQty - checkoutQty), updated_at: new Date().toISOString() })
-                .eq('id', item.payload.item_id);
-
-              if (updateErr) {
-                error = updateErr;
-              } else {
-                // 3. Log stock transaction
-                const { error: txErr } = await supabase
-                  .from('stock_transactions')
-                  .insert({
-                    item_id: item.payload.item_id,
-                    ticket_id: item.payload.ticket_id,
-                    technician_id: item.payload.technician_id,
-                    type: 'out',
-                    quantity: checkoutQty,
-                    notes: item.payload.notes
-                  });
-
-                if (txErr) {
-                  error = txErr;
-                } else {
-                  // 4. Log checkout event in ticket comment thread
-                  const commentId = item.payload.comment_id || generateUUID();
-                  const { error: commentErr } = await supabase.from('ticket_comments').upsert({
-                    id: commentId,
-                    ticket_id: item.payload.ticket_id,
-                    author_id: item.payload.technician_id,
-                    content: `🔧 [System DTR Log - Offline Sync]: Technician checked out ${checkoutQty} ${item.payload.unit ?? 'pcs'} of "${item.payload.name}". Memo: ${item.payload.notes}`
-                  }, { onConflict: 'id' });
-                  error = commentErr;
-                }
-              }
-            }
           } else if (item.type === 'ticket_submission') {
             const ticketId = item.payload.id || item.id;
             const { error: err } = await supabase.from('tickets').upsert({

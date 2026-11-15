@@ -108,7 +108,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           .eq('id', session.user.id)
           .single();
 
-        const currentPrefs = profile?.user_preferences || {};
+        const currentPrefs = (profile?.user_preferences || {}) as Record<string, any>;
         await supabase
           .from('profiles')
           .update({
@@ -137,7 +137,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           .eq('id', session.user.id)
           .single();
 
-        const currentPrefs = profile?.user_preferences || {};
+        const currentPrefs = (profile?.user_preferences || {}) as Record<string, any>;
         await supabase
           .from('profiles')
           .update({

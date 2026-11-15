@@ -1,32 +1,46 @@
+// usePushNotifications: asks for notification permission, saves this phone's push token, and listens for
+// notifications. Does nothing in Expo Go on Android, where push notifications aren't available (see lib/notifications).
 import { useState, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import type { Notification } from 'expo-notifications';
 import { supabase } from '../lib/supabase';
+import { getNotifications } from '../lib/notifications';
 
-// Configure exactly how notifications are handled in foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true
-  }),
-});
+let handlerSet = false;
+
+/** How notifications show while the app is open. Set once, the first time the hook runs. */
+function setForegroundHandler() {
+  const Notifications = getNotifications();
+  if (!Notifications || handlerSet) return;
+  handlerSet = true;
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
 export function usePushNotifications(userId?: string) {
   const [expoPushToken, setExpoPushToken] = useState('');
-  const [notification, setNotification] = useState<Notifications.Notification | false>(false);
-  const notificationListener = useRef<any>(null);
-  const responseListener = useRef<any>(null);
+  const [notification, setNotification] = useState<Notification | false>(false);
+  const notificationListener = useRef<{ remove: () => void } | null>(null);
+  const responseListener = useRef<{ remove: () => void } | null>(null);
 
   useEffect(() => {
+    const Notifications = getNotifications();
+    if (!Notifications) return;
+    setForegroundHandler();
+
     registerForPushNotificationsAsync().then(async (token) => {
       if (token) {
         setExpoPushToken(token);
-        
+
         // Grab the authenticated user directly from Supabase
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user?.id) {
@@ -35,21 +49,17 @@ export function usePushNotifications(userId?: string) {
       }
     });
 
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      setNotification(notification);
+    notificationListener.current = Notifications.addNotificationReceivedListener((n) => {
+      setNotification(n);
     });
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       console.log(response);
     });
 
     return () => {
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-      }
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
     };
   }, [userId]);
 
@@ -57,14 +67,14 @@ export function usePushNotifications(userId?: string) {
     try {
       const { error } = await supabase
         .from('push_tokens')
-        .upsert({ 
-          user_id: userId, 
-          token: token, 
-          platform: Platform.OS 
+        .upsert({
+          user_id: userId,
+          token: token,
+          platform: Platform.OS
         }, {
           onConflict: 'token'
         });
-        
+
       if (error && error.code !== '42P01') {
         console.warn('Error saving push token', error);
       }
@@ -77,6 +87,8 @@ export function usePushNotifications(userId?: string) {
 }
 
 async function registerForPushNotificationsAsync() {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   let token;
 
   if (Platform.OS === 'android') {
@@ -91,17 +103,17 @@ async function registerForPushNotificationsAsync() {
   if (Device.isDevice) {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    
+
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    
+
     if (finalStatus !== 'granted') {
       console.warn('Failed to get push token for push notification!');
       return;
     }
-    
+
     token = await Notifications.getExpoPushTokenAsync({
       projectId: Constants.expoConfig?.extra?.eas?.projectId,
     });

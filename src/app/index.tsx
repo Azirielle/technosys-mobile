@@ -30,9 +30,7 @@ export default function RootLoginScreen() {
   const router = useExpoRouter();
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
-  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
-  const [phoneNumber, setPhoneNumber] = useState('+639');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +42,7 @@ export default function RootLoginScreen() {
     setLoadingPolicy(true);
     try {
       const { data, error } = await supabase
-        .from('company_policies')
+        .from('policies')
         .select('*')
         .eq('id', policyId)
         .eq('is_active', true)
@@ -89,52 +87,45 @@ export default function RootLoginScreen() {
     };
   }, []);
 
-  const handlePhoneLogin = async () => {
+  // Sign in with a mobile number (09123456789 / +639123456789) or a username, plus the password from HR.
+  const handleLogin = async () => {
     setLoginError(null);
-    if (!phoneNumber || phoneNumber.length < 10) {
-      setLoginError('Please enter a valid mobile number.');
+    const input = identifier.trim();
+    if (!input || !password) {
+      setLoginError('Enter your mobile number or username, and your password.');
       return;
     }
     setLoading(true);
-    
-    try {
-      const { data: emailAttached, error: rpcError } = await supabase.rpc('get_email_from_contact', { p_contact: phoneNumber });
-      
-      if (rpcError || !emailAttached) {
-         setLoginError('Number not found. Please contact HR.');
-         setLoading(false);
-         return;
-      }
-      
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: emailAttached,
-        password: 'password123',
-      });
 
-      if (authError) {
-        Alert.alert('Sign In Error', 'Unable to complete sign-in. Please contact HR or try again.');
+    try {
+      let email = input.toLowerCase();
+      const digits = input.replace(/\D/g, '');
+      const looksLikePhone = /^[+\d\s-]+$/.test(input) && digits.length >= 10;
+
+      if (looksLikePhone) {
+        if (!/^(09\d{9}|639\d{9}|9\d{9})$/.test(digits)) {
+          setLoginError('Enter an 11-digit mobile number, e.g. 09123456789.');
+          setLoading(false);
+          return;
+        }
+        const { data: found, error: rpcError } = await supabase.rpc('get_email_from_contact', { p_contact: input });
+        if (rpcError || !found) {
+          setLoginError('This number is not registered. Please contact HR.');
+          setLoading(false);
+          return;
+        }
+        email = found;
+      } else if (!email.includes('@')) {
+        email = `${email}@technocycle.ph`;
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setLoginError(formatMobileError(error, 'Wrong mobile number, username or password.'));
         setLoading(false);
       }
     } catch (err) {
-      Alert.alert('Verification Error', 'Could not verify contact number. Please check your connection.');
-      setLoading(false);
-    }
-  };
-
-  const handleEmailLogin = async () => {
-    setLoginError(null);
-    if (!email || !password) {
-      setLoginError('Please enter both email and password.');
-      return;
-    }
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setLoginError(formatMobileError(error, 'Invalid email or password. Please verify your credentials and try again.'));
+      setLoginError('Could not reach the server. Please check your connection.');
       setLoading(false);
     }
   };
@@ -161,68 +152,37 @@ export default function RootLoginScreen() {
 
           <View style={styles.inputCard}>
             
-            {loginMethod === 'phone' ? (
-              <>
-                <Text style={styles.methodTitle}>Mobile Access</Text>
-                {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
-                <View style={styles.inputWrapper}>
-                  <Feather name="phone" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="+639..."
-                    placeholderTextColor={colors.textSubtle}
-                    value={phoneNumber}
-                    onChangeText={setPhoneNumber}
-                    keyboardType="phone-pad"
-                  />
-                </View>
+            <Text style={styles.methodTitle}>Sign In</Text>
+            {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
+            <View style={styles.inputWrapper}>
+              <Feather name="user" size={20} color={colors.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Mobile number or username"
+                placeholderTextColor={colors.textSubtle}
+                value={identifier}
+                onChangeText={setIdentifier}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
 
-                <TouchableOpacity style={styles.loginBtn} onPress={handlePhoneLogin} activeOpacity={0.8}>
-                  <Text style={styles.loginBtnText}>Sign In</Text>
-                </TouchableOpacity>
+            <View style={styles.inputWrapper}>
+              <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor={colors.textSubtle}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                onSubmitEditing={handleLogin}
+              />
+            </View>
 
-                <TouchableOpacity style={styles.switchBtn} onPress={() => setLoginMethod('email')}>
-                  <Text style={styles.switchBtnText}>Log in with email instead</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.methodTitle}>Email Access</Text>
-                {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
-                <View style={styles.inputWrapper}>
-                  <Feather name="mail" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Work Email"
-                    placeholderTextColor={colors.textSubtle}
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
-                </View>
-
-                <View style={styles.inputWrapper}>
-                  <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Password"
-                    placeholderTextColor={colors.textSubtle}
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                  />
-                </View>
-
-                <TouchableOpacity style={styles.loginBtn} onPress={handleEmailLogin} activeOpacity={0.8}>
-                  <Text style={styles.loginBtnText}>Sign In</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.switchBtn} onPress={() => setLoginMethod('phone')}>
-                  <Text style={styles.switchBtnText}>Log in with mobile number instead</Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} activeOpacity={0.8}>
+              <Text style={styles.loginBtnText}>Sign In</Text>
+            </TouchableOpacity>
 
           </View>
 

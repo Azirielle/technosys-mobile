@@ -67,7 +67,8 @@
       ],
       "expo-sharing",
       "expo-asset",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

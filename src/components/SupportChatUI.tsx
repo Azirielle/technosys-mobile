@@ -443,7 +443,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     async function fetchToolCatalog() {
       try {
         const { data, error } = await supabase
-          .from('tool_catalog')
+          .from('tools')
           .select('id, name, category')
           .order('name');
         if (!error && data && data.length > 0) {

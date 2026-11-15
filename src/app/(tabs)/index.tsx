@@ -18,12 +18,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SupportChatUI from '../../components/SupportChatUI';
-import * as Notifications from 'expo-notifications';
+import { getNotifications } from '../../lib/notifications';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { useAppTheme } from '../../context/ThemeContext';
 import { AppThemeColors } from '../../constants/theme';
-import * as Sharing from 'expo-sharing';
-import ViewShot from 'react-native-view-shot';
 import { sanitizeNotification, formatRelativeTime } from '../../utils/notification-sanitizer';
 import PolicyReaderModal, { CompanyPolicy } from '../../components/PolicyReaderModal';
 import PolicyEnforcementModal from '../../components/PolicyEnforcementModal';
@@ -68,12 +66,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     menu: "Menu",
     my_operations: "My Operations",
     schedules: "Schedules",
-    payslips: "Payslips",
     file_leave: "File Leave",
     timesheets: "Timesheets",
     announcements: "Announcements",
     my_tools: "My Tools",
-    work_orders: "Work Orders",
     clock_in: "Clock In",
     tap_to_verify: "Tap to verify location presence",
     preferences: "Preferences",
@@ -96,12 +92,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     menu: "Menu",
     my_operations: "Aking Operasyon",
     schedules: "Mga Iskedyul",
-    payslips: "Payslips",
     file_leave: "Mag-File ng Leave",
     timesheets: "Timesheets",
     announcements: "Mga Anunsyo",
     my_tools: "Aking Kagamitan",
-    work_orders: "Work Orders",
     clock_in: "Pumasok (Clock In)",
     tap_to_verify: "Pindutin para kumpirmahin ang lokasyon",
     preferences: "Kagustuhan",
@@ -125,7 +119,6 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     my_operations: "マイオペレーション",
     schedules: "スケジュール",
     my_tools: "マイツール",
-    work_orders: "作業指示書",
     clock_in: "出勤する",
     tap_to_verify: "タップして場所を確認",
     preferences: "環境設定",
@@ -215,7 +208,7 @@ export default function HomeScreen() {
       // 1. Fetch active company policies
       let loadedPolicies: CompanyPolicy[] = [];
       const { data: policiesData, error: polError } = await supabase
-        .from('company_policies')
+        .from('policies')
         .select('*')
         .eq('is_active', true)
         .order('category', { ascending: true });
@@ -391,10 +384,10 @@ export default function HomeScreen() {
               type: rawType,
               title: parsed.title,
               desc: parsed.summary,
-              time: formatRelativeTime(c.created_at),
+              time: formatRelativeTime(c.created_at as string),
               read: readSet.has(`tc_${c.id}`),
               ticketId: c.ticket_id,
-              timestamp: new Date(c.created_at).getTime(),
+              timestamp: new Date(c.created_at as string).getTime(),
               category: parsed.category,
               categoryColor: parsed.categoryColor,
               categoryBgLight: parsed.categoryBgLight,
@@ -423,9 +416,9 @@ export default function HomeScreen() {
             type: 'admin',
             title: parsed.title,
             desc: parsed.summary,
-            time: formatRelativeTime(a.created_at),
+            time: formatRelativeTime(a.created_at as string),
             read: readSet.has(`ann_${a.id}`),
-            timestamp: new Date(a.created_at).getTime(),
+            timestamp: new Date(a.created_at as string).getTime(),
             category: parsed.category,
             categoryColor: parsed.categoryColor,
             categoryBgLight: parsed.categoryBgLight,
@@ -503,8 +496,8 @@ export default function HomeScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data, error } = await supabase
-          .from('tool_handovers')
-          .select('id, quantity, status, handed_over_at, returned_at, notes, condition_on_return, tool_catalog ( id, name, description, image_url, category, serial_number )')
+          .from('tool_borrowings')
+          .select('id, quantity, status, handed_over_at, returned_at, notes, condition_on_return, tool_catalog:tools ( id, name, description, image_url, category, serial_number )')
           .eq('technician_id', user.id)
           .order('handed_over_at', { ascending: false });
         
@@ -542,10 +535,10 @@ export default function HomeScreen() {
   const [createTicketMode, setCreateTicketMode] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   
-  const [ticketForm, setTicketForm] = useState({ title: '', category: 'HR & Payroll', description: '' });
+  const [ticketForm, setTicketForm] = useState({ title: '', category: 'HR & Attendance', description: '' });
   const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
 
-  const TICKET_CATEGORIES = ['HR & Payroll', 'IT & App Support', 'Equipment / Tools', 'Schedule & Dispatch'];
+  const TICKET_CATEGORIES = ['HR & Attendance', 'IT & App Support', 'Equipment / Tools', 'Schedule & Dispatch'];
 
   const fetchTickets = async () => {
     setTicketsLoading(true);
@@ -563,20 +556,6 @@ export default function HomeScreen() {
   };
 
   
-  const downloadPayslip = async () => {
-    if (!payslipViewRef.current) return;
-    try {
-      const uri = await payslipViewRef.current.capture();
-      const Sharing = require('expo-sharing');
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri);
-      } else {
-        safeAlert('Error', 'Sharing is not available on this device');
-      }
-    } catch (err) {
-      safeAlert('Error', 'Failed to save image');
-    }
-  };
 
   const submitTicket = async () => {
     if (!ticketForm.title || !ticketForm.description) {
@@ -600,7 +579,7 @@ export default function HomeScreen() {
       } else {
         safeAlert('Success', 'Ticket submitted successfully!');
         setCreateTicketMode(false);
-        setTicketForm({ title: '', category: 'HR & Payroll', description: '' });
+        setTicketForm({ title: '', category: 'HR & Attendance', description: '' });
         fetchTickets();
       }
     }
@@ -637,16 +616,7 @@ export default function HomeScreen() {
   };
 
   // Chunk 19: Work Orders Feature
-  const [workOrdersModalVisible, setWorkOrdersModalVisible] = useState(false);
-  const [workOrders, setWorkOrders] = useState<any[]>([]);
-  const [workOrdersLoading, setWorkOrdersLoading] = useState(false);
 
-  // Chunk 20: Payslips Feature
-  const [payslipsModalVisible, setPayslipsModalVisible] = useState(false);
-  const [payslips, setPayslips] = useState<any[]>([]);
-  const [payslipsLoading, setPayslipsLoading] = useState(false);
-  const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
-  const payslipViewRef = useRef<any>(null);
   const [aiInitialQuery, setAiInitialQuery] = useState('');
   const [aiInitialTicketData, setAiInitialTicketData] = useState<any | null>(null);
 
@@ -718,28 +688,12 @@ export default function HomeScreen() {
   const [preferencesModalVisible, setPreferencesModalVisible] = useState(false);
 
 
-  const fetchPayslips = async () => {
-    setPayslipsLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data } = await supabase
-        .from('payslips')
-        .select('*, profiles(full_name)')
-        .eq('technician_id', user.id)
-        .eq('status', 'published')
-        .order('period_start', { ascending: false });
-      
-      setPayslips(data || []);
-    }
-    setPayslipsLoading(false);
-  };
-
   const fetchLeaveRequests = async () => {
     setLeaveLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data } = await supabase
-        .from('leave_requests')
+        .from('leaves')
         .select('*')
         .eq('technician_id', user.id)
         .order('created_at', { ascending: false });
@@ -770,7 +724,7 @@ export default function HomeScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { error } = await supabase
-        .from('leave_requests')
+        .from('leaves')
         .insert({
           technician_id: user.id,
           leave_type: newLeaveType,
@@ -800,7 +754,7 @@ export default function HomeScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data } = await supabase
-        .from('time_logs')
+        .from('attendance_logs')
         .select('*')
         .eq('technician_id', user.id)
         .order('created_at', { ascending: false });
@@ -904,42 +858,12 @@ export default function HomeScreen() {
     setSchedulesLoading(false);
   };
 
-  const fetchWorkOrders = async () => {
-    setWorkOrdersLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data } = await supabase
-        .from('work_orders')
-        .select('*')
-        .eq('technician_id', user.id)
-        .order('created_at', { ascending: false });
-      
-      setWorkOrders(data || []);
-    }
-    setWorkOrdersLoading(false);
-  };
-
-  const updateWorkOrderStatus = async (id: string, newStatus: string) => {
-    // Optimistic update
-    setWorkOrders(prev => prev.map(wo => wo.id === id ? { ...wo, status: newStatus } : wo));
-    
-    const { error } = await supabase
-      .from('work_orders')
-      .update({ status: newStatus })
-      .eq('id', id);
-      
-    if (error) {
-      safeAlert('Error', 'Failed to update work order status.');
-      fetchWorkOrders(); // Revert optimistic update
-    }
-  };
-
   const fetchDtrLogs = async () => {
     setDtrLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data } = await supabase
-        .from('time_logs')
+        .from('attendance_logs')
         .select('*')
         .eq('technician_id', user.id)
         .order('app_time_in', { ascending: false });
@@ -1114,20 +1038,20 @@ export default function HomeScreen() {
 
       // Check for any stale unclosed shift from previous days
       const { data: openLogs } = await supabase
-        .from('time_logs')
+        .from('attendance_logs')
         .select('*')
         .eq('technician_id', user.id)
         .is('app_time_out', null)
         .order('created_at', { ascending: false });
 
       const staleUnclosed = openLogs?.find(l => {
-        const punchStart = new Date(l.app_time_in || l.created_at);
+        const punchStart = new Date((l.app_time_in || l.created_at) as string);
         return punchStart.getTime() < startOfDay.getTime();
       });
 
       if (staleUnclosed) {
         setStaleShiftData(staleUnclosed);
-        const punchStart = new Date(staleUnclosed.app_time_in || staleUnclosed.created_at);
+        const punchStart = new Date((staleUnclosed.app_time_in || staleUnclosed.created_at) as string);
         const defEnd = new Date(punchStart.getTime() + 9 * 60 * 60 * 1000);
         const defTime = `${String(defEnd.getHours()).padStart(2, '0')}:${String(defEnd.getMinutes()).padStart(2, '0')}`;
         setStaleDepartureTime(defTime);
@@ -1137,7 +1061,7 @@ export default function HomeScreen() {
       }
       
       const { data: todaysLogs } = await supabase
-        .from('time_logs')
+        .from('attendance_logs')
         .select('*')
         .eq('technician_id', user.id)
         .gte('created_at', startOfDay.toISOString())
@@ -1175,7 +1099,8 @@ export default function HomeScreen() {
         if (payload.new?.sender_role === 'admin' || payload.new?.sender_role === 'system') {
           fetchNotifications();
           try {
-            Notifications.scheduleNotificationAsync({
+            // Not available in Expo Go on Android (see lib/notifications); skipped there.
+            getNotifications()?.scheduleNotificationAsync({
               content: {
                 title: 'TechnoCycle HR Update',
                 body: (payload.new.content || '').replace(/\[DECISION:.*?\]\s*/i, '').slice(0, 100),
@@ -1253,7 +1178,7 @@ export default function HomeScreen() {
       const outIso = new Date(outMs).toISOString();
 
       const { error: updateErr } = await supabase
-        .from('time_logs')
+        .from('attendance_logs')
         .update({
           app_time_out: outIso,
           total_hours: totalHours,
@@ -1265,14 +1190,11 @@ export default function HomeScreen() {
 
       if (updateErr) throw updateErr;
 
-      // Reset technician_locations to offline
+      // Mark the live map pin as offline
       await supabase
-        .from('technician_locations')
-        .upsert({
-          technician_id: profile.id,
-          status: 'offline',
-          updated_at: outIso
-        });
+        .from('live_locations')
+        .update({ status: 'offline', updated_at: outIso })
+        .eq('technician_id', profile.id);
 
       setStaleShiftModalVisible(false);
       setStaleShiftData(null);
@@ -1312,7 +1234,7 @@ export default function HomeScreen() {
 
         // 1. Dual-stream upsert into technician_locations with active working status
         await supabase
-          .from('technician_locations')
+          .from('live_locations')
           .upsert({
             technician_id: techId,
             latitude: lat,
@@ -1664,7 +1586,7 @@ export default function HomeScreen() {
         const punchId = generateUUID();
         // --- 1. INSERT TIME LOG (Server-authoritative time via Postgres default timezone('utc', now())) ---
         const { data: insertedLog, error: logError } = await supabase
-          .from('time_logs')
+          .from('attendance_logs')
           .insert({
             id: punchId,
             technician_id: techId,
@@ -1687,7 +1609,7 @@ export default function HomeScreen() {
         // --- 2. DUAL-STREAM: UPSERT TECHNICIAN LOCATIONS ---
         if (techId) {
           await supabase
-            .from('technician_locations')
+            .from('live_locations')
             .upsert({
               technician_id: techId,
               latitude: currentLoc.lat,
@@ -1805,7 +1727,7 @@ export default function HomeScreen() {
 
         // 1. Insert time log with pending_review status & server-authoritative time
         const { data: insertedLog, error: logError } = await supabase
-          .from('time_logs')
+          .from('attendance_logs')
           .insert({
             id: photoPunchId,
             technician_id: techId,
@@ -1830,7 +1752,7 @@ export default function HomeScreen() {
         // 2. Dual stream: upsert technician locations
         if (techId) {
           await supabase
-            .from('technician_locations')
+            .from('live_locations')
             .upsert({
               technician_id: techId,
               latitude: currentLoc.lat,
@@ -1930,7 +1852,7 @@ export default function HomeScreen() {
       const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
 
       const { data: insertedLog, error: logError } = await supabase
-        .from('time_logs')
+        .from('attendance_logs')
         .insert({
           technician_id: techId,
           latitude: currentLoc.lat,
@@ -1953,7 +1875,7 @@ export default function HomeScreen() {
 
       if (techId) {
         await supabase
-          .from('technician_locations')
+          .from('live_locations')
           .upsert({
             technician_id: techId,
             latitude: currentLoc.lat,
@@ -2003,7 +1925,7 @@ export default function HomeScreen() {
       const { error } = await supabase
         .from('tickets')
         .insert({
-          technician_id: profile.id,
+          employee_id: profile.id,
           category: 'Attendance / DTR',
           title: `[CLOCK-IN REVIEW] Punch Verification Glitch - ${profile.full_name || 'Technician'}`,
           description: `Technician attempted clock-in at ${timeStr}. Photo verification was captured locally but server upload timed out. Coordinates: ${currentLoc}. Please verify physical attendance manually.`,
@@ -2082,7 +2004,7 @@ export default function HomeScreen() {
               }
 
               const { error: logErr } = await supabase
-                .from('time_logs')
+                .from('attendance_logs')
                 .update(updatePayload)
                 .eq('id', activeTimeLog.id);
 
@@ -2102,7 +2024,7 @@ export default function HomeScreen() {
               // 3. Update technician_locations to offline
               if (techId) {
                 await supabase
-                  .from('technician_locations')
+                  .from('live_locations')
                   .upsert({
                     technician_id: techId,
                     latitude: exitLoc?.lat || 0,
@@ -2242,7 +2164,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
               <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textSubtle }}>
-                Attendance recorded and synchronized with Admin & Payroll.
+                Attendance recorded and sent to HR.
               </Text>
             </View>
           ) : (
@@ -2341,11 +2263,9 @@ export default function HomeScreen() {
                   <View style={styles.menuGrid}>
                     <MenuGridItem icon="calendar" label={t('schedules')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { checkPolicyGateBeforeAction(() => { fetchSchedulesList(); setSchedulesModalVisible(true); }); }} />
                     <MenuGridItem icon="tool" label={t('my_tools')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { checkPolicyGateBeforeAction(() => { fetchEquipment(); setEquipModalVisible(true); }); }} />
-                    <MenuGridItem icon="clipboard" label={t('work_orders')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { checkPolicyGateBeforeAction(() => { fetchWorkOrders(); setWorkOrdersModalVisible(true); }); }} />
                   </View>
-                  <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>My HR & Pay</Text>
+                  <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>My HR & Attendance</Text>
                   <View style={styles.menuGrid}>
-                    <MenuGridItem icon="dollar-sign" label={t('payslips')} fontFamily={activeFontBold} color={BRAND.green} onPress={() => { checkPolicyGateBeforeAction(() => { fetchPayslips(); setPayslipsModalVisible(true); }); }} />
                     <MenuGridItem icon="sun" label={t('file_leave')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { checkPolicyGateBeforeAction(() => { setMenuVisible(false); setAiInitialQuery('I would like to file a leave of absence.'); setTimeout(() => setSupportModalVisible(true), 500); }); }} />
                     <MenuGridItem icon="clock" label={t('timesheets')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { checkPolicyGateBeforeAction(() => { fetchTimeLogs(); setTimesheetModalVisible(true); }); }} />
                   </View>
@@ -3422,7 +3342,7 @@ export default function HomeScreen() {
                   </View>
                 </View>
                 
-                <View style={styles.payslipDivider} />
+                <View style={styles.detailDivider} />
                 
                 <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 8, marginTop: 8 }}>
                   {schedule?.client_name || 'N/A'}
@@ -3680,7 +3600,7 @@ export default function HomeScreen() {
                     </View>
                   )}
                   
-                  <View style={[styles.payslipDivider, { backgroundColor: isDark ? colors.border : '#E2E8F0', marginVertical: 12 }]} />
+                  <View style={[styles.detailDivider, { backgroundColor: isDark ? colors.border : '#E2E8F0', marginVertical: 12 }]} />
                   
                   <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 260 }}>
                     <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 24 }}>
@@ -3916,7 +3836,7 @@ export default function HomeScreen() {
                 </View>
               </View>
               
-              <View style={[styles.payslipDivider, { backgroundColor: isDark ? colors.border : '#E2E8F0', marginVertical: 12 }]} />
+              <View style={[styles.detailDivider, { backgroundColor: isDark ? colors.border : '#E2E8F0', marginVertical: 12 }]} />
               
               <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
                 <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text, marginBottom: 8 }}>DESCRIPTION</Text>
@@ -4034,61 +3954,6 @@ export default function HomeScreen() {
 
         
 
-        {/* WORK ORDERS MODAL */}
-        <RNModal isVisible={workOrdersModalVisible}   onBackdropPress={() => setWorkOrdersModalVisible(false)} onBackButtonPress={() => setWorkOrdersModalVisible(false)} onSwipeComplete={() => setWorkOrdersModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '85%' }]}>
-              <View style={styles.sheetHandle} />
-              <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>My Work Orders</Text>
-                <TouchableOpacity onPress={() => setWorkOrdersModalVisible(false)}>
-                  <Feather name="x" size={24} color="#64748B" />
-                </TouchableOpacity>
-              </View>
-
-              {workOrdersLoading ? (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color={BRAND.yellow} />
-                </View>
-              ) : (
-                <FlatList
-                  data={workOrders}
-                  keyExtractor={(item) => item.id}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
-                  ListEmptyComponent={() => (
-                    <View style={{ padding: 32, alignItems: 'center' }}>
-                      <Feather name="clipboard" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
-                        You have no active work orders.
-                      </Text>
-                    </View>
-                  )}
-                  renderItem={({ item }) => (
-                    <View style={styles.woItem}>
-                      <View style={{ flex: 1, paddingRight: 16 }}>
-                        <Text style={styles.woTitle}>{item.title}</Text>
-                        <Text style={styles.woDesc}>{item.description}</Text>
-                        {item.due_date && (
-                          <Text style={styles.woDate}>
-                            <Feather name="calendar" size={12} /> Due: {new Date(item.due_date).toLocaleDateString()}
-                          </Text>
-                        )}
-                      </View>
-                      
-                      <TouchableOpacity 
-                        style={[styles.woActionBtn, item.status === 'completed' ? styles.woCompleted : styles.woPending]}
-                        onPress={() => updateWorkOrderStatus(item.id, item.status === 'completed' ? 'pending' : 'completed')}
-                      >
-                        <Feather name={item.status === 'completed' ? "check" : "circle"} size={20} color={item.status === 'completed' ? BRAND.green : '#94A3B8'} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                />
-              )}
-            </View>
-          </View>
-        </RNModal>
 
         {/* SCHEDULES MODAL (LIST VIEW) */}
         <RNModal isVisible={schedulesModalVisible}   onBackdropPress={() => setSchedulesModalVisible(false)} onBackButtonPress={() => setSchedulesModalVisible(false)} onSwipeComplete={() => setSchedulesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
@@ -4196,35 +4061,35 @@ export default function HomeScreen() {
                   )}
                 </View>
                 
-                <View style={styles.payslipDivider} />
+                <View style={styles.detailDivider} />
                 
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>Start Time</Text>
-                  <Text style={styles.payslipLineValue}>
+                <View style={styles.detailLine}>
+                  <Text style={styles.detailLineLabel}>Start Time</Text>
+                  <Text style={styles.detailLineValue}>
                     {selectedSchedule?.start_time ? new Date(selectedSchedule.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}
                   </Text>
                 </View>
                 
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>End Time</Text>
-                  <Text style={styles.payslipLineValue}>
+                <View style={styles.detailLine}>
+                  <Text style={styles.detailLineLabel}>End Time</Text>
+                  <Text style={styles.detailLineValue}>
                     {selectedSchedule?.end_time ? new Date(selectedSchedule.end_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}
                   </Text>
                 </View>
                 
-                <View style={styles.payslipDivider} />
+                <View style={styles.detailDivider} />
                 
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>Attendance Mode</Text>
-                  <Text style={styles.payslipLineValue}>
+                <View style={styles.detailLine}>
+                  <Text style={styles.detailLineLabel}>Attendance Mode</Text>
+                  <Text style={styles.detailLineValue}>
                     {selectedSchedule?.attendance_mode ? selectedSchedule.attendance_mode.toUpperCase() : 'STANDARD'}
                   </Text>
                 </View>
 
                 {selectedSchedule?.attendance_tracking_mode && (
-                  <View style={styles.payslipLine}>
-                    <Text style={styles.payslipLineLabel}>Tracking</Text>
-                    <Text style={styles.payslipLineValue}>
+                  <View style={styles.detailLine}>
+                    <Text style={styles.detailLineLabel}>Tracking</Text>
+                    <Text style={styles.detailLineValue}>
                       {selectedSchedule.attendance_tracking_mode.replace('_', ' ').toUpperCase()}
                     </Text>
                   </View>
@@ -4398,39 +4263,39 @@ export default function HomeScreen() {
                   </Text>
                 </View>
                 
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>Time In</Text>
-                  <Text style={[styles.payslipLineValue, { color: colors.text }]}>
+                <View style={styles.detailLine}>
+                  <Text style={styles.detailLineLabel}>Time In</Text>
+                  <Text style={[styles.detailLineValue, { color: colors.text }]}>
                     {selectedTimeLog.app_time_in ? new Date(selectedTimeLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
                   </Text>
                 </View>
                 
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>Time Out</Text>
-                  <Text style={[styles.payslipLineValue, { color: colors.text }]}>
+                <View style={styles.detailLine}>
+                  <Text style={styles.detailLineLabel}>Time Out</Text>
+                  <Text style={[styles.detailLineValue, { color: colors.text }]}>
                     {selectedTimeLog.app_time_out ? new Date(selectedTimeLog.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ongoing'}
                   </Text>
                 </View>
                 
-                <View style={styles.payslipDivider} />
+                <View style={styles.detailDivider} />
                 
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>Geofence Status</Text>
-                  <Text style={[styles.payslipLineValue, { color: selectedTimeLog.geofence_status === 'passed' || selectedTimeLog.geofence_status === 'inside' ? BRAND.green : BRAND.yellow }]}>
+                <View style={styles.detailLine}>
+                  <Text style={styles.detailLineLabel}>Geofence Status</Text>
+                  <Text style={[styles.detailLineValue, { color: selectedTimeLog.geofence_status === 'passed' || selectedTimeLog.geofence_status === 'inside' ? BRAND.green : BRAND.yellow }]}>
                     {selectedTimeLog.geofence_status ? selectedTimeLog.geofence_status.toUpperCase() : 'N/A'}
                   </Text>
                 </View>
                 
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>Photo Status</Text>
-                  <Text style={[styles.payslipLineValue, { color: colors.text }]}>
+                <View style={styles.detailLine}>
+                  <Text style={styles.detailLineLabel}>Photo Status</Text>
+                  <Text style={[styles.detailLineValue, { color: colors.text }]}>
                     {selectedTimeLog.photo_status ? selectedTimeLog.photo_status.replace('_', ' ').toUpperCase() : 'N/A'}
                   </Text>
                 </View>
                 
-                <View style={styles.payslipLine}>
-                  <Text style={styles.payslipLineLabel}>Manual Entry</Text>
-                  <Text style={[styles.payslipLineValue, { color: colors.text }]}>
+                <View style={styles.detailLine}>
+                  <Text style={styles.detailLineLabel}>Manual Entry</Text>
+                  <Text style={[styles.detailLineValue, { color: colors.text }]}>
                     {selectedTimeLog.is_manual_entry ? 'YES' : 'NO'}
                   </Text>
                 </View>
@@ -4824,201 +4689,6 @@ export default function HomeScreen() {
               )}
             </View>
           </View>
-        </RNModal>
-
-        {/* PAYSLIPS MODAL */}
-        <RNModal isVisible={payslipsModalVisible} onBackdropPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} onBackButtonPress={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} onSwipeComplete={() => { if(selectedPayslip) setSelectedPayslip(null); else setPayslipsModalVisible(false); }} swipeDirection={selectedPayslip ? undefined : ['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          {selectedPayslip ? (
-            <View style={{ flex: 1, backgroundColor: '#F8FAFC', paddingTop: 60, paddingHorizontal: 24 }}>              {/* --- DETAILED VIEW: MODERN BANKING RECEIPT --- */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
-                <TouchableOpacity onPress={() => setSelectedPayslip(null)} style={{ padding: 8, marginLeft: -8 }}>
-                  <Feather name="arrow-left" size={24} color="#0F172A" />
-                </TouchableOpacity>
-                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: '#0F172A', marginLeft: 8 }}>Payslip Details</Text>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
-                <ViewShot ref={payslipViewRef} options={{ format: 'jpg', quality: 0.9 }} style={{ backgroundColor: '#F8FAFC' }}>
-                
-                {/* Technocycle Branding */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
-                  <Image source={require('../../../assets/images/technocycle_logo.png')} style={{ width: 36, height: 36, marginRight: 8, resizeMode: 'contain' }} />
-                  <View>
-                    <Text style={{ fontFamily: 'serif', fontWeight: 'bold', fontSize: 18, color: '#000', letterSpacing: 0.5 }}>TECHNOCYCLE</Text>
-                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: '#64748B', letterSpacing: 2 }}>CORPORATION</Text>
-                  </View>
-                </View>
-
-                {/* Hero Header */}
-                <View style={{ alignItems: 'center', marginBottom: 32 }}>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: '#64748B', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' }}>
-                    {selectedPayslip.payroll_period_str || `${new Date(selectedPayslip.period_start).toLocaleDateString('en-US', {month: 'short', day:'numeric'})} to ${new Date(selectedPayslip.period_end).toLocaleDateString('en-US', {month: 'short', day:'numeric', year:'numeric'})}`}
-                  </Text>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 40, color: '#0F172A' }}>
-                    ₱{Number(selectedPayslip.net_pay).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                  </Text>
-                  <View style={{ backgroundColor: '#ECFDF5', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginTop: 8 }}>
-                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: BRAND.green }}>Net Take-Home Pay</Text>
-                  </View>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: '#94A3B8', marginTop: 12 }}>
-                    Period Covered: {new Date(selectedPayslip.period_start).toLocaleDateString('en-US', {month: 'long', day:'numeric'})} to {new Date(selectedPayslip.period_end).toLocaleDateString('en-US', {month: 'long', day:'numeric', year:'numeric'})}
-                  </Text>
-                </View>
-
-                {/* Earnings Card */}
-                <View style={styles.payslipSectionCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                      <Feather name="arrow-down-left" size={16} color={BRAND.blue} />
-                    </View>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A' }}>Earnings</Text>
-                  </View>
-                  
-                  <View style={styles.payslipLine}>
-                    <Text style={styles.payslipLineLabel}>Basic Salary ({selectedPayslip.days_worked} days)</Text>
-                    <Text style={styles.payslipLineValue}>₱{Number(selectedPayslip.basic_salary).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                  </View>
-                  {selectedPayslip.regular_holiday_pay > 0 && (
-                    <View style={styles.payslipLine}>
-                      <Text style={styles.payslipLineLabel}>Regular Holiday</Text>
-                      <Text style={styles.payslipLineValue}>₱{Number(selectedPayslip.regular_holiday_pay).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                    </View>
-                  )}
-                  {selectedPayslip.special_holiday_pay > 0 && (
-                    <View style={styles.payslipLine}>
-                      <Text style={styles.payslipLineLabel}>Special Non-Working</Text>
-                      <Text style={styles.payslipLineValue}>₱{Number(selectedPayslip.special_holiday_pay).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                    </View>
-                  )}
-                  {selectedPayslip.vacation_leave_pay > 0 && (
-                    <View style={styles.payslipLine}>
-                      <Text style={styles.payslipLineLabel}>Vacation Leave</Text>
-                      <Text style={styles.payslipLineValue}>₱{Number(selectedPayslip.vacation_leave_pay).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                    </View>
-                  )}
-                  
-                  <View style={styles.payslipDivider} />
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#0F172A' }}>Gross Pay</Text>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#0F172A' }}>₱{Number(selectedPayslip.gross_pay).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                  </View>
-                </View>
-
-                {/* Deductions Card */}
-                <View style={styles.payslipSectionCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                      <Feather name="arrow-up-right" size={16} color={BRAND.red} />
-                    </View>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A' }}>Deductions</Text>
-                  </View>
-
-                  <View style={styles.payslipLine}>
-                    <Text style={styles.payslipLineLabel}>SSS Contribution</Text>
-                    <Text style={styles.payslipLineValue}>-₱{Number(selectedPayslip.sss_deduction).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                  </View>
-                  <View style={styles.payslipLine}>
-                    <Text style={styles.payslipLineLabel}>PhilHealth</Text>
-                    <Text style={styles.payslipLineValue}>-₱{Number(selectedPayslip.philhealth_deduction).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                  </View>
-                  <View style={styles.payslipLine}>
-                    <Text style={styles.payslipLineLabel}>Pag-IBIG (HDMF)</Text>
-                    <Text style={styles.payslipLineValue}>-₱{Number(selectedPayslip.pagibig_deduction).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                  </View>
-                  
-                  <View style={styles.payslipDivider} />
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#0F172A' }}>Total Deductions</Text>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: BRAND.red }}>-₱{Number(selectedPayslip.total_deductions).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-                  </View>
-                </View>
-
-                </ViewShot>
-
-                {/* Footer */}
-                <View style={{ marginTop: 24, alignItems: 'center', paddingHorizontal: 24 }}>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: '#94A3B8', textAlign: 'center', lineHeight: 18 }}>
-                    I acknowledge receiving the amount stated above and have no further claims for services rendered to TECHNOCYCLE CORPORATION.
-                  </Text>
-                  <TouchableOpacity 
-                    style={[styles.submitBtn, { backgroundColor: BRAND.blue, marginTop: 32, width: '100%' }]}
-                    onPress={downloadPayslip}
-                  >
-                    <Text style={[styles.submitBtnText, { color: '#FFF' }]}>Download Payslip</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={[styles.submitBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', marginTop: 16, width: '100%' }]}
-                    onPress={() => {
-                      setPayslipsModalVisible(false);
-                      setTimeout(() => setSupportModalVisible(true), 500);
-                    }}
-                  >
-                    <Text style={[styles.submitBtnText, { color: BRAND.red }]}>Dispute Payslip</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          ) : (
-            <View style={styles.profileOverlay}>
-              <View style={[styles.profileSheet, { height: '85%' }]}>
-                <View style={styles.sheetHandle} />
-                <>
-                  {/* --- LIST VIEW --- */}
-                  <View style={styles.modalHeaderRow}>
-                    <Text style={styles.modalTitle}>My Payslips</Text>
-                    <TouchableOpacity onPress={() => { setPayslipsModalVisible(false); setSelectedPayslip(null); }}>
-                      <Feather name="x" size={24} color="#64748B" />
-                    </TouchableOpacity>
-                  </View>
-
-                  {payslipsLoading ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                      <ActivityIndicator size="large" color={BRAND.green} />
-                    </View>
-                  ) : (
-                    <FlatList
-                      data={payslips}
-                      keyExtractor={(item) => item.id}
-                      showsVerticalScrollIndicator={false}
-                      contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
-                      ListEmptyComponent={() => (
-                        <View style={{ padding: 32, alignItems: 'center' }}>
-                          <Feather name="dollar-sign" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
-                            No payslips available.
-                          </Text>
-                        </View>
-                      )}
-                      renderItem={({ item }) => {
-                        const net = Number(item.net_pay || 0);
-                        const formatMoney = (val: number) => '₱' + val.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                        
-                        return (
-                          <TouchableOpacity 
-                            style={styles.payslipCard}
-                            activeOpacity={0.8}
-                            onPress={() => setSelectedPayslip(item)}
-                          >
-                            <View style={styles.payslipHeader}>
-                              <View>
-                                <Text style={styles.payslipPeriodTitle}>PAYROLL</Text>
-                                <Text style={styles.payslipPeriod}>{item.payroll_period_str || new Date(item.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' to ' + new Date(item.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-                              </View>
-                              <View style={styles.payslipNetBox}>
-                                <Text style={styles.payslipNetLabel}>Net Pay</Text>
-                                <Text style={styles.payslipNetValue}>{formatMoney(net)}</Text>
-                              </View>
-                            </View>
-                          </TouchableOpacity>
-                        );
-                      }}
-                    />
-                  )}
-                </>
-              </View>
-            </View>
-          )}
         </RNModal>
 
       </SafeAreaView>
@@ -5416,25 +5086,25 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   woActionBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   woPending: { backgroundColor: colors.card, borderColor: isDark ? colors.cardBorder : '#E2E8F0' },
   woCompleted: { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', borderColor: isDark ? '#065F46' : '#A7F3D0' },
-  payslipCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#F1F5F9', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  payslipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  payslipPeriodTitle: { fontFamily: 'DMSans-Bold', fontSize: 10, color: colors.textSubtle, letterSpacing: 1, marginBottom: 4 },
-  payslipPeriod: { fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text },
-  payslipNetBox: { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignItems: 'flex-end' },
-  payslipNetLabel: { fontFamily: 'DMSans-Medium', fontSize: 10, color: BRAND.green, marginBottom: 2 },
-  payslipNetValue: { fontFamily: 'DMSans-Bold', fontSize: 16, color: BRAND.green },
-  payslipDetails: { marginTop: 16 },
-  payslipDivider: { height: 1, backgroundColor: isDark ? colors.border : '#F1F5F9', marginBottom: 16 },
-  payslipRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  payslipCol: { flex: 1, paddingRight: 8 },
-  payslipSectionTitle: { fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text, marginBottom: 12 },
-  payslipLineItem: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  payslipLineLabel: { fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted },
-  payslipLineValue: { fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.text },
-  payslipFooter: { marginTop: 16, alignItems: 'center' },
-  payslipFooterText: { fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textSubtle },
-  payslipSectionCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
-  payslipLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  detailCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: isDark ? colors.cardBorder : '#F1F5F9', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  detailPeriodTitle: { fontFamily: 'DMSans-Bold', fontSize: 10, color: colors.textSubtle, letterSpacing: 1, marginBottom: 4 },
+  detailPeriod: { fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text },
+  detailNetBox: { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignItems: 'flex-end' },
+  detailNetLabel: { fontFamily: 'DMSans-Medium', fontSize: 10, color: BRAND.green, marginBottom: 2 },
+  detailNetValue: { fontFamily: 'DMSans-Bold', fontSize: 16, color: BRAND.green },
+  detailDetails: { marginTop: 16 },
+  detailDivider: { height: 1, backgroundColor: isDark ? colors.border : '#F1F5F9', marginBottom: 16 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  detailCol: { flex: 1, paddingRight: 8 },
+  detailSectionTitle: { fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text, marginBottom: 12 },
+  detailLineItem: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  detailLineLabel: { fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted },
+  detailLineValue: { fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.text },
+  detailFooter: { marginTop: 16, alignItems: 'center' },
+  detailFooterText: { fontFamily: 'DMSans-Medium', fontSize: 10, color: colors.textSubtle },
+  detailSectionCard: { backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
+  detailLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
 
   // Chunk 45: Clock-In Error & Fallback Modal Styles
   clockInErrorCard: {
