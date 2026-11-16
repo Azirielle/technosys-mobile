@@ -35,9 +35,10 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "web": {
@@ -61,8 +62,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow TechnoSys to access your location in the background to verify field service routing and DTR verification.",
-          "isAndroidBackgroundLocationEnabled": true
+          "locationWhenInUsePermission": "TechnoSys checks that you are at the work site when you time in, and shares your location with the office only while you are timed in.",
+          "isAndroidBackgroundLocationEnabled": false
         }
       ],
       "expo-sharing",

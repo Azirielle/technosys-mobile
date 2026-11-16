@@ -1,0 +1,65 @@
+{
+  "common": {
+    "continue": "Magpatuloy",
+    "back": "Bumalik",
+    "stepOf": "Hakbang {step} sa {total}",
+    "noSignal": "Hindi maabot ang server. I-check ang signal mo at subukan ulit."
+  },
+  "setup": {
+    "language": {
+      "title": "Piliin ang wika",
+      "subtitle": "Choose your language",
+      "englishHint": "Use the app in English",
+      "filipinoHint": "Gamitin ang app sa Filipino",
+      "later": "Puwede mo itong palitan sa Settings."
+    },
+    "rules": {
+      "title": "Bago ka magsimula",
+      "subtitle": "Paano ginagamit ng app ang impormasyon mo. Basahin ang apat na punto sa ibaba.",
+      "timeinTitle": "Time-in sa lugar ng trabaho",
+      "timeinText": "Pag nag-time in ka, tinitingnan ng app kung nasa lugar ka ng trabaho. Kung wala ka roon, magse-selfie ka para ma-check ng HR.",
+      "locationTitle": "Lokasyon mo, habang naka-time in lang",
+      "locationText": "Habang naka-time in ka, ipinapadala ng app ang lokasyon mo sa opisina bawat minuto. Titigil ito pag nag-time out ka.",
+      "whoTitle": "Sino ang nakakakita",
+      "whoText": "Ang opisina lang ng Technocycle: HR, Service Department at ang CEO.",
+      "aiTitle": "AI ang Support assistant",
+      "aiText": "Ang mga tanong mo rito ay sinasagot ng Gemini AI ng Google gamit ang mga patakaran ng kompanya. Huwag i-type dito ang PIN o password mo.",
+      "readTerms": "Basahin ang buong Terms of use",
+      "readPrivacy": "Basahin ang buong Privacy notice",
+      "agree": "Nabasa ko ito at sumasang-ayon ako",
+      "agreeFirst": "I-tsek ang \"Sumasang-ayon ako\" para magpatuloy.",
+      "saveFailed": "Hindi na-save ang sagot mo. I-check ang signal mo at subukan ulit.",
+      "loadFailed": "Hindi ma-load ang mga patakaran ng app. I-check ang signal mo at subukan ulit.",
+      "retry": "Subukan ulit"
+    },
+    "phone": {
+      "title": "Ito ang magiging phone mo sa trabaho",
+      "subtitle": "Gumagana ang account mo sa iisang phone lang, para walang makapag-time in para sa iba.",
+      "thisPhone": "Phone na ito",
+      "point1": "Dito ka lang magta-time in at time out.",
+      "point2": "Hindi ka makakapag-sign in sa ibang phone.",
+      "point3": "Bago ang phone mo? Sabihan ang HR na ilipat ang account mo.",
+      "register": "Gamitin ito bilang phone ko sa trabaho",
+      "registered": "Ito na ang phone mo sa trabaho."
+    },
+    "permissions": {
+      "title": "Payagan ang access",
+      "subtitle": "Kailangan ito ng app mula sa phone mo. Isa-isang magtatanong ang Android.",
+      "locationTitle": "Lokasyon",
+      "locationText": "Para ma-check na nasa lugar ka ng trabaho pag nag-time in. Piliin ang \"While using the app\".",
+      "cameraTitle": "Camera",
+      "cameraText": "Para sa selfie kapag nag-time in ka sa labas ng lugar, at mga larawan para sa HR.",
+      "notificationsTitle": "Notifications",
+      "notificationsText": "Para malaman mo agad ang bagong trabaho at sagot ng HR.",
+      "allowed": "Pinayagan",
+      "notAllowed": "Hindi pinayagan",
+      "notAsked": "Hindi pa natatanong",
+      "allow": "Payagan",
+      "locationNeeded": "Kailangan ng time-in ang lokasyon mo. Buksan ito sa settings ng phone: Permissions → Location → While using the app.",
+      "openSettings": "Buksan ang settings ng phone",
+      "finish": "Tapos na",
+      "finishAnyway": "Tapusin muna",
+      "notificationsLater": "Gumagana ang notifications sa naka-install na app, hindi sa Expo Go."
+    }
+  }
+}

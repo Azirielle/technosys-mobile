@@ -17,7 +17,7 @@ import Modal from 'react-native-modal';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '../lib/supabase';
 import { useAppTheme } from '../hooks/use-theme';
@@ -58,7 +58,7 @@ export default function TicketSubmissionModal({
 
   // Navigation step: 'category' (screen 1) | 'details' (screen 2) | 'tool_picker' (modal picker)
   const [formStep, setFormStep] = useState<'category' | 'details' | 'tool_picker'>('category');
-  const [ticketCategory, setTicketCategory] = useState<string>('Payroll Issue');
+  const [ticketCategory, setTicketCategory] = useState<string>('DTR Issue');
 
   // Form Fields
   const [ticketTitle, setTicketTitle] = useState('');
@@ -102,11 +102,10 @@ export default function TicketSubmissionModal({
   }, []);
 
   const CATEGORY_ITEMS = [
-    { id: 'Payroll Issue', label: 'Payroll Issue', icon: 'card-outline', color: '#10B981', desc: 'Salary, OT & deductions' },
-    { id: 'Equipment Issue', label: 'Equipment Issue', icon: 'construct-outline', color: '#F59E0B', desc: 'Tools, damages & repairs' },
-    { id: 'DTR Issue', label: 'DTR / Time', icon: 'time-outline', color: '#6366F1', desc: 'Attendance & clock-in' },
-    { id: 'File Leave', label: 'File Leave', icon: 'calendar-outline', color: '#3B82F6', desc: 'Sick, vacation & absence' },
-    { id: 'Others', label: 'Other Inquiry', icon: 'help-circle-outline', color: '#8B5CF6', desc: 'General reports & inquiries' },
+    { id: 'Equipment Issue', label: 'Tool problem', icon: 'construct-outline', color: '#F59E0B', desc: 'Broken, lost or missing tool' },
+    { id: 'DTR Issue', label: 'Time-in / time-out', icon: 'time-outline', color: '#6366F1', desc: 'Forgot to time in or out, wrong time' },
+    { id: 'File Leave', label: 'File Leave', icon: 'calendar-outline', color: '#3B82F6', desc: 'Sick, vacation or emergency' },
+    { id: 'Others', label: 'Something else', icon: 'help-circle-outline', color: '#8B5CF6', desc: 'Any other question for HR' },
   ];
 
   const PAYROLL_DISCREPANCY_OPTIONS = [
@@ -496,7 +495,7 @@ export default function TicketSubmissionModal({
           attachment_type: uploadedType
         });
 
-        const targetDepartment = ticketCategory === 'Equipment Issue' ? 'Facilities & Tool Operations' : 'HR & Payroll Services';
+        const targetDepartment = ticketCategory === 'Equipment Issue' ? 'Facilities & Tool Operations' : 'HR';
         await supabase.from('ticket_comments').insert({
           ticket_id: ticketIdToReturn,
           sender_role: 'ai',
@@ -525,18 +524,18 @@ export default function TicketSubmissionModal({
 
   // Dynamic submit button label based on category
   const submitButtonLabel = useMemo(() => {
-    if (isSubmitting) return 'Submitting Ticket...';
+    if (isSubmitting) return 'Sending…';
     switch (ticketCategory) {
       case 'Equipment Issue':
-        return 'Submit Equipment Repair Ticket';
+        return 'Send tool report';
       case 'DTR Issue':
-        return 'Submit Attendance Adjustment';
+        return 'Send to HR';
       case 'Payroll Issue':
         return 'Submit Payroll Inquiry to HR';
       case 'File Leave':
-        return 'Submit Leave Application';
+        return 'Send leave request';
       default:
-        return 'Submit Support Request';
+        return 'Send to HR';
     }
   }, [ticketCategory, isSubmitting]);
 

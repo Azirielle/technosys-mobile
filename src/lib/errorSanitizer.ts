@@ -85,7 +85,7 @@ export function formatMobileError(
     text.includes('invalid login credentials') ||
     text.includes('invalid email or password')
   ) {
-    return 'Invalid email or password. Please verify your credentials and try again.';
+    return 'Wrong mobile number, username or password.';
   }
 
   // 6. Network & Connection Failures
@@ -118,6 +118,21 @@ export function formatMobileError(
     return 'Unable to process your request right now. Please try again in a few moments.';
   }
 
-  // 8. Return the raw message if it is clean and does not contain technical jargon
+  // 8. App bugs and database rule messages ("undefined is not a function", check constraints):
+  //    never show these to a technician, use the plain fallback instead.
+  if (
+    text.includes('is not a function') ||
+    text.includes('undefined') ||
+    text.includes('null is not an object') ||
+    text.includes('cannot read propert') ||
+    text.includes('typeerror') ||
+    text.includes('referenceerror') ||
+    text.includes('violates check constraint') ||
+    text.includes('can only be changed by the office')
+  ) {
+    return defaultMessage;
+  }
+
+  // 9. Return the raw message if it is clean and does not contain technical jargon
   return raw;
 }

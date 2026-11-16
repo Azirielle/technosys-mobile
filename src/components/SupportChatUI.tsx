@@ -5,7 +5,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
 import * as Crypto from 'expo-crypto';
 import EventSource from 'react-native-sse';
@@ -401,7 +401,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
   const [formError, setFormError] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState('');
-  const [ticketCategory, setTicketCategory] = useState('Payroll Issue');
+  const [ticketCategory, setTicketCategory] = useState('DTR Issue');
   const [formStep, setFormStep] = useState<'category' | 'details' | 'tool_picker'>('category');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<'date'|'time'>('date');
@@ -410,11 +410,10 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
 
   // 5-Second Rule UI Presets and Categories
   const CATEGORY_ITEMS = [
-    { id: 'Payroll Issue', label: 'Payroll Issue', icon: 'card-outline', color: '#10B981', desc: 'Salary, OT & deductions' },
-    { id: 'Equipment Issue', label: 'Equipment Issue', icon: 'construct-outline', color: '#F59E0B', desc: 'Tools, damages & repairs' },
-    { id: 'DTR Issue', label: 'DTR / Time', icon: 'time-outline', color: '#6366F1', desc: 'Attendance & clock-in' },
-    { id: 'File Leave', label: 'File Leave', icon: 'calendar-outline', color: '#EF4444', desc: 'Sick, vacation & absence' },
-    { id: 'Others', label: 'Other Inquiry', icon: 'help-circle-outline', color: '#8B5CF6', desc: 'General reports & inquiries' },
+    { id: 'Equipment Issue', label: 'Tool problem', icon: 'construct-outline', color: '#F59E0B', desc: 'Broken, lost or missing tool' },
+    { id: 'DTR Issue', label: 'Time-in / time-out', icon: 'time-outline', color: '#6366F1', desc: 'Forgot to time in or out, wrong time' },
+    { id: 'File Leave', label: 'File Leave', icon: 'calendar-outline', color: '#EF4444', desc: 'Sick, vacation or emergency' },
+    { id: 'Others', label: 'Something else', icon: 'help-circle-outline', color: '#8B5CF6', desc: 'Any other question for HR' },
   ];
 
   interface ToolItem {
@@ -533,7 +532,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
       if (cat === 'Payroll Issue') {
         if (!updated.payPeriod) updated.payPeriod = `${isFirstHalf ? '1st - 15th' : '16th - End'} ${currentMonth}`;
       } else if (cat === 'Equipment Issue') {
-        if (!updated.toolName) updated.toolName = 'Makita Drill #4';
+        if (!updated.toolName) updated.toolName = '';
         if (!updated.issueType) updated.issueType = 'Damaged';
       } else if (cat === 'DTR Issue') {
         if (!updated.logDate) updated.logDate = todayStr;
@@ -1108,13 +1107,12 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
         {!activeTicket && (
           <View style={{ paddingHorizontal: 16, paddingVertical: 6, backgroundColor: colors.card, flexDirection: 'row' }}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {['Report Payroll Issue', 'Report Equipment Issue', 'Report DTR Issue', 'File a Leave', 'Other Inquiry'].map((chip, idx) => (
+              {['Tool problem', 'Time-in / time-out', 'File a leave', 'Something else'].map((chip, idx) => (
                 <TouchableOpacity key={idx} style={{ backgroundColor: colors.subCard, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: colors.cardBorder }} onPress={() => { 
-                  if (chip.includes('Payroll')) openTicketForm('Payroll Issue'); 
-                  else if (chip.includes('Equipment')) openTicketForm('Equipment Issue'); 
-                  else if (chip.includes('DTR')) openTicketForm('DTR Issue'); 
-                  else if (chip.includes('Leave')) openTicketForm('File Leave'); 
-                  else if (chip.includes('Other')) openTicketForm('Others');
+                  if (chip.startsWith('Tool')) openTicketForm('Equipment Issue'); 
+                  else if (chip.startsWith('Time')) openTicketForm('DTR Issue'); 
+                  else if (chip.includes('leave')) openTicketForm('File Leave'); 
+                  else openTicketForm('Others');
                 }}>
                   <Text style={{ fontSize: 13, color: isDark ? colors.brandBlue : BRAND.blue, fontWeight: '500' }}>{chip}</Text>
                 </TouchableOpacity>

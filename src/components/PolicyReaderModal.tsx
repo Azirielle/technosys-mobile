@@ -1,3 +1,4 @@
+// Full-screen reader for one company policy, with the "I've read this" button.
 import React, { useState } from 'react';
 import {
   View,
@@ -8,13 +9,11 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
-  Dimensions,
+  Modal,
 } from 'react-native';
-import RNModal from 'react-native-modal';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAppTheme } from '../hooks/use-theme';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const BRAND = {
   blue: '#1E3A8A',
@@ -50,10 +49,15 @@ interface PolicyReaderModalProps {
 }
 
 // Markdown renderer tailored for mobile policy presentation
-const PolicyMarkdownRenderer = ({ markdown, isDark, colors }: { markdown: string; isDark: boolean; colors: any }) => {
+const PolicyMarkdownRenderer = ({ markdown, isDark, colors, title }: { markdown: string; isDark: boolean; colors: any; title?: string }) => {
   if (!markdown) return null;
 
-  const lines = markdown.split('\n');
+  // The header already shows the title, so a first "# Title" line that repeats it is skipped.
+  const allLines = markdown.split('\n');
+  const firstText = allLines.findIndex(l => l.trim() !== '');
+  const lines = allLines.filter((line, i) =>
+    !(i === firstText && !!title && line.trim().replace(/^#\s+/, '').toLowerCase() === title.trim().toLowerCase())
+  );
 
   return (
     <View style={{ gap: 6 }}>
@@ -62,6 +66,20 @@ const PolicyMarkdownRenderer = ({ markdown, isDark, colors }: { markdown: string
 
         if (trimmed === '') {
           return <View key={idx} style={{ height: 6 }} />;
+        }
+
+        // Divider line (---, ***, ___)
+        if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+          return <View key={idx} style={{ height: 1, backgroundColor: isDark ? '#334155' : '#E2E8F0', marginVertical: 10 }} />;
+        }
+
+        // Quote (> ...): shown as a paragraph without the marker
+        if (trimmed.startsWith('>')) {
+          return (
+            <Text key={idx} style={{ fontFamily: 'DMSans-Regular', fontSize: 13, color: colors.textMuted, lineHeight: 20, fontStyle: 'italic' }}>
+              {renderFormattedInline(trimmed.replace(/^>\s*/, ''), colors.textMuted)}
+            </Text>
+          );
         }
 
         // Heading 1 (# ...)
@@ -233,17 +251,17 @@ export default function PolicyReaderModal({
   const getCategoryMeta = (cat: string) => {
     switch (cat) {
       case 'legal':
-        return { label: 'Legal & Privacy', icon: 'file-text' as const, color: '#3B82F6', bg: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' };
+        return { label: 'App rules', icon: 'file-text' as const, color: '#3B82F6', bg: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' };
       case 'field_ops':
-        return { label: 'Safety & Field OSH', icon: 'shield' as const, color: '#10B981', bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5' };
+        return { label: 'Safety', icon: 'shield' as const, color: '#10B981', bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5' };
       case 'hr_attendance':
-        return { label: 'HR & Attendance DTR', icon: 'clock' as const, color: '#F59E0B', bg: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7' };
+        return { label: 'Attendance', icon: 'clock' as const, color: '#F59E0B', bg: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7' };
       case 'inventory':
-        return { label: 'Tool Custody & Restitution', icon: 'tool' as const, color: '#06B6D4', bg: isDark ? 'rgba(6, 182, 212, 0.15)' : '#ECFEFF' };
+        return { label: 'Tools', icon: 'tool' as const, color: '#06B6D4', bg: isDark ? 'rgba(6, 182, 212, 0.15)' : '#ECFEFF' };
       case 'executive':
-        return { label: 'Governance & Ethics', icon: 'award' as const, color: '#8B5CF6', bg: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F5F3FF' };
+        return { label: 'Company rules', icon: 'award' as const, color: '#8B5CF6', bg: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F5F3FF' };
       default:
-        return { label: 'Policy Document', icon: 'file' as const, color: '#64748B', bg: isDark ? 'rgba(100, 116, 139, 0.15)' : '#F8FAFC' };
+        return { label: 'Policy', icon: 'file' as const, color: '#64748B', bg: isDark ? 'rgba(100, 116, 139, 0.15)' : '#F8FAFC' };
     }
   };
 
@@ -256,18 +274,18 @@ export default function PolicyReaderModal({
       const ok = await onAcknowledge(policy.id, policy.version);
       if (ok) {
         if (Platform.OS === 'web') {
-          window.alert(`Policy Acknowledged\n\nThank you. Your acknowledgment of ${policy.title} (${policy.version}) has been recorded.`);
+          window.alert(`Signed\n\nThanks! HR can see you've read ${policy.title}.`);
         } else {
-          Alert.alert('Policy Acknowledged', `Thank you. Your acknowledgment of ${policy.title} (${policy.version}) has been recorded.`);
+          Alert.alert('Signed', `Thanks! HR can see you've read ${policy.title}.`);
         }
         onClose();
       }
     } catch (err: any) {
-      const msg = err?.message || 'Failed to record policy acknowledgment. Please check your network connection.';
+      const msg = "Couldn't save that. Please check your signal and try again.";
       if (Platform.OS === 'web') {
         window.alert(`Error\n\n${msg}`);
       } else {
-        Alert.alert('Submission Error', msg);
+        Alert.alert("Not saved", msg);
       }
     } finally {
       setSubmitting(false);
@@ -275,19 +293,11 @@ export default function PolicyReaderModal({
   };
 
   return (
-    <RNModal
-      isVisible={visible}
-      onBackdropPress={onClose}
-      onBackButtonPress={onClose}
-      onSwipeComplete={onClose}
-      swipeDirection={['down']}
-      propagateSwipe={true}
-      style={{ margin: 0, justifyContent: 'flex-end' }}
-    >
-      <View style={styles.overlay}>
-        <View style={[styles.sheet, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
-          {/* Drag Handle */}
-          <View style={[styles.dragHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
+    // React Native's own Modal, full screen: no drag-to-close gesture, so scrolling the policy
+    // can't fight with the sheet (it did in the 16 Nov recording). Close with X or the back button.
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.card }} edges={['top', 'bottom']}>
+        <View style={[styles.sheet, { backgroundColor: colors.card }]}>
 
           {/* Modal Header */}
           <View style={styles.header}>
@@ -302,7 +312,7 @@ export default function PolicyReaderModal({
                 </View>
                 {policy.is_mandatory && (
                   <View style={[styles.mandBadge, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2' }]}>
-                    <Text style={[styles.mandBadgeText, { color: BRAND.red }]}>Mandatory</Text>
+                    <Text style={[styles.mandBadgeText, { color: BRAND.red }]}>Must read</Text>
                   </View>
                 )}
               </View>
@@ -310,7 +320,7 @@ export default function PolicyReaderModal({
                 {policy.title}
               </Text>
               <Text style={[styles.dateText, { color: colors.textMuted }]}>
-                Effective: {policy.effective_date} • Scope: {policy.target_audience === 'all' ? 'All Personnel' : 'Field Operations'}
+                Starts {policy.effective_date} · For {policy.target_audience === 'all' ? 'everyone' : 'field staff'}
               </Text>
             </View>
 
@@ -347,7 +357,7 @@ export default function PolicyReaderModal({
                     { color: isDark ? '#93C5FD' : BRAND.blue },
                   ]}
                 >
-                  5-Second Executive Summary
+                  In short
                 </Text>
               </View>
               <Text style={[styles.summaryText, { color: colors.text }]}>
@@ -357,7 +367,7 @@ export default function PolicyReaderModal({
 
             {/* Complete Markdown Document Body */}
             <View style={styles.markdownContainer}>
-              <PolicyMarkdownRenderer markdown={policy.content_markdown} isDark={isDark} colors={colors} />
+              <PolicyMarkdownRenderer markdown={policy.content_markdown} isDark={isDark} colors={colors} title={policy.title} />
             </View>
           </ScrollView>
 
@@ -368,11 +378,11 @@ export default function PolicyReaderModal({
                 <Feather name="check-circle" size={18} color={BRAND.green} style={{ marginRight: 8 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.acknowledgedTitle, { color: isDark ? '#34D399' : '#065F46' }]}>
-                    Policy Acknowledged & Signed
+                    You've read and signed this
                   </Text>
                   {acknowledgedAt && (
                     <Text style={[styles.acknowledgedSubtext, { color: isDark ? '#A7F3D0' : '#047857' }]}>
-                      Recorded on {new Date(acknowledgedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                      On {new Date(acknowledgedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                     </Text>
                   )}
                 </View>
@@ -382,12 +392,12 @@ export default function PolicyReaderModal({
                 style={[styles.dismissBtn, { backgroundColor: isDark ? colors.subCard : '#F1F5F9' }]}
                 onPress={onClose}
               >
-                <Text style={[styles.dismissBtnText, { color: colors.text }]}>Close Reader</Text>
+                <Text style={[styles.dismissBtnText, { color: colors.text }]}>Close</Text>
               </TouchableOpacity>
             ) : (
               <View style={{ width: '100%' }}>
                 <Text style={[styles.legalDisclaimer, { color: colors.textMuted }]}>
-                  By tapping Acknowledge, you certify that you have read and agree to comply with TechnoCycle Corporation's {policy.title} ({policy.version}).
+                  Tapping the button means you read {policy.title} ({policy.version}) and will follow it.
                 </Text>
 
                 <TouchableOpacity
@@ -401,7 +411,7 @@ export default function PolicyReaderModal({
                   ) : (
                     <>
                       <Feather name="check-square" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-                      <Text style={styles.signBtnText}>Acknowledge & Sign Policy</Text>
+                      <Text style={styles.signBtnText}>I've read this</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -409,29 +419,15 @@ export default function PolicyReaderModal({
             )}
           </View>
         </View>
-      </View>
-    </RNModal>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
   sheet: {
-    height: SCREEN_HEIGHT * 0.88,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    paddingTop: 8,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
+    flex: 1,
+    paddingTop: 12,
   },
   header: {
     flexDirection: 'row',
@@ -519,7 +515,7 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    paddingBottom: 16,
     borderTopWidth: 1,
   },
   acknowledgedBanner: {

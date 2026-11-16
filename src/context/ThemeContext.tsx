@@ -5,7 +5,7 @@ import { ThemeColors, AppThemeColors } from '../constants/theme';
 import { supabase } from '../lib/supabase';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
-export type AppLanguage = 'en' | 'tl' | 'ja';
+export type AppLanguage = 'en' | 'tl';
 
 interface ThemeContextValue {
   themeMode: ThemeMode;
@@ -56,7 +56,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system')) {
           setThemeModeState(savedTheme as ThemeMode);
         }
-        if (savedLang && (savedLang === 'en' || savedLang === 'tl' || savedLang === 'ja')) {
+        if (savedLang && (savedLang === 'en' || savedLang === 'tl')) {
           setLanguageState(savedLang as AppLanguage);
         }
 
@@ -75,7 +75,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
               setThemeModeState(remote.theme);
               AsyncStorage.setItem(STORAGE_THEME_KEY, remote.theme).catch(() => {});
             }
-            if (!savedLang && remote.language && ['en', 'tl', 'ja'].includes(remote.language)) {
+            if (!savedLang && remote.language && ['en', 'tl'].includes(remote.language)) {
               setLanguageState(remote.language);
               AsyncStorage.setItem(STORAGE_LANG_KEY, remote.language).catch(() => {});
             }

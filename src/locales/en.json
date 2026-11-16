@@ -1,0 +1,65 @@
+{
+  "common": {
+    "continue": "Continue",
+    "back": "Back",
+    "stepOf": "Step {step} of {total}",
+    "noSignal": "Can't reach the server. Check your signal and try again."
+  },
+  "setup": {
+    "language": {
+      "title": "Choose your language",
+      "subtitle": "Piliin ang wika",
+      "englishHint": "Use the app in English",
+      "filipinoHint": "Gamitin ang app sa Filipino",
+      "later": "You can change this later in Settings."
+    },
+    "rules": {
+      "title": "Before you start",
+      "subtitle": "How the app uses your information. Please read the four points below.",
+      "timeinTitle": "Time-in at the work site",
+      "timeinText": "When you time in, the app checks your location against the job site. If you're outside it, you take a selfie so HR can check.",
+      "locationTitle": "Your location, only while timed in",
+      "locationText": "While you're timed in, the app sends your location to the office every minute. It stops when you time out.",
+      "whoTitle": "Who sees it",
+      "whoText": "Only Technocycle's office: HR, the Service Department and the CEO.",
+      "aiTitle": "The Support assistant is an AI",
+      "aiText": "Your questions to it are answered by Google's Gemini AI using our company rules. Never type your PIN or passwords there.",
+      "readTerms": "Read the full Terms of use",
+      "readPrivacy": "Read the full Privacy notice",
+      "agree": "I have read this and I agree",
+      "agreeFirst": "Tick \"I agree\" to continue.",
+      "saveFailed": "Couldn't save your answer. Check your signal and try again.",
+      "loadFailed": "Couldn't load the app rules. Check your signal and try again.",
+      "retry": "Try again"
+    },
+    "phone": {
+      "title": "This will be your work phone",
+      "subtitle": "Your account works on one phone only, so nobody can time in for someone else.",
+      "thisPhone": "This phone",
+      "point1": "You time in and out only on this phone.",
+      "point2": "Signing in on another phone is blocked.",
+      "point3": "Got a new phone? Ask HR to switch your account.",
+      "register": "Use this as my work phone",
+      "registered": "This is now your work phone."
+    },
+    "permissions": {
+      "title": "Allow access",
+      "subtitle": "The app needs these from your phone. Android will ask you one by one.",
+      "locationTitle": "Location",
+      "locationText": "To check you're at the work site when you time in. Choose \"While using the app\".",
+      "cameraTitle": "Camera",
+      "cameraText": "For the selfie when you time in outside the site, and photos for HR.",
+      "notificationsTitle": "Notifications",
+      "notificationsText": "So you know right away about new jobs and HR replies.",
+      "allowed": "Allowed",
+      "notAllowed": "Not allowed",
+      "notAsked": "Not asked yet",
+      "allow": "Allow",
+      "locationNeeded": "Time-in needs your location. Turn it on in your phone settings: Permissions → Location → While using the app.",
+      "openSettings": "Open phone settings",
+      "finish": "Finish",
+      "finishAnyway": "Finish for now",
+      "notificationsLater": "Notifications work in the installed app, not in Expo Go."
+    }
+  }
+}

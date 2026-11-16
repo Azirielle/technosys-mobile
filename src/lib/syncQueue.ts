@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
 import * as ExpoCrypto from 'expo-crypto';
 import { supabase } from './supabase';
+import { getDeviceId } from './deviceId';
 
 const QUEUE_KEY = 'OFFLINE_TRANSACTION_QUEUE';
 
@@ -179,18 +180,23 @@ export const syncQueue = {
                 app_time_out: calculatedTimeOut || null,
                 total_hours: calculatedHours || null,
                 is_suspicious: isSuspicious,
-                status: item.payload.status || 'verified',
+                // Only these statuses exist (check_attendance_logs_status); older queued items may hold others.
+                status: ['active', 'pending_close', 'closed'].includes(item.payload.status) ? item.payload.status : 'active',
                 is_manual_entry: item.payload.is_manual_entry ?? false,
+                // Older queued punches have no phone id: they were made on this phone, so use its id.
+                device_id: item.payload.device_id ?? (await getDeviceId()),
                 photo_url: item.payload.photo_url || null,
                 photo_status: item.payload.photo_status || null,
               }, { onConflict: 'id' });
               error = err;
             } else {
               const { error: err } = await supabase.from('attendance_logs')
+                // Technicians can't set review flags (guard_attendance_changes), so a doubtful
+                // time-out is marked 'pending_close' for HR to check instead.
                 .update({
                   app_time_out: calculatedTimeOut,
                   total_hours: calculatedHours,
-                  is_suspicious: isSuspicious
+                  status: isSuspicious ? 'pending_close' : 'closed',
                 })
                 .eq('id', item.payload.log_id);
               error = err;

@@ -14,6 +14,14 @@ import { getDistance } from 'geolib';
 import MapView, { Marker, Circle, Polyline } from '../../components/MapWrapper';
 import { supabase } from '../../lib/supabase';
 import { syncQueue, generateUUID } from '../../lib/syncQueue';
+import { uploadPhoto } from '../../lib/photoUpload';
+import { getDeviceId } from '../../lib/deviceId';
+import { isWrongPhoneError, WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE } from '../../lib/signIn';
+import { openDirections } from '../../lib/directions';
+import NavigateButton from '../../components/NavigateButton';
+import { getJobCrew } from '../../lib/crew';
+import { jobTitle } from '../../lib/jobTitle';
+import { shiftBadge } from '../../lib/shiftStatus';
 import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -57,27 +65,29 @@ const BRAND = {
   lightBg: '#F8FAFC',
 };
 
+// Screen text in English and Filipino (Settings → Language). Japanese was removed.
 const TRANSLATIONS: Record<string, Record<string, string>> = {
   en: {
-    priority_dispatch: "PRIORITY DISPATCH",
-    active_ticket: "Active Ticket",
-    view_dispatch_details: "View Dispatch Details",
-    no_active_deployments: "You have 0 active deployments scheduled.",
+    priority_dispatch: "YOUR NEXT JOB",
+    active_ticket: "Tap for details",
+    view_dispatch_details: "Job details",
+    navigate: "Navigate",
+    no_active_deployments: "No job assigned to you yet.",
     menu: "Menu",
-    my_operations: "My Operations",
+    my_operations: "My work",
     schedules: "Schedules",
     file_leave: "File Leave",
     timesheets: "Timesheets",
     announcements: "Announcements",
     my_tools: "My Tools",
-    clock_in: "Clock In",
-    tap_to_verify: "Tap to verify location presence",
-    preferences: "Preferences",
+    clock_in: "Time In",
+    tap_to_verify: "Tap to check your location",
+    preferences: "Settings",
     dark_mode: "Dark Mode",
     appearance: "Appearance",
     theme_light: "Light",
     theme_dark: "Dark",
-    theme_system: "System",
+    theme_system: "Same as phone",
     language: "Language",
     settings: "Settings",
     equipment: "Equipment",
@@ -85,54 +95,32 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     updates: "Updates",
   },
   tl: {
-    priority_dispatch: "APURAHANG MISYON",
-    active_ticket: "Aktibong Ticket",
-    view_dispatch_details: "Tingnan ang Detalye",
-    no_active_deployments: "Wala kang nakatakdang misyon ngayon.",
+    priority_dispatch: "SUSUNOD MONG TRABAHO",
+    active_ticket: "Pindutin para sa detalye",
+    view_dispatch_details: "Detalye ng trabaho",
+    navigate: "Ituro ang daan",
+    no_active_deployments: "Wala ka pang naka-assign na trabaho.",
     menu: "Menu",
-    my_operations: "Aking Operasyon",
+    my_operations: "Aking trabaho",
     schedules: "Mga Iskedyul",
-    file_leave: "Mag-File ng Leave",
-    timesheets: "Timesheets",
+    file_leave: "Mag-file ng Leave",
+    timesheets: "Oras ko",
     announcements: "Mga Anunsyo",
-    my_tools: "Aking Kagamitan",
-    clock_in: "Pumasok (Clock In)",
-    tap_to_verify: "Pindutin para kumpirmahin ang lokasyon",
-    preferences: "Kagustuhan",
+    my_tools: "Aking Gamit",
+    clock_in: "Time In",
+    tap_to_verify: "Pindutin para i-check ang lokasyon mo",
+    preferences: "Settings",
     dark_mode: "Dark Mode",
-    appearance: "Hitsura",
+    appearance: "Itsura",
     theme_light: "Maliwanag",
     theme_dark: "Madilim",
-    theme_system: "Sistema",
+    theme_system: "Kapareho ng phone",
     language: "Wika",
-    settings: "Mga Setting",
-    equipment: "Kagamitan",
+    settings: "Settings",
+    equipment: "Gamit",
     support: "Tulong",
-    updates: "Mga Update",
+    updates: "Mga Balita",
   },
-  ja: {
-    priority_dispatch: "優先派遣",
-    active_ticket: "アクティブなチケット",
-    view_dispatch_details: "派遣の詳細を見る",
-    no_active_deployments: "現在スケジュールされている展開はありません。",
-    menu: "メニュー",
-    my_operations: "マイオペレーション",
-    schedules: "スケジュール",
-    my_tools: "マイツール",
-    clock_in: "出勤する",
-    tap_to_verify: "タップして場所を確認",
-    preferences: "環境設定",
-    dark_mode: "ダークモード",
-    appearance: "外観",
-    theme_light: "ライト",
-    theme_dark: "ダーク",
-    theme_system: "システム",
-    language: "言語",
-    settings: "設定",
-    equipment: "機材",
-    support: "サポート",
-    updates: "更新",
-  }
 };
 export default function HomeScreen() {
   const router = useRouter();
@@ -143,8 +131,8 @@ export default function HomeScreen() {
   const t = (key: string) => {
     return TRANSLATIONS[language]?.[key] || TRANSLATIONS['en']?.[key] || key;
   };
-  const activeFont = language === 'ja' ? 'System' : 'DMSans-Medium';
-  const activeFontBold = language === 'ja' ? 'System' : 'DMSans-Bold';
+  const activeFont = 'DMSans-Medium';
+  const activeFontBold = 'DMSans-Bold';
   
   const [menuVisible, setMenuVisible] = useState(false);
   
@@ -197,7 +185,7 @@ export default function HomeScreen() {
   const [selectedPolicyForReader, setSelectedPolicyForReader] = useState<CompanyPolicy | null>(null);
   const [policyReaderModalVisible, setPolicyReaderModalVisible] = useState(false);
   const [policyEnforcementVisible, setPolicyEnforcementVisible] = useState(false);
-  const [policyEnforcementReason, setPolicyEnforcementReason] = useState<'post_punch' | 'module_access' | 'initial_login'>('post_punch');
+  const [policyEnforcementReason, setPolicyEnforcementReason] = useState<'post_punch'>('post_punch');
   const [policyLoading, setPolicyLoading] = useState(false);
 
   const fetchPoliciesAndAcks = async (userId?: string) => {
@@ -297,12 +285,10 @@ export default function HomeScreen() {
     }
   };
 
+  // Policies never block Tools, Leave or Timesheets (decided 16 Nov). Unsigned ones are
+  // still reminded after time-in and listed in Company forms and handbooks.
+  // The one-time "app rules" screen at first login comes in Step 2.
   const checkPolicyGateBeforeAction = (actionCallback: () => void) => {
-    if (unacknowledgedPolicies.length > 0) {
-      setPolicyEnforcementReason('module_access');
-      setPolicyEnforcementVisible(true);
-      return;
-    }
     actionCallback();
   };
 
@@ -849,7 +835,7 @@ export default function HomeScreen() {
             casual_helpers(id, full_name, contact_number, daily_rate)
           )
         `)
-        .eq('technician_id', user.id)
+        // No technician_id filter: the access rules only return jobs this person is on (lead or crew).
         .neq('status', 'cancelled')
         .order('start_time', { ascending: false });
       
@@ -898,14 +884,16 @@ export default function HomeScreen() {
     title: string;
     message: string;
     gpsStatus: 'ok' | 'failed';
+    gpsInside: boolean; // true only when the phone was inside the work site's circle
     photoStatus: 'captured' | 'failed' | 'skipped';
-    syncStatus: 'failed';
+    syncStatus: 'saved_on_phone' | 'not_sent';
   }>({
-    title: 'Attendance Verification Interrupted',
-    message: 'We were unable to record your punch due to a network or cloud storage delay.',
+    title: "Time-in not sent yet",
+    message: "We couldn't send your time-in.",
     gpsStatus: 'ok',
+    gpsInside: false,
     photoStatus: 'captured',
-    syncStatus: 'failed'
+    syncStatus: 'not_sent'
   });
   const [lastCapturedSelfieUri, setLastCapturedSelfieUri] = useState<string | null>(null);
   const [retryingClockIn, setRetryingClockIn] = useState(false);
@@ -926,22 +914,16 @@ export default function HomeScreen() {
   }, [staleShiftData]);
 
   const dynamicStalePresets = useMemo(() => {
-    if (!stalePunchStart) {
-      return [
-        { label: '17:00 (Std)', time: '17:00' },
-        { label: '18:00 (+1h)', time: '18:00' },
-        { label: '19:00 (+2h)', time: '19:00' },
-      ];
-    }
+    // Quick choices: 5, 6 and 7 PM (work ends at 5 PM). If they timed in late in the day,
+    // offer 9, 10 and 11 hours after time-in instead.
     const fmt = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const d8 = new Date(stalePunchStart.getTime() + 8 * 60 * 60 * 1000);
-    const d9 = new Date(stalePunchStart.getTime() + 9 * 60 * 60 * 1000);
-    const d10 = new Date(stalePunchStart.getTime() + 10 * 60 * 60 * 1000);
-    return [
-      { label: `${fmt(d9)} (Std)`, time: fmt(d9) },
-      { label: `${fmt(d8)} (8h)`, time: fmt(d8) },
-      { label: `${fmt(d10)} (+1h OT)`, time: fmt(d10) },
-    ];
+    const label = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const base = stalePunchStart ?? new Date(new Date().setHours(8, 0, 0, 0));
+    const at = (h: number) => new Date(new Date(base).setHours(h, 0, 0, 0));
+    const choices = base.getHours() < 15
+      ? [at(17), at(18), at(19)]
+      : [9, 10, 11].map(h => new Date(base.getTime() + h * 60 * 60 * 1000));
+    return choices.map(d => ({ label: label(d), time: fmt(d) }));
   }, [stalePunchStart]);
 
   const staleShiftPreview = useMemo(() => {
@@ -1015,7 +997,7 @@ export default function HomeScreen() {
             casual_helpers(id, full_name, contact_number, daily_rate)
           )
         `)
-        .eq('technician_id', user.id)
+        // No technician_id filter: the access rules only return jobs this person is on (lead or crew).
         .neq('status', 'cancelled')
         .order('start_time', { ascending: false })
         .limit(1)
@@ -1052,7 +1034,10 @@ export default function HomeScreen() {
       if (staleUnclosed) {
         setStaleShiftData(staleUnclosed);
         const punchStart = new Date((staleUnclosed.app_time_in || staleUnclosed.created_at) as string);
-        const defEnd = new Date(punchStart.getTime() + 9 * 60 * 60 * 1000);
+        // Pre-select the first quick choice: 5 PM, or 9 hours after a late-day time-in.
+        const defEnd = punchStart.getHours() < 15
+          ? new Date(new Date(punchStart).setHours(17, 0, 0, 0))
+          : new Date(punchStart.getTime() + 9 * 60 * 60 * 1000);
         const defTime = `${String(defEnd.getHours()).padStart(2, '0')}:${String(defEnd.getMinutes()).padStart(2, '0')}`;
         setStaleDepartureTime(defTime);
         setStaleCustomPickerDate(defEnd);
@@ -1177,14 +1162,14 @@ export default function HomeScreen() {
       const totalHours = Math.round(netHours * 10) / 10;
       const outIso = new Date(outMs).toISOString();
 
+      // Only the time-out may be set by a technician (guard_attendance_changes).
+      // 'pending_close' tells HR this time-out was typed in later and needs a check.
       const { error: updateErr } = await supabase
         .from('attendance_logs')
         .update({
           app_time_out: outIso,
           total_hours: totalHours,
-          status: 'pending_review',
-          is_manual_entry: true,
-          is_suspicious: grossHours > 16,
+          status: 'pending_close',
         })
         .eq('id', staleShiftData.id);
 
@@ -1199,12 +1184,12 @@ export default function HomeScreen() {
       setStaleShiftModalVisible(false);
       setStaleShiftData(null);
       safeAlert(
-        "Previous Shift Reconciled",
-        `Your shift from ${punchStart.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} has been closed with ${totalHours}h logged (Departure: ${timeStr}). Submitted for HR audit.`
+        "Time-out saved",
+        `${punchStart.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}: you left at ${timeStr} (${totalHours} h). HR will check it.`
       );
     } catch (err: any) {
       console.error("Failed to resolve stale shift:", err);
-      safeAlert("Reconciliation Error", err.message || "Failed to close previous shift.");
+      safeAlert("Not saved", "Couldn't save your time-out. Check your signal and try again.");
     } finally {
       setResolvingStaleShift(false);
     }
@@ -1274,175 +1259,23 @@ export default function HomeScreen() {
     };
   }, [activeTimeLog?.id, activeTimeLog?.app_time_out, profile?.id, profile?.full_name]);
 
-  // Crew Members Resolver for Active Dispatch / Selected Schedule
+  // Everyone on the open job: lead, crew from the coordinator, temporary helpers (lib/crew.ts)
   useEffect(() => {
     const targetSched = selectedSchedule || (dispatchVisible ? schedule : null);
-    if (!targetSched) {
+    if (!targetSched?.id) {
       setActiveCrew([]);
       return;
     }
 
     let isMounted = true;
     setLoadingCrew(true);
-
-    (async () => {
-      try {
-        const members: {
-          id: string;
-          name: string;
-          role: string;
-          phone?: string;
-          type: 'lead' | 'helper' | 'casual';
-        }[] = [];
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (targetSched.senior_partner_id) {
-          // CURRENT USER IS ASSIGNED AS A HELPER
-          // 1. Lead Technician from foreign key
-          if (targetSched.senior_partner) {
-            members.push({
-              id: targetSched.senior_partner_id,
-              name: targetSched.senior_partner.full_name || 'Lead Technician',
-              role: 'Lead Technician',
-              phone: targetSched.senior_partner.contact_number,
-              type: 'lead',
-            });
-          }
-
-          // 2. Accompanying Company Helpers sharing this dispatch
-          const { data: coHelpers } = await supabase
-            .from('schedules')
-            .select('technician_id, profiles!technician_id(id, full_name, contact_number, role)')
-            .eq('senior_partner_id', targetSched.senior_partner_id)
-            .eq('start_time', targetSched.start_time)
-            .neq('status', 'cancelled');
-
-          if (coHelpers) {
-            coHelpers.forEach((h: any) => {
-              if (h.profiles) {
-                const isMe = user && h.technician_id === user.id;
-                members.push({
-                  id: h.technician_id,
-                  name: isMe ? `${h.profiles.full_name} (You)` : h.profiles.full_name,
-                  role: 'Company Helper',
-                  phone: h.profiles.contact_number,
-                  type: 'helper',
-                });
-              }
-            });
-          }
-
-          // 3. Casual helpers attached to the lead technician's schedule
-          const { data: leadSched } = await supabase
-            .from('schedules')
-            .select('id, schedule_casual_helpers(id, casual_helpers(id, full_name, contact_number, daily_rate))')
-            .eq('technician_id', targetSched.senior_partner_id)
-            .eq('start_time', targetSched.start_time)
-            .maybeSingle();
-
-          if (leadSched?.schedule_casual_helpers) {
-            leadSched.schedule_casual_helpers.forEach((item: any) => {
-              if (item.casual_helpers) {
-                members.push({
-                  id: item.casual_helpers.id,
-                  name: item.casual_helpers.full_name,
-                  role: 'Casual Helper',
-                  phone: item.casual_helpers.contact_number,
-                  type: 'casual',
-                });
-              }
-            });
-          }
-        } else {
-          // CURRENT USER IS LEAD TECHNICIAN
-          // 1. Current user as Lead
-          if (profile) {
-            members.push({
-              id: profile.id,
-              name: `${profile.full_name} (You - Lead)`,
-              role: 'Lead Technician',
-              phone: profile.contact_number,
-              type: 'lead',
-            });
-          }
-
-          // 2. Assigned regular company helpers
-          if (user) {
-            const { data: helpers } = await supabase
-              .from('schedules')
-              .select('technician_id, profiles!technician_id(id, full_name, contact_number, role)')
-              .eq('senior_partner_id', user.id)
-              .eq('start_time', targetSched.start_time)
-              .neq('status', 'cancelled');
-
-            if (helpers) {
-              helpers.forEach((h: any) => {
-                if (h.profiles) {
-                  members.push({
-                    id: h.technician_id,
-                    name: h.profiles.full_name,
-                    role: 'Company Helper',
-                    phone: h.profiles.contact_number,
-                    type: 'helper',
-                  });
-                }
-              });
-            }
-          }
-
-          // 3. Casual helpers on this schedule
-          if (targetSched.schedule_casual_helpers && targetSched.schedule_casual_helpers.length > 0) {
-            targetSched.schedule_casual_helpers.forEach((item: any) => {
-              if (item.casual_helpers) {
-                members.push({
-                  id: item.casual_helpers.id,
-                  name: item.casual_helpers.full_name,
-                  role: 'Casual Helper',
-                  phone: item.casual_helpers.contact_number,
-                  type: 'casual',
-                });
-              }
-            });
-          } else if (targetSched.id) {
-            const { data: chList } = await supabase
-              .from('schedule_casual_helpers')
-              .select('id, casual_helpers(id, full_name, contact_number, daily_rate)')
-              .eq('schedule_id', targetSched.id);
-            if (chList) {
-              chList.forEach((item: any) => {
-                if (item.casual_helpers) {
-                  members.push({
-                    id: item.casual_helpers.id,
-                    name: item.casual_helpers.full_name,
-                    role: 'Casual Helper',
-                    phone: item.casual_helpers.contact_number,
-                    type: 'casual',
-                  });
-                }
-              });
-            }
-          }
-        }
-
-        if (isMounted) {
-          const seen = new Set<string>();
-          const deduped = members.filter(m => {
-            const key = `${m.id}_${m.type}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          setActiveCrew(deduped);
-        }
-      } catch (err) {
-        console.warn('Error loading active crew:', err);
-      } finally {
-        if (isMounted) setLoadingCrew(false);
-      }
-    })();
+    getJobCrew(targetSched, profile?.id)
+      .then(members => { if (isMounted) setActiveCrew(members); })
+      .catch(err => console.warn('Error loading active crew:', err))
+      .finally(() => { if (isMounted) setLoadingCrew(false); });
 
     return () => { isMounted = false; };
-  }, [selectedSchedule, dispatchVisible, schedule, profile]);
+  }, [selectedSchedule, dispatchVisible, schedule, profile?.id]);
 
   const openMenu = () => { setMenuVisible(true); };
 
@@ -1520,7 +1353,9 @@ export default function HomeScreen() {
 
     setClockInModal(true);
     setLocationStatus('verifying');
-    
+    // Set once the phone is confirmed inside the site, so a failed send can be queued for later.
+    let insideLoc: { lat: number; lon: number; isMocked: boolean; accuracy: number | null } | null = null;
+
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -1583,6 +1418,7 @@ export default function HomeScreen() {
       }
 
       if (distance <= target.radius) {
+        insideLoc = currentLoc;
         const punchId = generateUUID();
         // --- 1. INSERT TIME LOG (Server-authoritative time via Postgres default timezone('utc', now())) ---
         const { data: insertedLog, error: logError } = await supabase
@@ -1592,12 +1428,13 @@ export default function HomeScreen() {
             technician_id: techId,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
-            status: 'verified',
+            status: 'active',
             geofence_status: 'inside',
             is_mocked: false,
             gps_accuracy: accuracy,
             is_suspicious: isRooted,
             is_manual_entry: false,
+            device_id: await getDeviceId(), // must be the registered phone (check_registered_phone)
           })
           .select()
           .single();
@@ -1653,32 +1490,42 @@ export default function HomeScreen() {
       }
     } catch (e: any) {
       console.error("Clock in error:", e);
-      // If inside target geofence and network timed out, enqueue idempotent punch
-      if (profile?.id && userLoc) {
+      if (isWrongPhoneError(e)) {
+        setClockInModal(false);
+        safeAlert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
+        return;
+      }
+      // Inside the site but the send failed (usually no signal): keep the punch on the phone.
+      let queued = false;
+      if (profile?.id && insideLoc) {
         try {
           const offlinePunchId = generateUUID();
           await syncQueue.addToQueue('time_in', {
             id: offlinePunchId,
             technician_id: profile.id,
-            latitude: userLoc.lat,
-            longitude: userLoc.lon,
+            latitude: insideLoc.lat,
+            longitude: insideLoc.lon,
             geofence_status: 'inside',
-            is_mocked: !!userLoc.isMocked,
-            gps_accuracy: userLoc.accuracy ?? null,
-            status: 'verified',
+            is_mocked: !!insideLoc.isMocked,
+            gps_accuracy: insideLoc.accuracy ?? null,
+            status: 'active',
             is_manual_entry: false,
+            device_id: await getDeviceId(), // must be the registered phone (check_registered_phone)
           });
-          console.log("[OFFLINE RESILIENCE] Geofenced clock-in queued into syncQueue with id:", offlinePunchId);
+          queued = true;
         } catch (queueErr) {
           console.error("Failed to enqueue offline punch:", queueErr);
         }
       }
       setClockInErrorData({
-        title: 'Clock-In Connection Interrupted',
-        message: 'Could not communicate with the attendance server. Your punch has been stored offline and will auto-sync once connection returns.',
-        gpsStatus: userLoc ? 'ok' : 'failed',
+        title: queued ? 'No signal' : "Time-in not sent",
+        message: queued
+          ? "Your time-in is saved on this phone. It will be sent by itself when you have signal."
+          : "We couldn't record your time-in. Check your signal and location, then try again.",
+        gpsStatus: insideLoc ? 'ok' : 'failed',
+        gpsInside: !!insideLoc,
         photoStatus: 'skipped',
-        syncStatus: 'failed'
+        syncStatus: queued ? 'saved_on_phone' : 'not_sent'
       });
       setClockInErrorModalVisible(true);
       setLocationStatus('fallback');
@@ -1716,16 +1563,11 @@ export default function HomeScreen() {
       try {
         const fileExt = result.assets[0].uri.split('.').pop() || 'jpeg';
         const fileName = `${profile?.id}-${Date.now()}.${fileExt}`;
-        
-        const response = await fetch(result.assets[0].uri);
-        const blob = await response.blob();
-        
-        const { error: uploadError } = await supabase.storage.from('dtr-selfies').upload(fileName, blob);
-        if (uploadError) throw uploadError;
 
-        const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
+        // dtr-selfies is a private bucket: we save the file's path, and the office opens it with a signed link.
+        await uploadPhoto('dtr-selfies', fileName, result.assets[0].uri);
 
-        // 1. Insert time log with pending_review status & server-authoritative time
+        // 1. Time-in outside the site, with selfie for HR to check (photo_status 'pending'); server sets the time
         const { data: insertedLog, error: logError } = await supabase
           .from('attendance_logs')
           .insert({
@@ -1733,14 +1575,15 @@ export default function HomeScreen() {
             technician_id: techId,
             latitude: currentLoc.lat,
             longitude: currentLoc.lon,
-            status: 'pending_review',
+            status: 'active',
             geofence_status: 'outside',
-            photo_url: publicUrlData.publicUrl || fileName,
+            photo_url: fileName,
             photo_status: 'pending',
             is_mocked: isMocked,
             gps_accuracy: accuracy,
             is_suspicious: isRooted || isMocked,
             is_manual_entry: false,
+            device_id: await getDeviceId(), // must be the registered phone (check_registered_phone)
           })
           .select()
           .single();
@@ -1778,7 +1621,7 @@ export default function HomeScreen() {
           });
         }
 
-        safeAlert('Override Submitted', 'Your attendance and selfie have been logged and submitted to HR for review.');
+        safeAlert('Timed in', 'Your time-in and selfie were sent. HR will check them because you were outside the site.');
         setClockInModal(false);
         setHasClockedInToday(true);
         setActiveTimeLog(insertedLog);
@@ -1789,31 +1632,21 @@ export default function HomeScreen() {
         }
       } catch (err: any) {
         console.error("Photo override error:", err);
-        // Offline resilience: enqueue punch into offline transaction queue
-        try {
-          await syncQueue.addToQueue('time_in', {
-            id: photoPunchId,
-            technician_id: techId,
-            latitude: currentLoc.lat,
-            longitude: currentLoc.lon,
-            geofence_status: 'outside',
-            is_mocked: isMocked,
-            gps_accuracy: accuracy,
-            is_suspicious: isRooted || isMocked,
-            status: 'pending_review',
-            photo_status: 'pending',
-          });
-          console.log("[OFFLINE RESILIENCE] Clock-in punch successfully saved to offline syncQueue with id:", photoPunchId);
-        } catch (queueErr) {
-          console.error("Failed to enqueue offline punch:", queueErr);
+        if (isWrongPhoneError(err)) {
+          setUploadingSelfie(false);
+          setClockInModal(false);
+          safeAlert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
+          return;
         }
-
+        // Not queued: a time-in outside the site needs its selfie, so the photo is kept
+        // on the phone and "Try again" sends both together. (Never show the raw error.)
         setClockInErrorData({
-          title: 'Verification Upload Interrupted',
-          message: err?.message || 'A network error occurred while uploading your verification selfie. You can retry with your saved photo or submit an immediate review ticket to HR.',
+          title: "Selfie not sent",
+          message: "Your selfie is saved on this phone but didn't reach HR. Check your signal and tap Try again, or tell HR instead.",
           gpsStatus: userLoc ? 'ok' : 'failed',
+          gpsInside: false,
           photoStatus: 'captured',
-          syncStatus: 'failed'
+          syncStatus: 'not_sent'
         });
         setClockInErrorModalVisible(true);
       }
@@ -1842,14 +1675,7 @@ export default function HomeScreen() {
     try {
       const fileExt = lastCapturedSelfieUri.split('.').pop() || 'jpeg';
       const fileName = `${profile?.id}-${Date.now()}.${fileExt}`;
-      
-      const response = await fetch(lastCapturedSelfieUri);
-      const blob = await response.blob();
-      
-      const { error: uploadErr } = await supabase.storage.from('dtr-selfies').upload(fileName, blob);
-      if (uploadErr) throw uploadErr;
-
-      const { data: publicUrlData } = supabase.storage.from('dtr-selfies').getPublicUrl(fileName);
+      await uploadPhoto('dtr-selfies', fileName, lastCapturedSelfieUri);
 
       const { data: insertedLog, error: logError } = await supabase
         .from('attendance_logs')
@@ -1857,14 +1683,15 @@ export default function HomeScreen() {
           technician_id: techId,
           latitude: currentLoc.lat,
           longitude: currentLoc.lon,
-          status: 'pending_review',
+          status: 'active',
           geofence_status: 'outside',
-          photo_url: publicUrlData.publicUrl || fileName,
+          photo_url: fileName,
           photo_status: 'pending',
           is_mocked: isMocked,
           gps_accuracy: accuracy,
           is_suspicious: isRooted || isMocked,
           is_manual_entry: false,
+          device_id: await getDeviceId(), // must be the registered phone (check_registered_phone)
         })
         .select()
         .single();
@@ -1905,10 +1732,16 @@ export default function HomeScreen() {
       setHasClockedInToday(true);
       setActiveTimeLog(insertedLog);
       setTodayCompletedLog(null);
-      safeAlert('Verification Recorded', 'Your attendance verification has been recorded successfully and submitted for review.');
+      safeAlert('Timed in', 'Your time-in and selfie were sent. HR will check them because you were outside the site.');
     } catch (err: any) {
       console.error("Retry failed:", err);
-      safeAlert('Retry Incomplete', 'Could not upload photo to server. You can tap "Submit for Review" to log this attempt directly to HR without losing your shift.');
+      if (isWrongPhoneError(err)) {
+        setClockInErrorModalVisible(false);
+        setClockInModal(false);
+        safeAlert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
+        return;
+      }
+      safeAlert('Still not sent', "Your selfie still didn't go through. Tap \"Tell HR instead\" so HR knows you came to work.");
     } finally {
       setRetryingClockIn(false);
     }
@@ -1920,15 +1753,15 @@ export default function HomeScreen() {
     try {
       const now = new Date();
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const currentLoc = userLoc ? `Lat: ${userLoc.lat.toFixed(5)}, Lon: ${userLoc.lon.toFixed(5)}` : 'GPS Acquired';
+      const currentLoc = userLoc ? `${userLoc.lat.toFixed(5)}, ${userLoc.lon.toFixed(5)}` : 'not available';
 
       const { error } = await supabase
         .from('tickets')
         .insert({
           employee_id: profile.id,
-          category: 'Attendance / DTR',
-          title: `[CLOCK-IN REVIEW] Punch Verification Glitch - ${profile.full_name || 'Technician'}`,
-          description: `Technician attempted clock-in at ${timeStr}. Photo verification was captured locally but server upload timed out. Coordinates: ${currentLoc}. Please verify physical attendance manually.`,
+          category: 'DTR Issue',
+          title: `Couldn't time in: ${profile.full_name || 'Technician'}`,
+          description: `I tried to time in at ${timeStr} but my selfie wouldn't send. My location: ${currentLoc}. Please check my attendance for today.`,
           priority: 'medium',
           status: 'open'
         });
@@ -1938,12 +1771,12 @@ export default function HomeScreen() {
       setClockInErrorModalVisible(false);
       setClockInModal(false);
       safeAlert(
-        'Review Ticket Filed',
-        'Your attendance verification request has been escalated to HR. Your shift attempt is timestamped and documented.'
+        'Sent to HR',
+        'HR knows you tried to time in at this time and will check your attendance.'
       );
     } catch (err: any) {
       console.error("Failed to submit review ticket:", err);
-      safeAlert('Submission Error', 'Failed to dispatch ticket. Please inform your coordinator directly.');
+      safeAlert('Not sent', "Couldn't reach HR. Please call or text your coordinator.");
     } finally {
       setSubmittingReviewTicket(false);
     }
@@ -1995,13 +1828,13 @@ export default function HomeScreen() {
               const techId = profile?.id;
 
               // 2. Update time_logs with app_time_out and total_hours
-              const updatePayload: any = {
+              // Technicians can't set review flags (guard_attendance_changes), so a time-out
+              // with a wrong phone clock is marked 'pending_close' for HR to check.
+              const updatePayload = {
                 app_time_out: authoritativeOut,
                 total_hours: totalHours,
+                status: isSuspiciousOut ? 'pending_close' : 'closed',
               };
-              if (isSuspiciousOut) {
-                updatePayload.is_suspicious = true;
-              }
 
               const { error: logErr } = await supabase
                 .from('attendance_logs')
@@ -2119,8 +1952,8 @@ export default function HomeScreen() {
                   <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textSubtle }}>
                     {activeTimeLog.geofence_status === 'inside' ? 'Verified on-site' : 'Photo override'}
                   </Text>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: activeTimeLog.status === 'verified' ? '#10B981' : '#F59E0B' }}>
-                    {activeTimeLog.status ? activeTimeLog.status.toUpperCase() : 'ACTIVE'}
+                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: shiftBadge(activeTimeLog.status, isDark).color }}>
+                    {shiftBadge(activeTimeLog.status, isDark).label}
                   </Text>
                 </View>
               </View>
@@ -2227,8 +2060,19 @@ export default function HomeScreen() {
                 </Text>
                 <Text style={[styles.dispatchClient, { color: colors.textMuted }]}>{schedule.client_name}</Text>
               </View>
-              <View style={[styles.dispatchAction, { backgroundColor: colors.brandBlue }]}>
-                <Text style={[styles.dispatchActionText, { fontFamily: activeFontBold }]}>{t('view_dispatch_details')}</Text>
+              <View style={{ flexDirection: 'row', backgroundColor: colors.brandBlue }}>
+                <View style={[styles.dispatchAction, { flex: 1, backgroundColor: 'transparent' }]}>
+                  <Text style={[styles.dispatchActionText, { fontFamily: activeFontBold }]}>{t('view_dispatch_details')}</Text>
+                </View>
+                {/* Same Navigate as the clock-in map */}
+                <TouchableOpacity
+                  style={[styles.dispatchAction, { flexDirection: 'row', backgroundColor: 'transparent', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.25)' }]}
+                  onPress={() => openDirections(schedule.geofence_lat, schedule.geofence_lon, schedule.location)}
+                  accessibilityRole="button"
+                >
+                  <Feather name="navigation" size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={[styles.dispatchActionText, { fontFamily: activeFontBold }]}>{t('navigate')}</Text>
+                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           ) : (
@@ -2335,7 +2179,6 @@ export default function HomeScreen() {
                           {userLoc && (targetGeofence || schedule) && targetLat && targetLon && (
                             <>
                               <MapView
-                                provider={'google'}
                                 style={styles.map}
                                 initialRegion={{
                                   latitude: (userLoc.lat + targetLat) / 2,
@@ -2390,33 +2233,7 @@ export default function HomeScreen() {
                                 </Text>
                               </View>
 
-                              {/* Google Maps Turn-By-Turn Intent Button */}
-                              <TouchableOpacity
-                                activeOpacity={0.8}
-                                onPress={() => {
-                                  if (targetLat && targetLon) {
-                                    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLon}`);
-                                  } else if (schedule?.location) {
-                                    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(schedule.location)}`);
-                                  }
-                                }}
-                                style={{
-                                  position: 'absolute',
-                                  bottom: 12,
-                                  right: 12,
-                                  backgroundColor: colors.brandBlue,
-                                  paddingHorizontal: 12,
-                                  paddingVertical: 8,
-                                  borderRadius: 10,
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  zIndex: 10,
-                                  elevation: 5
-                                }}
-                              >
-                                <Feather name="navigation" size={13} color="#FFF" style={{ marginRight: 5 }} />
-                                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>Navigate</Text>
-                              </TouchableOpacity>
+                              <NavigateButton lat={targetLat} lon={targetLon} address={schedule?.location} color={colors.brandBlue} />
                             </>
                           )}
                         </View>
@@ -2454,85 +2271,94 @@ export default function HomeScreen() {
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={[styles.clockInErrorTitle, { color: colors.text }]}>{clockInErrorData.title}</Text>
-                <Text style={[styles.clockInErrorSubtitle, { color: colors.textMuted }]}>Attendance Dispatch Safeguard</Text>
               </View>
             </View>
 
-            {/* Error Message */}
+            {/* Message (plain words, never the raw error) */}
             <Text style={[styles.clockInErrorMessage, { color: colors.text }]}>
               {clockInErrorData.message}
             </Text>
 
-            {/* Status Checklist Box */}
+            {/* What worked and what didn't */}
             <View style={[styles.clockInErrorStatusBox, { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderColor: colors.cardBorder }]}>
               <View style={styles.clockInStatusRow}>
-                <Feather 
-                  name={clockInErrorData.gpsStatus === 'ok' ? 'check-circle' : 'x-circle'} 
-                  size={16} 
-                  color={clockInErrorData.gpsStatus === 'ok' ? BRAND.green : BRAND.red} 
+                <Feather
+                  name={clockInErrorData.gpsStatus === 'ok' ? 'check-circle' : 'x-circle'}
+                  size={16}
+                  color={clockInErrorData.gpsStatus === 'ok' ? BRAND.green : BRAND.red}
                 />
                 <Text style={[styles.clockInStatusText, { color: colors.text }]}>
-                  GPS Coordinates: {clockInErrorData.gpsStatus === 'ok' ? 'Acquired (Within Zone)' : 'Unavailable'}
+                  {clockInErrorData.gpsStatus !== 'ok'
+                    ? 'Location: not found'
+                    : clockInErrorData.gpsInside
+                    ? 'Location: at the work site'
+                    : 'Location: outside the work site'}
                 </Text>
               </View>
 
-              <View style={styles.clockInStatusRow}>
-                <Feather 
-                  name={clockInErrorData.photoStatus === 'captured' ? 'check-circle' : clockInErrorData.photoStatus === 'skipped' ? 'minus-circle' : 'x-circle'} 
-                  size={16} 
-                  color={clockInErrorData.photoStatus === 'captured' ? BRAND.green : '#94A3B8'} 
-                />
-                <Text style={[styles.clockInStatusText, { color: colors.text }]}>
-                  Verification Selfie: {clockInErrorData.photoStatus === 'captured' ? 'Captured Locally' : 'Not Required'}
-                </Text>
-              </View>
+              {clockInErrorData.photoStatus === 'captured' && (
+                <View style={styles.clockInStatusRow}>
+                  <Feather name="check-circle" size={16} color={BRAND.green} />
+                  <Text style={[styles.clockInStatusText, { color: colors.text }]}>Selfie: saved on this phone</Text>
+                </View>
+              )}
 
               <View style={styles.clockInStatusRow}>
-                <Feather name="alert-circle" size={16} color={BRAND.red} />
-                <Text style={[styles.clockInStatusText, { color: BRAND.red }]}>
-                  Status: Sync Pending (Saved Locally)
+                <Feather
+                  name={clockInErrorData.syncStatus === 'saved_on_phone' ? 'clock' : 'alert-circle'}
+                  size={16}
+                  color={clockInErrorData.syncStatus === 'saved_on_phone' ? '#D97706' : BRAND.red}
+                />
+                <Text style={[styles.clockInStatusText, { color: clockInErrorData.syncStatus === 'saved_on_phone' ? colors.text : BRAND.red }]}>
+                  {clockInErrorData.syncStatus === 'saved_on_phone' ? 'Will send when you have signal' : 'Not sent to HR yet'}
                 </Text>
               </View>
             </View>
 
-            {/* Action Buttons */}
+            {/* Buttons: "Try again" / "Tell HR instead" only make sense when a selfie is waiting */}
             <View style={{ gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                style={[styles.clockInRetryBtn, { backgroundColor: BRAND.blue }]}
-                onPress={retryVisualOverrideSubmission}
-                disabled={retryingClockIn || submittingReviewTicket}
-              >
-                {retryingClockIn ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Feather name="refresh-cw" size={16} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.clockInRetryBtnText}>Retry Clock In</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {clockInErrorData.photoStatus === 'captured' && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.clockInRetryBtn, { backgroundColor: BRAND.blue }]}
+                    onPress={retryVisualOverrideSubmission}
+                    disabled={retryingClockIn || submittingReviewTicket}
+                  >
+                    {retryingClockIn ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Feather name="refresh-cw" size={16} color="#fff" style={{ marginRight: 8 }} />
+                        <Text style={styles.clockInRetryBtnText}>Try again</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.clockInTicketBtn, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF', borderColor: BRAND.blue }]}
-                onPress={submitReviewTicket}
-                disabled={retryingClockIn || submittingReviewTicket}
-              >
-                {submittingReviewTicket ? (
-                  <ActivityIndicator size="small" color={BRAND.blue} />
-                ) : (
-                  <>
-                    <Feather name="shield" size={16} color={BRAND.blue} style={{ marginRight: 8 }} />
-                    <Text style={[styles.clockInTicketBtnText, { color: BRAND.blue }]}>Submit Shift for Review</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.clockInTicketBtn, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF', borderColor: BRAND.blue }]}
+                    onPress={submitReviewTicket}
+                    disabled={retryingClockIn || submittingReviewTicket}
+                  >
+                    {submittingReviewTicket ? (
+                      <ActivityIndicator size="small" color={BRAND.blue} />
+                    ) : (
+                      <>
+                        <Feather name="send" size={16} color={BRAND.blue} style={{ marginRight: 8 }} />
+                        <Text style={[styles.clockInTicketBtnText, { color: BRAND.blue }]}>Tell HR instead</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
 
               <TouchableOpacity
                 style={styles.clockInDismissBtn}
                 onPress={() => setClockInErrorModalVisible(false)}
                 disabled={retryingClockIn || submittingReviewTicket}
               >
-                <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>Dismiss & Re-attempt Later</Text>
+                <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>
+                  {clockInErrorData.photoStatus === 'captured' ? 'Close' : 'OK'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2551,22 +2377,25 @@ export default function HomeScreen() {
                 <Feather name="clock" size={28} color="#D97706" />
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={[styles.clockInErrorTitle, { color: colors.text }]}>Unclosed Shift Detected</Text>
-                <Text style={[styles.clockInErrorSubtitle, { color: colors.textMuted }]}>Attendance Lifecycle Safeguard</Text>
+                <Text style={[styles.clockInErrorTitle, { color: colors.text }]}>
+                  {stalePunchStart
+                    ? `You didn't time out on ${stalePunchStart.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}`
+                    : "You didn't time out last time"}
+                </Text>
               </View>
             </View>
 
             <Text style={[styles.clockInErrorMessage, { color: colors.text }]}>
               {stalePunchStart ? (
-                `You have an active shift from ${stalePunchStart.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} started at ${stalePunchStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} that was not clocked out.`
+                `You timed in at ${stalePunchStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. What time did you leave? HR will check it.`
               ) : (
-                'You have a previous shift that was not clocked out.'
+                'What time did you leave? HR will check it.'
               )}
             </Text>
 
             <View style={[styles.clockInErrorStatusBox, { backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderColor: isDark ? colors.cardBorder : '#E2E8F0', padding: 12 }]}>
               <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.text, marginBottom: 8 }}>
-                Select departure time to close shift:
+                I left at:
               </Text>
 
               <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
@@ -2621,7 +2450,7 @@ export default function HomeScreen() {
                     fontSize: 11,
                     color: isCustomStaleTimeSelected ? '#FFFFFF' : colors.text,
                   }}>
-                    {isCustomStaleTimeSelected ? `${staleDepartureTime} ✎` : 'Custom ⏱'}
+                    {isCustomStaleTimeSelected ? staleDepartureTime : 'Other time'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -2637,7 +2466,7 @@ export default function HomeScreen() {
                   borderColor: isDark ? colors.cardBorder : '#E2E8F0',
                 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Departure Date/Time:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Left at</Text>
                     <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text }}>
                       {staleShiftPreview.endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
                       {staleShiftPreview.endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -2645,25 +2474,25 @@ export default function HomeScreen() {
                   </View>
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Gross Shift Duration:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Time at work</Text>
                     <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.text }}>
-                      {staleShiftPreview.grossHours} hrs
+                      {staleShiftPreview.grossHours} h
                     </Text>
                   </View>
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Mandatory Meal Break:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted }}>Lunch break</Text>
                     <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: staleShiftPreview.mealDeduction > 0 ? '#F59E0B' : colors.textMuted }}>
-                      {staleShiftPreview.mealDeduction > 0 ? '-1.0 hr (>5h shift)' : '0.0 hr'}
+                      {staleShiftPreview.mealDeduction > 0 ? '−1 h' : 'none'}
                     </Text>
                   </View>
 
                   <View style={{ height: 1, backgroundColor: isDark ? '#334155' : '#CBD5E1', marginVertical: 4 }} />
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text }}>Net Auditable Hours:</Text>
+                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: colors.text }}>Hours counted</Text>
                     <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: '#10B981' }}>
-                      {staleShiftPreview.netHours} hrs
+                      {staleShiftPreview.netHours} h
                     </Text>
                   </View>
 
@@ -2671,7 +2500,7 @@ export default function HomeScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
                       <Feather name="alert-triangle" size={13} color="#F59E0B" />
                       <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: '#F59E0B', flex: 1 }}>
-                        Exceeds 16h — will be flagged for CEO / HR compliance audit.
+                        That's over 16 hours. HR will look at this one closely.
                       </Text>
                     </View>
                   )}
@@ -2717,7 +2546,7 @@ export default function HomeScreen() {
                   <>
                     <Feather name="check-circle" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
                     <Text style={styles.clockInRetryBtnText}>
-                      Close Shift ({staleShiftPreview?.netHours ?? 0}h Net)
+                      Save time-out ({staleShiftPreview?.netHours ?? 0} h)
                     </Text>
                   </>
                 )}
@@ -2728,7 +2557,7 @@ export default function HomeScreen() {
                 onPress={() => setStaleShiftModalVisible(false)}
                 disabled={resolvingStaleShift}
               >
-                <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>Remind Me Later</Text>
+                <Text style={[styles.clockInDismissBtnText, { color: colors.textMuted }]}>Later</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2748,7 +2577,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.profileInfo}>
                   <Text style={[styles.profileName, { color: colors.text }]}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
-                  <Text style={[styles.profileRole, { color: colors.textMuted }]}>{profile ? profile.role.toUpperCase() : 'TECHNICIAN'}</Text>
+                  <Text style={[styles.profileRole, { color: colors.textMuted }]}>{jobTitle(profile)}</Text>
                 </View>
                 <View style={[styles.statusBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
                   <View style={styles.statusDot} />
@@ -2835,8 +2664,8 @@ export default function HomeScreen() {
                         <Text style={[styles.dtrDate, { color: colors.text }]}>{new Date(log.app_time_in).toLocaleDateString()}</Text>
                         <Text style={[styles.dtrTime, { color: colors.textMuted }]}>{new Date(log.app_time_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
                       </View>
-                      <View style={[styles.statusBadge, { backgroundColor: log.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : (isDark ? 'rgba(251, 191, 36, 0.2)' : '#FEF3C7') }]}>
-                        <Text style={[styles.statusText, { color: log.status === 'verified' ? BRAND.green : BRAND.yellow }]}>{log.status.toUpperCase()}</Text>
+                      <View style={[styles.statusBadge, { backgroundColor: shiftBadge(log.status, isDark).bg }]}>
+                        <Text style={[styles.statusText, { color: shiftBadge(log.status, isDark).color }]}>{shiftBadge(log.status, isDark).label}</Text>
                       </View>
                     </View>
                   ))}
@@ -3035,8 +2864,7 @@ export default function HomeScreen() {
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
                   {[
                     { code: 'en' as const, label: 'English', tag: 'EN', font: 'DMSans-Bold' },
-                    { code: 'tl' as const, label: 'Filipino', tag: 'TL', font: 'DMSans-Bold' },
-                    { code: 'ja' as const, label: '日本語', tag: 'JA', font: 'System' },
+                    { code: 'tl' as const, label: 'Filipino', tag: 'FIL', font: 'DMSans-Bold' },
                   ].map((item) => {
                     const isSelected = language === item.code;
                     return (
@@ -3368,12 +3196,12 @@ export default function HomeScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Feather name="users" size={16} color={colors.brandBlue} style={{ marginRight: 6 }} />
                       <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text }}>
-                        Assigned Field Crew
+                        Team
                       </Text>
                     </View>
                     <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
                       <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>
-                        {activeCrew.length} {activeCrew.length === 1 ? 'Worker' : 'Workers'}
+                        {activeCrew.length} {activeCrew.length === 1 ? 'person' : 'people'}
                       </Text>
                     </View>
                   </View>
@@ -3383,7 +3211,7 @@ export default function HomeScreen() {
                   ) : activeCrew.length === 0 ? (
                     <View style={{ padding: 12, borderRadius: 12, backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderWidth: 1, borderColor: colors.cardBorder }}>
                       <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
-                        Solo dispatch • No additional crew assigned
+                        Just you on this job
                       </Text>
                     </View>
                   ) : (
@@ -3444,7 +3272,7 @@ export default function HomeScreen() {
                                   }}
                                 >
                                   <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: '#fff' }}>
-                                    {member.type === 'lead' ? 'LEAD' : member.type === 'helper' ? 'HELPER' : 'CASUAL'}
+                                    {member.role}
                                   </Text>
                                 </View>
                               </View>
@@ -3486,7 +3314,6 @@ export default function HomeScreen() {
                 {schedule && userLoc && (
                   <View style={{ height: 260, borderRadius: 16, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
                     <MapView 
-                      provider={'google'} 
                       style={{ flex: 1 }} 
                       initialRegion={{ 
                         latitude: ((userLoc.lat + (schedule.geofence_lat || userLoc.lat)) / 2), 
@@ -3511,22 +3338,16 @@ export default function HomeScreen() {
                         {schedule.geofence_lat && userLoc ? ` • ${(getDistance({ latitude: userLoc.lat, longitude: userLoc.lon }, { latitude: schedule.geofence_lat, longitude: schedule.geofence_lon }) / 1000).toFixed(1)} km away` : ''}
                       </Text>
                     </View>
+                    <NavigateButton lat={schedule.geofence_lat} lon={schedule.geofence_lon} address={schedule.location} color={colors.brandBlue} />
                   </View>
                 )}
 
                 <TouchableOpacity 
                   style={[styles.submitBtn, { backgroundColor: colors.brandBlue, marginTop: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} 
-                  onPress={() => {
-                    if (schedule?.location) {
-                      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(schedule.location)}`);
-                    } else {
-                      Linking.openURL('https://www.google.com/maps');
-                    }
-                    setDispatchVisible(false);
-                  }}
+                  onPress={() => openDirections(schedule?.geofence_lat, schedule?.geofence_lon, schedule?.location)}
                 >
                   <Feather name="navigation" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.submitBtnText}>Acknowledge & Go</Text>
+                  <Text style={styles.submitBtnText}>Navigate to site</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -4101,12 +3922,12 @@ export default function HomeScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Feather name="users" size={16} color={colors.brandBlue} style={{ marginRight: 6 }} />
                       <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text }}>
-                        Assigned Field Crew
+                        Team
                       </Text>
                     </View>
                     <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
                       <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>
-                        {activeCrew.length} {activeCrew.length === 1 ? 'Worker' : 'Workers'}
+                        {activeCrew.length} {activeCrew.length === 1 ? 'person' : 'people'}
                       </Text>
                     </View>
                   </View>
@@ -4116,7 +3937,7 @@ export default function HomeScreen() {
                   ) : activeCrew.length === 0 ? (
                     <View style={{ padding: 12, borderRadius: 12, backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderWidth: 1, borderColor: colors.cardBorder }}>
                       <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
-                        Solo dispatch • No additional crew assigned
+                        Just you on this job
                       </Text>
                     </View>
                   ) : (
@@ -4177,7 +3998,7 @@ export default function HomeScreen() {
                                   }}
                                 >
                                   <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: '#fff' }}>
-                                    {member.type === 'lead' ? 'LEAD' : member.type === 'helper' ? 'HELPER' : 'CASUAL'}
+                                    {member.role}
                                   </Text>
                                 </View>
                               </View>
@@ -4221,15 +4042,15 @@ export default function HomeScreen() {
               <TouchableOpacity 
                 style={[styles.submitBtn, { backgroundColor: colors.brandBlue, marginTop: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} 
                 onPress={() => {
-                  if (selectedSchedule?.location) {
-                    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedSchedule.location)}`);
+                  if (selectedSchedule?.geofence_lat || selectedSchedule?.location) {
+                    openDirections(selectedSchedule.geofence_lat, selectedSchedule.geofence_lon, selectedSchedule.location);
                   } else {
-                    safeAlert('Notice', 'No location specified for this schedule.');
+                    safeAlert('No address', "This job has no address yet. Ask your coordinator.");
                   }
                 }}
               >
                 <Feather name="navigation" size={20} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={styles.submitBtnText}>Navigate to Site</Text>
+                <Text style={styles.submitBtnText}>Navigate to site</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -4253,9 +4074,9 @@ export default function HomeScreen() {
                 </Text>
                 
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: selectedTimeLog.status === 'approved' || selectedTimeLog.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : selectedTimeLog.status === 'pending_review' ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FFFBEB') : (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2') }}>
-                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: selectedTimeLog.status === 'approved' || selectedTimeLog.status === 'verified' ? BRAND.green : selectedTimeLog.status === 'pending_review' ? BRAND.yellow : BRAND.red }}>
-                      {selectedTimeLog.status ? selectedTimeLog.status.replace('_', ' ').toUpperCase() : 'UNKNOWN'}
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: shiftBadge(selectedTimeLog.status, isDark).bg }}>
+                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: shiftBadge(selectedTimeLog.status, isDark).color }}>
+                      {shiftBadge(selectedTimeLog.status, isDark).label}
                     </Text>
                   </View>
                   <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.brandBlue, marginLeft: 12 }}>
@@ -4399,9 +4220,9 @@ export default function HomeScreen() {
                                   {item.total_hours ? `${item.total_hours} hrs` : '---'}
                                 </Text>
                               </View>
-                              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: item.status === 'approved' || item.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : item.status === 'pending_review' ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FFFBEB') : (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2') }}>
-                                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: item.status === 'approved' || item.status === 'verified' ? BRAND.green : item.status === 'pending_review' ? BRAND.yellow : BRAND.red }}>
-                                  {item.status ? item.status.replace('_', ' ').toUpperCase() : 'LOGGED'}
+                              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: shiftBadge(item.status, isDark).bg }}>
+                                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 10, color: shiftBadge(item.status, isDark).color }}>
+                                  {shiftBadge(item.status, isDark).label}
                                 </Text>
                               </View>
                             </View>
@@ -4514,9 +4335,9 @@ export default function HomeScreen() {
                             {item.total_hours ? `${item.total_hours} hrs` : 'Incomplete'}
                           </Text>
                         </View>
-                        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: item.status === 'approved' || item.status === 'verified' ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5') : (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2') }}>
-                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: item.status === 'approved' || item.status === 'verified' ? BRAND.green : BRAND.red }}>
-                            {item.status ? item.status.replace('_', ' ').toUpperCase() : 'LOGGED'}
+                        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: shiftBadge(item.status, isDark).bg }}>
+                          <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: shiftBadge(item.status, isDark).color }}>
+                            {shiftBadge(item.status, isDark).label}
                           </Text>
                         </View>
                       </View>
@@ -4671,16 +4492,23 @@ export default function HomeScreen() {
                         <View style={styles.updateCard}>
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                             <View style={{ flex: 1 }}>
-                              <Text style={styles.updateTitle}>{item.leave_type.toUpperCase()} LEAVE</Text>
+                              <Text style={styles.updateTitle}>{item.leave_type.charAt(0).toUpperCase() + item.leave_type.slice(1)} leave</Text>
                               <Text style={styles.updateSub}>{new Date(item.start_date).toLocaleDateString()} - {new Date(item.end_date).toLocaleDateString()}</Text>
                               <Text style={[styles.updateContent, { marginTop: 8 }]} numberOfLines={2}>{item.reason}</Text>
                             </View>
                             <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: item.status === 'approved' ? '#ECFDF5' : item.status === 'rejected' ? '#FEF2F2' : '#FFFBEB' }}>
-                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: item.status === 'approved' ? BRAND.green : item.status === 'rejected' ? BRAND.red : BRAND.yellow }}>
-                                {item.status.toUpperCase()}
+                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: item.status === 'approved' ? BRAND.green : item.status === 'rejected' ? BRAND.red : '#B45309' }}>
+                                {item.status === 'approved' ? 'Approved' : item.status === 'rejected' ? 'Declined' : 'Waiting for HR'}
                               </Text>
                             </View>
                           </View>
+                          {/* HR must give a reason when declining (leaves.rejection_reason, since 15 Nov) */}
+                          {item.status === 'rejected' && !!item.rejection_reason && (
+                            <View style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2' }}>
+                              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: BRAND.red, marginBottom: 2 }}>Why HR declined</Text>
+                              <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 13, color: colors.text, lineHeight: 18 }}>{item.rejection_reason}</Text>
+                            </View>
+                          )}
                         </View>
                       )}
                     />

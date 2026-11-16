@@ -252,6 +252,7 @@ export type Database = {
           app_time_out: string | null
           clocked_out_by: string | null
           created_at: string | null
+          device_id: string | null
           geofence_status: string | null
           gps_accuracy: number | null
           id: string
@@ -274,6 +275,7 @@ export type Database = {
           app_time_out?: string | null
           clocked_out_by?: string | null
           created_at?: string | null
+          device_id?: string | null
           geofence_status?: string | null
           gps_accuracy?: number | null
           id?: string
@@ -296,6 +298,7 @@ export type Database = {
           app_time_out?: string | null
           clocked_out_by?: string | null
           created_at?: string | null
+          device_id?: string | null
           geofence_status?: string | null
           gps_accuracy?: number | null
           id?: string
@@ -398,6 +401,54 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      device_change_requests: {
+        Row: {
+          decided_at: string | null
+          decided_by: string | null
+          device_id: string
+          device_name: string | null
+          id: string
+          profile_id: string
+          requested_at: string
+          status: string
+        }
+        Insert: {
+          decided_at?: string | null
+          decided_by?: string | null
+          device_id: string
+          device_name?: string | null
+          id?: string
+          profile_id: string
+          requested_at?: string
+          status?: string
+        }
+        Update: {
+          decided_at?: string | null
+          decided_by?: string | null
+          device_id?: string
+          device_name?: string | null
+          id?: string
+          profile_id?: string
+          requested_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_change_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_change_requests_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       document_chunks: {
         Row: {
@@ -632,6 +683,48 @@ export type Database = {
             foreignKeyName: "live_locations_technician_id_fkey"
             columns: ["technician_id"]
             isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      login_pins: {
+        Row: {
+          failed_attempts: number
+          locked_until: string | null
+          pin_hash: string
+          profile_id: string
+          set_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          failed_attempts?: number
+          locked_until?: string | null
+          pin_hash: string
+          profile_id: string
+          set_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          failed_attempts?: number
+          locked_until?: string | null
+          pin_hash?: string
+          profile_id?: string
+          set_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "login_pins_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "login_pins_set_by_fkey"
+            columns: ["set_by"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -1000,6 +1093,38 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      registered_devices: {
+        Row: {
+          device_id: string
+          device_name: string | null
+          last_seen_at: string
+          profile_id: string
+          registered_at: string
+        }
+        Insert: {
+          device_id: string
+          device_name?: string | null
+          last_seen_at?: string
+          profile_id: string
+          registered_at?: string
+        }
+        Update: {
+          device_id?: string
+          device_name?: string | null
+          last_seen_at?: string
+          profile_id?: string
+          registered_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registered_devices_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       role_access: {
         Row: {
@@ -1600,11 +1725,25 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_my_phone: { Args: { p_device_id: string }; Returns: string }
+      decide_phone_change: {
+        Args: { p_approve: boolean; p_request_id: string }
+        Returns: undefined
+      }
+      file_phone_change: {
+        Args: {
+          p_device_id: string
+          p_device_name: string
+          p_profile_id: string
+        }
+        Returns: undefined
+      }
       get_email_from_contact: { Args: { p_contact: string }; Returns: string }
       get_server_time: { Args: never; Returns: string }
       is_ceo_or_hr: { Args: never; Returns: boolean }
       is_office_staff: { Args: never; Returns: boolean }
       is_on_schedule: { Args: { p_schedule_id: string }; Returns: boolean }
+      login_pin_status: { Args: { p_profile_id: string }; Returns: Json }
       match_documents: {
         Args: {
           filter?: Json
@@ -1620,8 +1759,46 @@ export type Database = {
           similarity: number
         }[]
       }
+      match_phone: {
+        Args: {
+          p_device_id: string
+          p_device_name: string
+          p_profile_id: string
+        }
+        Returns: string
+      }
       my_role: { Args: never; Returns: string }
       normalize_ph_mobile: { Args: { p: string }; Returns: string }
+      phone_status: {
+        Args: { p_device_id: string; p_profile_id: string }
+        Returns: string
+      }
+      pin_sign_in: {
+        Args: {
+          p_contact: string
+          p_device_id: string
+          p_device_name: string
+          p_pin: string
+          p_request_change?: boolean
+        }
+        Returns: Json
+      }
+      register_my_phone: {
+        Args: { p_device_id: string; p_device_name: string }
+        Returns: string
+      }
+      request_my_phone_change: {
+        Args: { p_device_id: string; p_device_name: string }
+        Returns: undefined
+      }
+      reset_registered_phone: {
+        Args: { p_profile_id: string }
+        Returns: undefined
+      }
+      set_login_pin: {
+        Args: { p_pin: string; p_profile_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       pay_cycle_target: "15th" | "end_of_month" | "both"

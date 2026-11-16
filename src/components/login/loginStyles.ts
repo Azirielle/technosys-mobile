@@ -1,0 +1,72 @@
+// Styles shared by the sign-in forms (mobile number + PIN, email, and the other-phone notice).
+import { StyleSheet } from 'react-native';
+
+export const LOGIN_BRAND = { blue: '#1E3A8A', yellow: '#FBBF24', red: '#DC2626', green: '#059669' };
+
+export const getLoginStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: colors.card,
+      width: '100%',
+      padding: 24,
+      borderRadius: 24,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: colors.cardBorder,
+      shadowColor: isDark ? '#000' : LOGIN_BRAND.blue,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: isDark ? 0.3 : 0.1,
+      shadowRadius: 24,
+      elevation: 8,
+    },
+    title: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, textAlign: 'center' },
+    hint: { fontFamily: 'DMSans-Regular', fontSize: 13, color: colors.textMuted, textAlign: 'center', marginTop: 4, marginBottom: 20 },
+    label: { fontFamily: 'DMSans-Bold', fontSize: 13, color: colors.text, marginBottom: 8 },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.inputBg,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.inputBorder,
+      paddingHorizontal: 16,
+      marginBottom: 16,
+      height: 56,
+    },
+    inputWrapperError: { borderColor: LOGIN_BRAND.red },
+    inputIcon: { marginRight: 12 },
+    input: { flex: 1, fontFamily: 'DMSans-Regular', fontSize: 17, color: colors.text },
+    errorBox: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      backgroundColor: isDark ? 'rgba(220, 38, 38, 0.15)' : '#FEF2F2',
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 16,
+    },
+    errorText: { flex: 1, fontFamily: 'DMSans-Medium', fontSize: 13, lineHeight: 18, color: isDark ? '#FCA5A5' : LOGIN_BRAND.red },
+    button: {
+      backgroundColor: LOGIN_BRAND.blue,
+      borderRadius: 12,
+      height: 56,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    buttonDisabled: { opacity: 0.55 },
+    buttonText: { fontFamily: 'DMSans-Bold', fontSize: 16, color: LOGIN_BRAND.yellow },
+    secondaryButton: {
+      borderRadius: 12,
+      height: 52,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      marginTop: 10,
+    },
+    secondaryButtonText: { fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.text },
+    switchLink: { marginTop: 20, alignItems: 'center', paddingVertical: 8 },
+    switchHint: { fontFamily: 'DMSans-Regular', fontSize: 13, color: colors.textMuted },
+    switchText: { fontFamily: 'DMSans-Bold', fontSize: 14, color: isDark ? colors.brandBlue : LOGIN_BRAND.blue, marginTop: 2 },
+  });

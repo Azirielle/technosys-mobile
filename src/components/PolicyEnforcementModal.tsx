@@ -23,7 +23,7 @@ const BRAND = {
 interface PolicyEnforcementModalProps {
   visible: boolean;
   unacknowledgedPolicies: CompanyPolicy[];
-  reason: 'post_punch' | 'module_access' | 'initial_login';
+  reason: 'post_punch';
   onReview: (policy: CompanyPolicy) => void;
   onDismiss: () => void;
 }
@@ -41,44 +41,17 @@ export default function PolicyEnforcementModal({
 
   const targetPolicy = unacknowledgedPolicies[0];
 
-  const getReasonMeta = () => {
-    switch (reason) {
-      case 'post_punch':
-        return {
-          title: 'Shift Verified • Policy Update Required',
-          subtitle: 'Active Attendance Safeguard',
-          badgeText: 'Punch Accepted',
-          badgeColor: BRAND.green,
-          badgeBg: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
-          description:
-            'Your attendance punch has been recorded. However, TechnoCycle has updated its mandatory field operations regulations. Please review and acknowledge this update.',
-          dismissText: 'Remind Me After Shift',
-        };
-      case 'module_access':
-        return {
-          title: 'Policy Acknowledgment Required',
-          subtitle: 'Operational Compliance Gate',
-          badgeText: 'Action Blocked',
-          badgeColor: BRAND.red,
-          badgeBg: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
-          description:
-            'Access to secondary operational modules (My Tools, File Leave, Timesheets) requires signed compliance with the latest TechnoCycle administrative policies.',
-          dismissText: 'Return to Operations',
-        };
-      case 'initial_login':
-      default:
-        return {
-          title: 'Mandatory Policy Acknowledgment',
-          subtitle: 'TechnoCycle Onboarding & Compliance',
-          badgeText: 'Mandatory',
-          badgeColor: BRAND.yellow,
-          badgeBg: isDark ? 'rgba(251, 191, 36, 0.2)' : '#FEF3C7',
-          description:
-            'New administrative guidelines have taken effect. Please review and sign the policy terms to ensure alignment with DOLE standards.',
-          dismissText: 'Review Later',
-        };
-    }
-  };
+  // Shown after a time-in when a must-read company policy isn't signed yet. Never blocks anything.
+  // (The app rules, Terms and Privacy, are agreed to once in first-time setup.)
+  const getReasonMeta = () => ({
+    title: 'Time-in saved',
+    subtitle: 'One more thing',
+    badgeText: 'Timed in',
+    badgeColor: BRAND.green,
+    badgeBg: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
+    description: 'There is a company policy you haven’t read yet. It only takes a minute.',
+    dismissText: 'Later',
+  });
 
   const meta = getReasonMeta();
 
@@ -149,7 +122,7 @@ export default function PolicyEnforcementModal({
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Feather name="users" size={12} color={colors.textSubtle} style={{ marginRight: 4 }} />
               <Text style={[styles.policyMetaText, { color: colors.textSubtle }]}>
-                Scope: {targetPolicy.target_audience === 'all' ? 'All Staff' : 'Technicians'}
+                For {targetPolicy.target_audience === 'all' ? 'everyone' : 'field staff'}
               </Text>
             </View>
           </View>
@@ -163,7 +136,7 @@ export default function PolicyEnforcementModal({
             activeOpacity={0.8}
           >
             <Feather name="file-text" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-            <Text style={styles.primaryBtnText}>Review & Sign Policy</Text>
+            <Text style={styles.primaryBtnText}>Read it</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

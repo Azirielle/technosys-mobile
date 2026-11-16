@@ -1,337 +1,171 @@
+// Sign-in page. Technicians see mobile number + PIN first; "Sign in with email instead" is below it.
+// Nobody gets into the app until this phone is checked against their registered phone.
+// After signing in, first-time setup (app/setup/) runs for whatever is still left on this phone.
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter as useExpoRouter } from 'expo-router';
-import { supabase } from '../lib/supabase';
+import { useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as SplashScreen from 'expo-splash-screen';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TouchableOpacity, 
-  SafeAreaView, 
-  TextInput, 
-  Alert, 
-  ActivityIndicator, 
-  Image 
+import {
+  StyleSheet, Text, View, TouchableOpacity, Alert, Image, KeyboardAvoidingView, ScrollView, Platform,
+  ActivityIndicator,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../lib/supabase';
 import { useAppTheme } from '../hooks/use-theme';
 import PolicyReaderModal, { CompanyPolicy } from '../components/PolicyReaderModal';
-import { formatMobileError } from '../lib/errorSanitizer';
+import PhoneSignInForm from '../components/login/PhoneSignInForm';
+import EmailSignInForm from '../components/login/EmailSignInForm';
+import OtherPhoneNotice from '../components/login/OtherPhoneNotice';
+import { checkThisPhone, signInWithPin, requestPhoneChangeAndSignOut } from '../lib/signIn';
+import { loadPendingSteps, stepRoute } from '../lib/setup';
 
-const BRAND = {
-  blue: '#1E3A8A',
-  yellow: '#FBBF24',
-  green: '#10B981',
-  lightBg: '#F8FAFC'
-};
+type Screen =
+  | { name: 'phone' }
+  | { name: 'email' }
+  | { name: 'other_phone'; via: 'pin'; mobile: string; pin: string }
+  | { name: 'other_phone'; via: 'email' };
 
-export default function RootLoginScreen() {
-  const router = useExpoRouter();
+export default function SignInPage() {
+  const router = useRouter();
   const { colors, isDark } = useAppTheme();
-  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
-  const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [legalModalPolicy, setLegalModalPolicy] = useState<CompanyPolicy | null>(null);
-  const [legalModalVisible, setLegalModalVisible] = useState(false);
-  const [loadingPolicy, setLoadingPolicy] = useState(false);
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [screen, setScreen] = useState<Screen>({ name: 'phone' });
+  const [legalPolicy, setLegalPolicy] = useState<CompanyPolicy | null>(null);
+  const [opening, setOpening] = useState(false);
+
+  // Signed in on the right phone: finish whatever setup is left, then open the app.
+  const openApp = async () => {
+    setOpening(true);
+    const steps = await loadPendingSteps().catch(() => []);
+    router.replace(steps.length ? stepRoute(steps[0]) : ('/(tabs)' as Href));
+    setTimeout(() => SplashScreen.hideAsync().catch(() => {}), 120);
+  };
+
+  // Already signed in on this phone: check it's still the registered phone (it may have been switched by HR).
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const phone = await checkThisPhone();
+        if (phone !== 'other_phone') return openApp();
+        setScreen({ name: 'other_phone', via: 'email' }); // keeps the session so they can ask HR
+      }
+      setCheckingSession(false);
+      SplashScreen.hideAsync().catch(() => {});
+    })();
+  }, []);
 
   const openPublicPolicy = async (policyId: 'terms_of_service' | 'privacy_policy') => {
-    setLoadingPolicy(true);
     try {
+      // Newest active version (ids change with each version, e.g. terms_of_service_rev_v1_1)
       const { data, error } = await supabase
         .from('policies')
         .select('*')
-        .eq('id', policyId)
+        .like('id', `${policyId}%`)
         .eq('is_active', true)
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .limit(1)
         .maybeSingle();
-
-      if (error || !data) {
-        Alert.alert('Notice', 'Policy document could not be loaded. Please ensure you are connected to the network.');
-        return;
-      }
-      setLegalModalPolicy(data as CompanyPolicy);
-      setLegalModalVisible(true);
-    } catch (e) {
-      Alert.alert('Notice', 'Unable to fetch policy at this time.');
-    } finally {
-      setLoadingPolicy(false);
+      if (error || !data) throw new Error('not found');
+      setLegalPolicy(data as CompanyPolicy);
+    } catch {
+      Alert.alert('Not available', "Couldn't open this page. Check your signal and try again.");
     }
   };
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.replace('/(tabs)');
-        // Allow tabs to mount before dismissing splash screen
-        setTimeout(() => {
-          SplashScreen.hideAsync().catch(() => {});
-        }, 120);
-      } else {
-        setLoading(false);
-        SplashScreen.hideAsync().catch(() => {});
-      }
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        router.replace('/(tabs)');
-        SplashScreen.hideAsync().catch(() => {});
-      }
-    });
-    
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
-
-  // Sign in with a mobile number (09123456789 / +639123456789) or a username, plus the password from HR.
-  const handleLogin = async () => {
-    setLoginError(null);
-    const input = identifier.trim();
-    if (!input || !password) {
-      setLoginError('Enter your mobile number or username, and your password.');
-      return;
-    }
-    setLoading(true);
-
-    try {
-      let email = input.toLowerCase();
-      const digits = input.replace(/\D/g, '');
-      const looksLikePhone = /^[+\d\s-]+$/.test(input) && digits.length >= 10;
-
-      if (looksLikePhone) {
-        if (!/^(09\d{9}|639\d{9}|9\d{9})$/.test(digits)) {
-          setLoginError('Enter an 11-digit mobile number, e.g. 09123456789.');
-          setLoading(false);
-          return;
-        }
-        const { data: found, error: rpcError } = await supabase.rpc('get_email_from_contact', { p_contact: input });
-        if (rpcError || !found) {
-          setLoginError('This number is not registered. Please contact HR.');
-          setLoading(false);
-          return;
-        }
-        email = found;
-      } else if (!email.includes('@')) {
-        email = `${email}@technocycle.ph`;
-      }
-
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        setLoginError(formatMobileError(error, 'Wrong mobile number, username or password.'));
-        setLoading(false);
-      }
-    } catch (err) {
-      setLoginError('Could not reach the server. Please check your connection.');
-      setLoading(false);
-    }
+  const backToSignIn = async () => {
+    if (screen.name === 'other_phone' && screen.via === 'email') await supabase.auth.signOut().catch(() => {});
+    setScreen({ name: 'phone' });
   };
 
-  if (loading) {
-    return null;
+  const requestChange = async (): Promise<boolean> => {
+    if (screen.name !== 'other_phone') return false;
+    if (screen.via === 'email') return requestPhoneChangeAndSignOut();
+    const result = await signInWithPin(screen.mobile, screen.pin, true);
+    return !result.ok && result.reason === 'change_requested';
+  };
+
+  if (checkingSession) return null;
+  if (opening) {
+    return (
+      <View style={[styles.page, { justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.brandBlue} />
+      </View>
+    );
   }
 
   return (
-    <View style={styles.masterContainer}>
+    <View style={styles.page}>
       <LinearGradient
         colors={isDark ? ['#0B0F17', '#131B26', '#0B0F17'] : ['#FFFFFF', '#F8FAFC', '#E2E8F0']}
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
-          <Image 
-            source={require('../../assets/logo.png')} 
-            style={styles.logo}
-          />
-          <Text style={styles.title}>TechnoCycle</Text>
-          <Text style={styles.subtitle}>Field Service Operations</Text>
+      <SafeAreaView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <Image source={require('../../assets/logo.png')} style={styles.logo} />
+            <Text style={styles.title}>TechnoCycle</Text>
+            <Text style={styles.subtitle}>Field Service Operations</Text>
 
-          <View style={styles.inputCard}>
-            
-            <Text style={styles.methodTitle}>Sign In</Text>
-            {loginError && <Text style={{color: '#EF4444', marginBottom: 12, textAlign: 'center', fontFamily: 'DMSans-Medium'}}>{loginError}</Text>}
-            <View style={styles.inputWrapper}>
-              <Feather name="user" size={20} color={colors.textMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Mobile number or username"
-                placeholderTextColor={colors.textSubtle}
-                value={identifier}
-                onChangeText={setIdentifier}
-                autoCapitalize="none"
-                autoCorrect={false}
+            {screen.name === 'phone' && (
+              <PhoneSignInForm
+                colors={colors}
+                isDark={isDark}
+                onSignedIn={openApp}
+                onOtherPhone={(mobile, pin) => setScreen({ name: 'other_phone', via: 'pin', mobile, pin })}
+                onUseEmail={() => setScreen({ name: 'email' })}
               />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor={colors.textSubtle}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                onSubmitEditing={handleLogin}
+            )}
+            {screen.name === 'email' && (
+              <EmailSignInForm
+                colors={colors}
+                isDark={isDark}
+                onSignedIn={openApp}
+                onOtherPhone={() => setScreen({ name: 'other_phone', via: 'email' })}
+                onUsePhone={() => setScreen({ name: 'phone' })}
               />
+            )}
+            {screen.name === 'other_phone' && (
+              <OtherPhoneNotice colors={colors} isDark={isDark} onRequest={requestChange} onBack={backToSignIn} />
+            )}
+
+            <View style={styles.legal}>
+              <View style={styles.legalLinks}>
+                <TouchableOpacity onPress={() => openPublicPolicy('terms_of_service')}>
+                  <Text style={styles.legalLink}>Terms of Service</Text>
+                </TouchableOpacity>
+                <Text style={styles.legalText}>•</Text>
+                <TouchableOpacity onPress={() => openPublicPolicy('privacy_policy')}>
+                  <Text style={styles.legalLink}>Privacy Policy</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-
-            <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} activeOpacity={0.8}>
-              <Text style={styles.loginBtnText}>Sign In</Text>
-            </TouchableOpacity>
-
-          </View>
-
-          {/* Legal Compliance Footer Links */}
-          <View style={styles.legalFooter}>
-            <Text style={[styles.legalText, { color: colors.textMuted }]}>
-              By signing in, you agree to TechnoCycle's
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 }}>
-              <TouchableOpacity onPress={() => openPublicPolicy('terms_of_service')} disabled={loadingPolicy}>
-                <Text style={[styles.legalLink, { color: isDark ? colors.brandBlue : BRAND.blue }]}>Terms of Service</Text>
-              </TouchableOpacity>
-              <Text style={{ color: colors.textSubtle }}>•</Text>
-              <TouchableOpacity onPress={() => openPublicPolicy('privacy_policy')} disabled={loadingPolicy}>
-                <Text style={[styles.legalLink, { color: isDark ? colors.brandBlue : BRAND.blue }]}>Privacy Policy</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
 
       <PolicyReaderModal
-        visible={legalModalVisible}
-        policy={legalModalPolicy}
+        visible={!!legalPolicy}
+        policy={legalPolicy}
         isAcknowledged={false}
-        readOnly={true}
-        onClose={() => setLegalModalVisible(false)}
+        readOnly
+        onClose={() => setLegalPolicy(null)}
       />
     </View>
   );
 }
 
-const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.bg,
-  },
-  masterContainer: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  logo: {
-    width: 100,
-    height: 100,
-    resizeMode: 'contain',
-    marginBottom: 24,
-  },
-  title: {
-    fontFamily: 'DMSans-Bold',
-    fontSize: 32,
-    color: colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 16,
-    color: colors.textMuted,
-    marginBottom: 40,
-  },
-  inputCard: {
-    backgroundColor: colors.card,
-    width: '100%',
-    padding: 24,
-    borderRadius: 24,
-    borderWidth: isDark ? 1 : 0,
-    borderColor: colors.cardBorder,
-    shadowColor: isDark ? '#000' : BRAND.blue,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: isDark ? 0.3 : 0.1,
-    shadowRadius: 24,
-    elevation: 8,
-  },
-  methodTitle: {
-    fontFamily: 'DMSans-Bold',
-    fontSize: 18,
-    color: colors.text,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.inputBg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    height: 56,
-  },
-  inputIcon: {
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
-    fontFamily: 'DMSans-Regular',
-    fontSize: 16,
-    color: colors.text,
-  },
-  loginBtn: {
-    backgroundColor: BRAND.blue,
-    borderRadius: 12,
-    height: 56,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    shadowColor: BRAND.blue,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  loginBtnText: {
-    fontFamily: 'DMSans-Bold',
-    fontSize: 16,
-    color: BRAND.yellow,
-  },
-  switchBtn: {
-    marginTop: 24,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  switchBtnText: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 14,
-    color: isDark ? colors.brandBlue : BRAND.blue,
-  },
-  legalFooter: {
-    marginTop: 24,
-    alignItems: 'center',
-  },
-  legalText: {
-    fontFamily: 'DMSans-Regular',
-    fontSize: 12,
-  },
-  legalLink: {
-    fontFamily: 'DMSans-Bold',
-    fontSize: 12,
-    textDecorationLine: 'underline',
-  },
-});
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    page: { flex: 1, backgroundColor: colors.bg },
+    content: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 32 },
+    logo: { width: 88, height: 88, resizeMode: 'contain', marginBottom: 16 },
+    title: { fontFamily: 'DMSans-Bold', fontSize: 30, color: colors.text, marginBottom: 4 },
+    subtitle: { fontFamily: 'DMSans-Medium', fontSize: 15, color: colors.textMuted, marginBottom: 28 },
+    legal: { marginTop: 24, alignItems: 'center' },
+    legalText: { fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted },
+    legalLinks: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
+    legalLink: { fontFamily: 'DMSans-Bold', fontSize: 12, textDecorationLine: 'underline', color: colors.brandBlue },
+  });
