@@ -109,6 +109,22 @@ export async function getMyJobs(): Promise<MyJobs> {
   };
 }
 
+export type HomeJob = Job & { geofence_radius: number | null };
+
+/** Home's job (and the time-in site): today's job, or the next one. The first job that hasn't ended before today. */
+export async function getHomeJob(): Promise<HomeJob | null> {
+  const todayStart = new Date(Date.parse(`${manilaDay(new Date())}T00:00:00+08:00`)).toISOString();
+  const { data } = await supabase
+    .from('schedules')
+    .select('id, technician_id, client_name, location, start_time, end_time, status, assignment_type, geofence_lat, geofence_lon, geofence_radius, is_vip_hook, cancellation_reason')
+    .neq('status', 'cancelled')
+    .or(`end_time.gte.${todayStart},start_time.gte.${todayStart}`)
+    .order('start_time', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (data as HomeJob | null) ?? null;
+}
+
 /** Calls `onChange` when the office edits any job you can see (moves, cancels, adds). Returns the unsubscribe. */
 export function watchMyJobs(onChange: () => void): () => void {
   const channel = supabase

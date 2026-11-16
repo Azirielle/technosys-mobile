@@ -1,5 +1,5 @@
 // Leave: your requests (waiting, approved, declined with HR's reason) and filing a new one. A sick leave needs a
-// medical certificate photo, uploaded to the "leaves" bucket and linked on the request for HR.
+// medical certificate photo, uploaded to the private "leaves" bucket; the request keeps its path for HR.
 import { supabase } from './supabase';
 import { uploadPhoto } from './photoUpload';
 
@@ -42,7 +42,7 @@ export async function fileLeave(input: FileLeaveInput): Promise<FileLeaveResult>
   if (input.certificateUri) {
     const path = `${user.id}/certificate-${Date.now()}.jpg`;
     try { await uploadPhoto('leaves', path, input.certificateUri); } catch { return { ok: false, reason: 'upload' }; }
-    attachment = supabase.storage.from('leaves').getPublicUrl(path).data.publicUrl;
+    attachment = path; // the bucket is private: HR opens it with a signed link
   }
   const { error } = await supabase.from('leaves').insert({
     technician_id: user.id, leave_type: input.type, start_date: input.start, end_date: input.end,

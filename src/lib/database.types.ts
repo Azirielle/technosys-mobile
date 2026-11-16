@@ -370,7 +370,6 @@ export type Database = {
         Row: {
           contact_number: string
           created_at: string
-          daily_rate: number
           emergency_contact: string | null
           full_name: string
           id: string
@@ -381,7 +380,6 @@ export type Database = {
         Insert: {
           contact_number: string
           created_at?: string
-          daily_rate?: number
           emergency_contact?: string | null
           full_name: string
           id?: string
@@ -392,7 +390,6 @@ export type Database = {
         Update: {
           contact_number?: string
           created_at?: string
-          daily_rate?: number
           emergency_contact?: string | null
           full_name?: string
           id?: string
@@ -585,7 +582,6 @@ export type Database = {
           holiday_date: string
           id: string
           is_active: boolean
-          multiplier: number
           name: string
         }
         Insert: {
@@ -593,7 +589,6 @@ export type Database = {
           holiday_date: string
           id?: string
           is_active?: boolean
-          multiplier?: number
           name: string
         }
         Update: {
@@ -601,7 +596,6 @@ export type Database = {
           holiday_date?: string
           id?: string
           is_active?: boolean
-          multiplier?: number
           name?: string
         }
         Relationships: []

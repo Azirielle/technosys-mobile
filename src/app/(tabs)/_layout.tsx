@@ -29,7 +29,7 @@ export default function TabsLayout() {
         onAsk={() => {
           // Ask Techy still lives on Home (redesigned in its own phase)
           router.navigate('/(tabs)' as Href);
-          setTimeout(() => sendHomeAction('support'), 60);
+          setTimeout(() => sendHomeAction({ kind: 'support' }), 60);
         }}
       />
     </View>
