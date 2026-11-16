@@ -13,7 +13,7 @@ smoothly even on cheap Android phones. Presets live in `src/ui/motion.ts`; scree
 | `base` | 220 ms | cards appearing, color fills, sheets |
 | `slow` | 350 ms | success check, color wave |
 | `spring` | damping 16, stiffness 260 | press release, toggles, expanding button |
-| `stagger` | 40 ms between items, max 6 items | lists and grids arriving |
+| `stagger` | **not used** (Andrew, 16 Nov: everything on a screen arrives at the same moment) | — |
 
 Easing for fades and slides: ease-out (`Easing.out(Easing.cubic)`).
 
@@ -24,9 +24,9 @@ Easing for fades and slides: ease-out (`Easing.out(Easing.cubic)`).
 | 1 | **Press feedback** | every button, card and row | shrinks to 97% in `instant`, springs back; light haptic tap on main actions | pin 2 |
 | 2 | **Interactive card fill** | choosing a leave type, a tool problem, setup choices, filter chips | background fills with brand-tint (or the area color), icon chip turns solid, check appears; `base` | pin 1 |
 | 3 | **Expanding action button** | "New request" in Inbox and Me → My requests | springs open into 4 choices (Leave, Time correction, Tool problem, Something else), each pops in 40 ms after the last; tap outside or Back collapses | pin 2 |
-| 4 | **Staggered arrival** | Home cards, DTR days, Jobs list, My tools | each item fades in and rises 8 px, `base`, 40 ms apart; only the first 6 items, the rest just appear | pins 1 and 3 |
+| 4 | **Arrival** | Home, DTR, Jobs, Me | the whole screen fades in and rises 6 px together, `base`, no delay between items (`arrive()`); coming back to a tab doesn't replay it | pins 1 and 3 |
 | 5 | **Screen push** | opening any detail | native stack slide from the right (Android back goes back); content then uses #4 | pins 1 and 3 |
-| 6 | **Tab switch** | bottom tabs | content crossfades in `quick`; the active tab's pill slides under the new tab with `spring` | pin 2 |
+| 6 | **Tab switch** | bottom tabs | content switches instantly (no fade, Andrew 16 Nov); the pill slides to the tapped tab at once, 200 ms ease-out, no bounce | pin 2 |
 | 7 | **Collapsing header** | Home, DTR, Inbox | big title shrinks into a small top bar while scrolling | pin 1 |
 | 8 | **Short sheet** | quick choices (filters, confirm sign-out) | rises from the bottom with a dim backdrop, `base`. **Closes with a button or Back, never by dragging a scrolling sheet** (the 16 Nov jitter) | pin 3 |
 | 9 | **Skeleton loading** | every list and card that loads | grey shapes the same size as the real content, soft shimmer every 1.2 s; shown only if loading takes over 150 ms; crossfades to content in `quick` | Andrew's request |

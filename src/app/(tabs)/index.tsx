@@ -3,7 +3,7 @@ import RNModal from 'react-native-modal';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Animated, Easing, ActivityIndicator, ScrollView, Image, Alert, Platform, FlatList, TextInput, Linking } from 'react-native';
 import * as Updates from 'expo-updates';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -23,7 +23,7 @@ import { getJobCrew } from '../../lib/crew';
 import { jobTitle } from '../../lib/jobTitle';
 import { shiftBadge } from '../../lib/shiftStatus';
 import * as DocumentPicker from 'expo-document-picker';
-import { useFocusEffect } from 'expo-router';
+import { useFocusRefresh } from '../../lib/useFocusRefresh';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import SupportChatUI from '../../components/SupportChatUI';
 import { getNotifications } from '../../lib/notifications';
@@ -34,6 +34,12 @@ import { sanitizeNotification, formatRelativeTime } from '../../utils/notificati
 import PolicyReaderModal, { CompanyPolicy } from '../../components/PolicyReaderModal';
 import PolicyEnforcementModal from '../../components/PolicyEnforcementModal';
 import { formatMobileError } from '../../lib/errorSanitizer';
+import { onHomeAction } from '../../lib/homeActions';
+import { GlowScreen, techy } from '../../ui';
+import HomeBody from '../../components/home/HomeBody';
+
+// Midnight today in Manila (UTC+8), as an ISO time
+const manilaTodayStartIso = () => new Date(Date.parse(new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10) + 'T00:00:00Z') - 8 * 3600000).toISOString();
 
 const { width, height } = Dimensions.get('window');
 
@@ -124,6 +130,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 };
 export default function HomeScreen() {
   const router = useRouter();
+  // Job details is its own screen now (app/job/[id].tsx); without a job, the Jobs tab
+  const openJobDetails = () => { if (schedule?.id) router.push(`/job/${schedule.id}` as Href); else router.navigate('/(tabs)/jobs' as Href); };
   const pushNotificationState = usePushNotifications();
   const { themeMode, isDark, language, colors, setThemeMode, setLanguage } = useAppTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -998,8 +1006,10 @@ export default function HomeScreen() {
           )
         `)
         // No technician_id filter: the access rules only return jobs this person is on (lead or crew).
+        // Today's job, or the next one: the first job that hasn't ended before today (Manila).
         .neq('status', 'cancelled')
-        .order('start_time', { ascending: false })
+        .or(`end_time.gte.${manilaTodayStartIso()},start_time.gte.${manilaTodayStartIso()}`)
+        .order('start_time', { ascending: true })
         .limit(1)
         .maybeSingle();
       
@@ -1114,8 +1124,7 @@ export default function HomeScreen() {
   }, []);
 
   // Task 28: Reactive Offline Queue Flush on Screen Focus
-  useFocusEffect(
-    React.useCallback(() => {
+  useFocusRefresh(() => {
       syncQueue.syncPendingQueue().then(res => {
         if (res.syncedCount > 0) {
           console.log(`[FOCUS SYNC] Synchronized ${res.syncedCount} queued punch(es) to HQ.`);
@@ -1124,8 +1133,7 @@ export default function HomeScreen() {
         console.warn("Focus sync error:", err);
       });
       fetchPoliciesAndAcks();
-    }, [])
-  );
+  });
 
   // Task 28: Stale Shift Reconciler Action
   const handleResolveStaleShift = async (customDepartureTime?: string) => {
@@ -1276,6 +1284,23 @@ export default function HomeScreen() {
 
     return () => { isMounted = false; };
   }, [selectedSchedule, dispatchVisible, schedule, profile?.id]);
+
+  // The Me tab and Techy open features that still live here (lib/homeActions.ts)
+  useEffect(() => onHomeAction((action) => {
+    switch (action) {
+      case 'tools': router.push('/tools' as Href); break;
+      case 'support': fetchTickets(); setSupportModalVisible(true); break;
+      case 'fileLeave': router.push('/leave-new' as Href); break;
+      case 'leaves': router.push('/leave' as Href); break;
+      case 'updates': router.push('/updates' as Href); break;
+      case 'notifications': setNotifVisible(true); break;
+      case 'timesheets': fetchTimeLogs(); setTimesheetModalVisible(true); break;
+      case 'forms': fetchPoliciesAndAcks(); setFormsModalVisible(true); break;
+      case 'preferences': setPreferencesModalVisible(true); break;
+      case 'logout': setLogoutModalVisible(true); break;
+      case 'clockIn': handleClockIn(); break;
+    }
+  }));
 
   const openMenu = () => { setMenuVisible(true); };
 
@@ -1473,6 +1498,7 @@ export default function HomeScreen() {
         }
 
         setLocationStatus('success');
+        techy.react('cheer');
         setHasClockedInToday(true);
         setActiveTimeLog(insertedLog);
         setTodayCompletedLog(null);
@@ -1622,6 +1648,7 @@ export default function HomeScreen() {
         }
 
         safeAlert('Timed in', 'Your time-in and selfie were sent. HR will check them because you were outside the site.');
+        techy.react('cheer');
         setClockInModal(false);
         setHasClockedInToday(true);
         setActiveTimeLog(insertedLog);
@@ -1733,6 +1760,7 @@ export default function HomeScreen() {
       setActiveTimeLog(insertedLog);
       setTodayCompletedLog(null);
       safeAlert('Timed in', 'Your time-in and selfie were sent. HR will check them because you were outside the site.');
+      techy.react('cheer');
     } catch (err: any) {
       console.error("Retry failed:", err);
       if (isWrongPhoneError(err)) {
@@ -1883,6 +1911,7 @@ export default function HomeScreen() {
                 });
               }
 
+              techy.react('wave');
               safeAlert(
                 "Shift Ended",
                 `You have successfully clocked out. Total logged time: ${totalHours} hours. Attendance synced with HQ.`
@@ -1907,237 +1936,25 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={[styles.masterContainer, { backgroundColor: colors.bg }]}>
-      <LinearGradient colors={isDark ? ['#0B0F17', '#111827', '#0B0F17'] : ['#FFFFFF', '#F8FAFC', '#E2E8F0']} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
-      <SafeAreaView style={styles.safeArea}>
-        {/* HEADER */}
-        <View style={styles.header}>
-          <TouchableOpacity style={[styles.headerBtnOutline, { backgroundColor: isDark ? colors.subCard : 'transparent' }]} onPress={() => setProfileModalVisible(true)}>
-            <Feather name="user" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Image source={require('../../../assets/logo.png')} style={{ width: 45, height: 45, resizeMode: 'contain' }} />
-            <Text style={[styles.headerTitle, { color: colors.text }]}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
-          </View>
-          <TouchableOpacity style={[styles.headerBtnOutline, { backgroundColor: isDark ? colors.subCard : 'transparent' }]} onPress={() => setNotifVisible(true)}>
-            <Feather name="bell" size={24} color={colors.text} />
-            {unreadCount > 0 && <View style={styles.notificationDot} />}
-          </TouchableOpacity>
-        </View>
-
-        {/* MAIN CONTENT */}
-        <View style={styles.mainContent}>
-          {activeTimeLog ? (
-            <View style={[styles.activeShiftCard, { backgroundColor: isDark ? colors.card : '#FFFFFF', borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#BBF7D0' }]}>
-              {/* Header: Live Badge + Clock-in Time */}
-              <View style={styles.activeShiftHeader}>
-                <View style={styles.activePulseBadge}>
-                  <Animated.View style={[styles.activePulseDot, { transform: [{ scale: auraAnim }] }]} />
-                  <Text style={styles.activePulseText}>SHIFT ACTIVE</Text>
-                </View>
-                <Text style={styles.activeShiftTime}>
-                  Started at {new Date(activeTimeLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-
-              {/* Body: Elapsed Hours & Status */}
-              <View style={styles.activeShiftBody}>
-                <View>
-                  <Text style={styles.activeShiftTitle}>Technician on Duty</Text>
-                  <Text style={styles.activeShiftElapsed}>
-                    Elapsed: {elapsedShiftTime || 'Calculating...'}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textSubtle }}>
-                    {activeTimeLog.geofence_status === 'inside' ? 'Verified on-site' : 'Photo override'}
-                  </Text>
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: shiftBadge(activeTimeLog.status, isDark).color }}>
-                    {shiftBadge(activeTimeLog.status, isDark).label}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Action: Clock Out Button */}
-              <TouchableOpacity 
-                style={styles.clockOutBtn} 
-                activeOpacity={0.8}
-                disabled={clockingOut}
-                onPress={handleClockOut}
-              >
-                {clockingOut ? (
-                  <ActivityIndicator size="small" color="#EF4444" />
-                ) : (
-                  <>
-                    <Feather name="log-out" size={16} color="#EF4444" />
-                    <Text style={styles.clockOutBtnText}>Clock Out (End Shift)</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          ) : todayCompletedLog ? (
-            <View style={[styles.completedShiftCard, { backgroundColor: isDark ? colors.card : '#FFFFFF', borderColor: isDark ? colors.cardBorder : '#E2E8F0' }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7', justifyContent: 'center', alignItems: 'center' }}>
-                    <Feather name="check" size={18} color="#10B981" />
-                  </View>
-                  <View>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.text }}>Shift Completed Today</Text>
-                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted }}>
-                      {new Date(todayCompletedLog.app_time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {todayCompletedLog.app_time_out ? new Date(todayCompletedLog.app_time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Logged'} ({todayCompletedLog.total_hours || '0'} hrs)
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity 
-                  style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: isDark ? colors.subCard : '#F1F5F9' }}
-                  onPress={handleClockIn}
-                >
-                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>+ New Shift</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textSubtle }}>
-                Attendance recorded and sent to HR.
-              </Text>
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.clockInCard, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.blue, borderColor: isDark ? colors.cardBorder : 'transparent', borderWidth: isDark ? 1 : 0 }]} 
-              activeOpacity={0.8} 
-              onPress={handleClockIn}
-            >
-              <View style={[styles.clockInIconContainer, { backgroundColor: isDark ? colors.subCard : '#EFF6FF' }]}>
-                <Ionicons name="scan-outline" size={32} color={colors.brandBlue} />
-              </View>
-              <View style={styles.clockInTextContainer}>
-                <Text style={[styles.clockInTitle, { color: colors.text }]}>{t('clock_in')}</Text>
-                <Text style={[styles.clockInSub, { color: colors.textMuted }]}>{t('tap_to_verify')}</Text>
-              </View>
-              <Feather name="arrow-right" size={24} color={colors.brandBlue} />
-            </TouchableOpacity>
-          )}
-
-          <View style={styles.bubbleRow}>
-            <TouchableOpacity style={styles.bubbleBtn} onPress={() => { checkPolicyGateBeforeAction(() => { fetchEquipment(); setEquipModalVisible(true); }); }}>
-              <View style={[styles.bubbleCircle, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.yellow }]}>
-                <Feather name="tool" size={24} color={BRAND.yellow} />
-              </View>
-              <Text style={[styles.bubbleText, { color: colors.text }]}>Equipment</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.bubbleBtn} onPress={() => { fetchTickets(); setSupportModalVisible(true); }}>
-              <View style={[styles.bubbleCircle, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.green }]}>
-                <Feather name="headphones" size={24} color={BRAND.green} />
-              </View>
-              <Text style={[styles.bubbleText, { color: colors.text }]}>Support</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.bubbleBtn} onPress={() => { fetchAnnouncements(); setUpdatesModalVisible(true); }}>
-              <View style={[styles.bubbleCircle, { backgroundColor: colors.card, shadowColor: isDark ? '#000' : BRAND.red }]}>
-                <Feather name="radio" size={24} color={BRAND.red} />
-              </View>
-              <Text style={[styles.bubbleText, { color: colors.text }]}>Updates</Text>
-            </TouchableOpacity>
-          </View>
-
-          {schedule ? (
-            <TouchableOpacity 
-              style={[styles.dispatchWidget, { backgroundColor: colors.card, borderColor: isDark ? colors.cardBorder : '#DBEAFE' }]} 
-              activeOpacity={0.8} 
-              onPress={() => setDispatchVisible(true)}
-            >
-              <View style={[styles.dispatchHeader, { backgroundColor: isDark ? colors.subCard : '#EFF6FF', borderBottomColor: isDark ? colors.cardBorder : '#DBEAFE' }]}>
-                <View style={[styles.dispatchIconContainer, { backgroundColor: isDark ? '#1E293B' : '#DBEAFE' }]}>
-                  <Feather name="navigation" size={16} color={colors.brandBlue} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.dispatchWidgetTitle, { fontFamily: activeFontBold, color: colors.brandBlue }]}>{t('priority_dispatch')}</Text>
-                  <Text style={[styles.dispatchWidgetSub, { fontFamily: activeFont, color: colors.textMuted }]}>{t('active_ticket')}</Text>
-                </View>
-                <Feather name="chevron-right" size={20} color={colors.brandBlue} />
-              </View>
-              <View style={styles.dispatchBody}>
-                <Text style={[styles.dispatchDestination, { color: colors.text }]} numberOfLines={2}>
-                  {schedule.location}
-                </Text>
-                <Text style={[styles.dispatchClient, { color: colors.textMuted }]}>{schedule.client_name}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', backgroundColor: colors.brandBlue }}>
-                <View style={[styles.dispatchAction, { flex: 1, backgroundColor: 'transparent' }]}>
-                  <Text style={[styles.dispatchActionText, { fontFamily: activeFontBold }]}>{t('view_dispatch_details')}</Text>
-                </View>
-                {/* Same Navigate as the clock-in map */}
-                <TouchableOpacity
-                  style={[styles.dispatchAction, { flexDirection: 'row', backgroundColor: 'transparent', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.25)' }]}
-                  onPress={() => openDirections(schedule.geofence_lat, schedule.geofence_lon, schedule.location)}
-                  accessibilityRole="button"
-                >
-                  <Feather name="navigation" size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
-                  <Text style={[styles.dispatchActionText, { fontFamily: activeFontBold }]}>{t('navigate')}</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0, shadowColor: isDark ? '#000' : '#C0C2C9' }]}>
-              <Text style={[styles.infoTitle, { fontFamily: activeFontBold, color: colors.text }]}>{t('priority_dispatch')}</Text>
-              <Text style={[styles.infoSub, { fontFamily: activeFont, color: colors.textMuted }]}>{t('no_active_deployments')}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* MENU PILL */}
-        <View style={styles.floatingMenuContainer}>
-          <TouchableOpacity style={styles.menuPill} activeOpacity={0.9} onPress={openMenu}>
-            <Text style={[styles.menuPillText, { fontFamily: activeFontBold }]}>{t('menu')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* MENU OVERLAY */}
-        <RNModal isVisible={menuVisible}   onBackdropPress={() => setMenuVisible(false)} onBackButtonPress={() => setMenuVisible(false)} onSwipeComplete={() => setMenuVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={[styles.menuOverlay, { opacity: 1 }]}>
-            <View style={styles.menuContent}>
-              <SafeAreaView style={{flex: 1}}>
-                <View style={styles.menuHeaderRow}>
-                  <View style={{width: 32}}/>
-                  <Text style={[styles.menuHeaderText, { fontFamily: activeFontBold }]}>{t('menu')}</Text>
-                  <TouchableOpacity onPress={closeMenu} style={styles.closeBtnTop}>
-                    <Feather name="x" size={24} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-                <ScrollView contentContainerStyle={styles.menuScroll} showsVerticalScrollIndicator={false}>
-                  <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>{t('my_operations')}</Text>
-                  <View style={styles.menuGrid}>
-                    <MenuGridItem icon="calendar" label={t('schedules')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { checkPolicyGateBeforeAction(() => { fetchSchedulesList(); setSchedulesModalVisible(true); }); }} />
-                    <MenuGridItem icon="tool" label={t('my_tools')} fontFamily={activeFontBold} color={BRAND.yellow} onPress={() => { checkPolicyGateBeforeAction(() => { fetchEquipment(); setEquipModalVisible(true); }); }} />
-                  </View>
-                  <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>My HR & Attendance</Text>
-                  <View style={styles.menuGrid}>
-                    <MenuGridItem icon="sun" label={t('file_leave')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { checkPolicyGateBeforeAction(() => { setMenuVisible(false); setAiInitialQuery('I would like to file a leave of absence.'); setTimeout(() => setSupportModalVisible(true), 500); }); }} />
-                    <MenuGridItem icon="clock" label={t('timesheets')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { checkPolicyGateBeforeAction(() => { fetchTimeLogs(); setTimesheetModalVisible(true); }); }} />
-                  </View>
-                  <Text style={[styles.categoryTitle, { fontFamily: activeFontBold }]}>Company & Support</Text>
-                  <View style={styles.menuGrid}>
-                    <MenuGridItem icon="bell" label={t('announcements')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { fetchAnnouncements(); setUpdatesModalVisible(true); }} />
-                    <MenuGridItem icon="help-circle" label={t('support')} fontFamily={activeFontBold} color={BRAND.red} onPress={() => { fetchTickets(); setSupportModalVisible(true); }} />
-                    <MenuGridItem icon="settings" label={t('preferences')} fontFamily={activeFontBold} color={BRAND.blue} onPress={() => { setMenuVisible(false); setPreferencesModalVisible(true); }} />
-                  </View>
-                  <View style={{height: 180}} />
-                </ScrollView>
-                <View style={styles.bottomCloseContainer}>
-                   <TouchableOpacity style={styles.flowerCloseBtn} onPress={closeMenu} activeOpacity={0.8}>
-                      <View style={{ width: 80, height: 80, justifyContent: 'center', alignItems: 'center' }}>
-                          <Animated.View style={[styles.flowerRing1, { position: 'absolute', transform: [{ scale: auraAnim }] }]} />
-                          <View style={[styles.flowerRing2, { position: 'absolute' }]}>
-                             <Text style={styles.flowerText}>Tap to{"\n"}close</Text>
-                          </View>
-                       </View>
-                   </TouchableOpacity>
-                </View>
-              </SafeAreaView>
-              </View>
-            </View>
-        </RNModal>
+    <GlowScreen>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <HomeBody
+          unread={unreadCount}
+          onBell={() => setNotifVisible(true)}
+          shift={activeTimeLog
+            ? { kind: 'working', startedAt: activeTimeLog.app_time_in, verified: activeTimeLog.geofence_status === 'inside' }
+            : todayCompletedLog
+            ? { kind: 'done', timeIn: todayCompletedLog.app_time_in, timeOut: todayCompletedLog.app_time_out, hours: todayCompletedLog.total_hours != null ? Number(todayCompletedLog.total_hours) : null }
+            : { kind: 'off', shiftStart: schedule?.start_time }}
+          busy={clockingOut}
+          onTimeIn={handleClockIn}
+          onTimeOut={handleClockOut}
+          job={schedule}
+          onRefresh={async () => { await fetchNotifications(); }}
+        />
 
         {/* VERIFICATION MODAL */}
-        <RNModal isVisible={clockInModal}   onBackdropPress={() => setClockInModal(false)} onBackButtonPress={() => setClockInModal(false)} onSwipeComplete={() => setClockInModal(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating isVisible={clockInModal}   onBackdropPress={() => setClockInModal(false)} onBackButtonPress={() => setClockInModal(false)} onSwipeComplete={() => setClockInModal(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.verificationOverlay}>
             <View style={styles.verificationCard}>
               {locationStatus === 'verifying' ? (
@@ -2257,7 +2074,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* CHUNK 45: CLOCK-IN FALLBACK & RESILIENCE ERROR MODAL */}
-        <RNModal
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
           isVisible={clockInErrorModalVisible}
           onBackdropPress={() => setClockInErrorModalVisible(false)}
           onBackButtonPress={() => setClockInErrorModalVisible(false)}
@@ -2365,7 +2182,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* STALE SHIFT RECONCILIATION MODAL */}
-        <RNModal
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
           isVisible={staleShiftModalVisible}
           onBackdropPress={() => setStaleShiftModalVisible(false)}
           onBackButtonPress={() => setStaleShiftModalVisible(false)}
@@ -2563,93 +2380,11 @@ export default function HomeScreen() {
           </View>
         </RNModal>
 
-        {/* PROFILE MODAL (Bottom Sheet) */}
-        <RNModal isVisible={profileModalVisible}   onBackdropPress={() => setProfileModalVisible(false)} onBackButtonPress={() => setProfileModalVisible(false)} onSwipeComplete={() => setProfileModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
-              {/* Handle */}
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
-              
-              {/* Header: Name, Role, Status */}
-              <View style={styles.profileHeader}>
-                <View style={[styles.profileAvatar, { backgroundColor: isDark ? colors.subCard : '#EFF6FF' }]}>
-                  <Feather name="user" size={32} color={colors.brandBlue} />
-                </View>
-                <View style={styles.profileInfo}>
-                  <Text style={[styles.profileName, { color: colors.text }]}>{profile ? profile.full_name : 'TechnoCycle'}</Text>
-                  <Text style={[styles.profileRole, { color: colors.textMuted }]}>{jobTitle(profile)}</Text>
-                </View>
-                <View style={[styles.statusBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-                  <View style={styles.statusDot} />
-                  <Text style={styles.statusText}>Online</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity style={styles.closeProfileBtn} onPress={() => setProfileModalVisible(false)}>
-                <Feather name="x" size={24} color={colors.textMuted} />
-              </TouchableOpacity>
-
-              {/* Menu Items */}
-              <View style={styles.profileMenu}>
-                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => { checkPolicyGateBeforeAction(() => { setProfileModalVisible(false); fetchTimeLogs(); setTimesheetModalVisible(true); }); }}>
-                  <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#E0F2FE' }]}>
-                    <Feather name="clock" size={20} color="#0EA5E9" />
-                  </View>
-                  <Text style={[styles.profileMenuText, { color: colors.text }]}>My DTR</Text>
-                  <Feather name="chevron-right" size={20} color={colors.textSubtle} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} onPress={() => { fetchPoliciesAndAcks(); setFormsModalVisible(true); }}>
-                  <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#FEF3C7' }]}>
-                    <Feather name="file-text" size={20} color="#F59E0B" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.profileMenuText, { color: colors.text }]}>Company Forms and handbooks</Text>
-                    {unacknowledgedPolicies.length > 0 && (
-                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: '#D97706', marginTop: 2 }}>
-                        {unacknowledgedPolicies.length} signature{unacknowledgedPolicies.length > 1 ? 's' : ''} pending
-                      </Text>
-                    )}
-                  </View>
-                  <Feather name="chevron-right" size={20} color={colors.textSubtle} />
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.profileMenuItem, { borderBottomColor: isDark ? colors.border : '#F1F5F9' }]} 
-                  onPress={() => { 
-                    setProfileModalVisible(false); 
-                    setTimeout(() => setPreferencesModalVisible(true), 250); 
-                  }}
-                >
-                  <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? colors.subCard : '#F1F5F9' }]}>
-                    <Feather name="sliders" size={20} color={colors.brandBlue} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.profileMenuText, { color: colors.text }]}>{t('preferences')}</Text>
-                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, marginTop: 1 }}>
-                      {language.toUpperCase()} • {themeMode === 'system' ? 'System' : isDark ? 'Dark' : 'Light'}
-                    </Text>
-                  </View>
-                  <Feather name="chevron-right" size={20} color={colors.textSubtle} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.profileMenuItem, { borderBottomWidth: 0, marginTop: 16 }]} onPress={() => setLogoutModalVisible(true)}>
-                  <View style={[styles.profileMenuIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
-                    <Feather name="log-out" size={20} color="#EF4444" />
-                  </View>
-                  <Text style={[styles.profileMenuText, { color: '#EF4444' }]}>Log Out</Text>
-                </TouchableOpacity>
-              </View>
-
-            </View>
-          </View>
-        </RNModal>
 
         {/* DTR MODAL */}
-        <RNModal isVisible={dtrModalVisible}   onBackdropPress={() => setDtrModalVisible(false)} onBackButtonPress={() => setDtrModalVisible(false)} onSwipeComplete={() => setDtrModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating isVisible={dtrModalVisible}   onBackdropPress={() => setDtrModalVisible(false)} onBackButtonPress={() => setDtrModalVisible(false)} onSwipeComplete={() => setDtrModalVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               <View style={styles.modalHeaderRow}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>My DTR</Text>
                 <TouchableOpacity onPress={() => setDtrModalVisible(false)}><Feather name="x" size={24} color={colors.textMuted} /></TouchableOpacity>
@@ -2677,19 +2412,18 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* POLICIES & HANDBOOKS MODAL */}
-        <RNModal
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
           isVisible={formsModalVisible}
           onBackdropPress={() => setFormsModalVisible(false)}
           onBackButtonPress={() => setFormsModalVisible(false)}
           onSwipeComplete={() => setFormsModalVisible(false)}
-          swipeDirection={['down']}
+          swipeDirection={undefined}
           propagateSwipe={true}
           swipeThreshold={50}
           style={{ margin: 0, justifyContent: 'flex-end' }}
         >
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '75%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               <View style={styles.modalHeaderRow}>
                 <View>
                   <Text style={[styles.modalTitle, { color: colors.text, fontFamily: activeFontBold }]}>
@@ -2829,20 +2563,18 @@ export default function HomeScreen() {
         />
 
         {/* UNIFIED CANONICAL PREFERENCES MODAL */}
-        <RNModal 
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating 
           isVisible={preferencesModalVisible}   
           onBackdropPress={() => setPreferencesModalVisible(false)} 
           onBackButtonPress={() => setPreferencesModalVisible(false)} 
           onSwipeComplete={() => setPreferencesModalVisible(false)} 
-          swipeDirection={['down']} 
+          swipeDirection={undefined} 
           propagateSwipe={true} 
           swipeThreshold={50} 
           style={{ margin: 0, justifyContent: 'flex-end' }}
         >
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { backgroundColor: colors.card, borderTopColor: colors.cardBorder, paddingBottom: 40 }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
-              
               <View style={styles.modalHeaderRow}>
                 <View>
                   <Text style={[styles.modalTitle, { fontFamily: activeFontBold, color: colors.text }]}>{t('preferences')}</Text>
@@ -2979,7 +2711,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* LOGOUT CONFIRMATION MODAL */}
-        <RNModal isVisible={logoutModalVisible}   onBackdropPress={() => setLogoutModalVisible(false)} onBackButtonPress={() => setLogoutModalVisible(false)} onSwipeComplete={() => setLogoutModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating isVisible={logoutModalVisible}   onBackdropPress={() => setLogoutModalVisible(false)} onBackButtonPress={() => setLogoutModalVisible(false)} onSwipeComplete={() => setLogoutModalVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.verificationOverlay}>
             <View style={[styles.verificationCard, { padding: 32, alignItems: 'center', backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: isDark ? 1 : 0 }]}>
               <View style={[styles.gridIconCircle, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2', width: 64, height: 64, borderRadius: 32, marginBottom: 16 }]}>
@@ -3000,10 +2732,9 @@ export default function HomeScreen() {
           </View>
         </RNModal>
         {/* NOTIFICATION DRAWER */}
-        <RNModal isVisible={notifVisible}   onBackdropPress={() => setNotifVisible(false)} onBackButtonPress={() => setNotifVisible(false)} onSwipeComplete={() => setNotifVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating isVisible={notifVisible}   onBackdropPress={() => setNotifVisible(false)} onBackButtonPress={() => setNotifVisible(false)} onSwipeComplete={() => setNotifVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '80%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
               <View style={styles.modalHeaderRow}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>Notifications</Text>
                 <TouchableOpacity onPress={() => setNotifVisible(false)}>
@@ -3059,10 +2790,10 @@ export default function HomeScreen() {
                           setSupportModalVisible(true);
                         } else if (notif.actionType === 'dispatch') {
                           setNotifVisible(false);
-                          setDispatchVisible(true);
+                          openJobDetails();
                         } else if (notif.actionType === 'tool') {
                           setNotifVisible(false);
-                          setEquipModalVisible(true);
+                          router.push('/tools' as Href);
                         } else {
                           setSelectedNotif(notif);
                         }
@@ -3144,218 +2875,8 @@ export default function HomeScreen() {
           </View>
         </RNModal>
 
-        {/* PRIORITY DISPATCH MODAL */}
-        <RNModal isVisible={dispatchVisible}   onBackdropPress={() => setDispatchVisible(false)} onBackButtonPress={() => setDispatchVisible(false)} onSwipeComplete={() => setDispatchVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-              <TouchableOpacity onPress={() => setDispatchVisible(false)} style={{ padding: 8, marginLeft: -8 }}>
-                <Feather name="arrow-left" size={24} color={colors.text} />
-              </TouchableOpacity>
-              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 18, color: colors.text, marginLeft: 8 }}>Dispatch Details</Text>
-            </View>
-            
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-              <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.cardBorder }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                  <View style={[styles.notifIconCircle, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE', marginRight: 16 }]}>
-                    <Feather name="navigation" size={24} color={colors.brandBlue} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.brandBlue, letterSpacing: 1, marginBottom: 4 }}>
-                      ACTIVE TICKET
-                    </Text>
-                    <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textSubtle }}>
-                      Assigned Field Dispatch
-                    </Text>
-                  </View>
-                </View>
-                
-                <View style={styles.detailDivider} />
-                
-                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, marginBottom: 8, marginTop: 8 }}>
-                  {schedule?.client_name || 'N/A'}
-                </Text>
-                
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
-                  <Feather name="map-pin" size={16} color={colors.textMuted} style={{ marginTop: 2, marginRight: 8 }} />
-                  <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22, flex: 1 }}>
-                    {schedule?.location || 'N/A'}
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 }}>
-                  <Feather name="info" size={16} color={colors.textMuted} style={{ marginTop: 2, marginRight: 8 }} />
-                  <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 15, color: colors.textMuted, lineHeight: 22, flex: 1 }}>
-                    {schedule?.remarks || 'Perform standard maintenance checks on site.'}
-                  </Text>
-                </View>
-
-                {/* ASSIGNED FIELD CREW SECTION */}
-                <View style={{ paddingTop: 16, borderTopWidth: 1, borderTopColor: isDark ? colors.border : '#F1F5F9', marginBottom: 16 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Feather name="users" size={16} color={colors.brandBlue} style={{ marginRight: 6 }} />
-                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 14, color: colors.text }}>
-                        Team
-                      </Text>
-                    </View>
-                    <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
-                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 11, color: colors.brandBlue }}>
-                        {activeCrew.length} {activeCrew.length === 1 ? 'person' : 'people'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {loadingCrew ? (
-                    <ActivityIndicator size="small" color={colors.brandBlue} style={{ marginVertical: 12 }} />
-                  ) : activeCrew.length === 0 ? (
-                    <View style={{ padding: 12, borderRadius: 12, backgroundColor: isDark ? colors.subCard : '#F8FAFC', borderWidth: 1, borderColor: colors.cardBorder }}>
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
-                        Just you on this job
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {activeCrew.map((member) => (
-                        <View
-                          key={member.id + member.type}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: 12,
-                            borderRadius: 12,
-                            backgroundColor: isDark ? colors.subCard : '#F8FAFC',
-                            borderWidth: 1,
-                            borderColor: colors.cardBorder,
-                          }}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                            <View
-                              style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 18,
-                                backgroundColor:
-                                  member.type === 'lead'
-                                    ? (isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7')
-                                    : member.type === 'helper'
-                                    ? (isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF')
-                                    : (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5'),
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginRight: 10,
-                              }}
-                            >
-                              <Feather
-                                name={member.type === 'lead' ? 'award' : member.type === 'helper' ? 'user-check' : 'briefcase'}
-                                size={16}
-                                color={member.type === 'lead' ? BRAND.yellow : member.type === 'helper' ? BRAND.blue : BRAND.green}
-                              />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 13, color: colors.text }} numberOfLines={1}>
-                                  {member.name}
-                                </Text>
-                                <View
-                                  style={{
-                                    backgroundColor:
-                                      member.type === 'lead'
-                                        ? BRAND.yellow
-                                        : member.type === 'helper'
-                                        ? BRAND.blue
-                                        : BRAND.green,
-                                    paddingHorizontal: 6,
-                                    paddingVertical: 1.5,
-                                    borderRadius: 6,
-                                  }}
-                                >
-                                  <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 9, color: '#fff' }}>
-                                    {member.role}
-                                  </Text>
-                                </View>
-                              </View>
-                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
-                                {member.phone || 'No phone registered'}
-                              </Text>
-                            </View>
-                          </View>
-
-                          {member.phone && member.id !== profile?.id ? (
-                            <TouchableOpacity
-                              style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 18,
-                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                borderWidth: 1,
-                                borderColor: BRAND.green + '40',
-                                marginLeft: 8,
-                              }}
-                              onPress={() => Linking.openURL(`tel:${member.phone?.replace(/[^0-9+]/g, '')}`)}
-                              activeOpacity={0.7}
-                            >
-                              <Feather name="phone" size={16} color={BRAND.green} />
-                            </TouchableOpacity>
-                          ) : member.id === profile?.id ? (
-                            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: isDark ? colors.subCard : '#F1F5F9', marginLeft: 8 }}>
-                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted }}>You</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-
-                {schedule && userLoc && (
-                  <View style={{ height: 260, borderRadius: 16, overflow: 'hidden', marginBottom: 16, marginTop: 8, borderWidth: 1, borderColor: colors.cardBorder }}>
-                    <MapView 
-                      style={{ flex: 1 }} 
-                      initialRegion={{ 
-                        latitude: ((userLoc.lat + (schedule.geofence_lat || userLoc.lat)) / 2), 
-                        longitude: ((userLoc.lon + (schedule.geofence_lon || userLoc.lon)) / 2), 
-                        latitudeDelta: Math.max(Math.abs((schedule.geofence_lat || userLoc.lat) - userLoc.lat) * 2.2, 0.01), 
-                        longitudeDelta: Math.max(Math.abs((schedule.geofence_lon || userLoc.lon) - userLoc.lon) * 2.2, 0.01) 
-                      }}
-                    >
-                      <Marker coordinate={{latitude: userLoc.lat, longitude: userLoc.lon}} title="Your Position" pinColor='blue' />
-                      {schedule.geofence_lat && schedule.geofence_lon && (
-                        <>
-                          <Marker coordinate={{latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}} title={schedule.client_name || schedule.title || 'Destination'} pinColor='red' />
-                          <Polyline coordinates={[{latitude: userLoc.lat, longitude: userLoc.lon}, {latitude: schedule.geofence_lat, longitude: schedule.geofence_lon}]} strokeColor={colors.brandBlue} strokeWidth={4} lineDashPattern={[10, 10]} />
-                        </>
-                      )}
-                    </MapView>
-                    {/* Floating distance pill */}
-                    <View style={{ position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(15, 23, 42, 0.85)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, flexDirection: 'row', alignItems: 'center' }}>
-                      <Feather name="navigation" size={12} color="#38BDF8" style={{ marginRight: 6 }} />
-                      <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '700' }}>
-                        {schedule.location || 'Dispatch Location'}
-                        {schedule.geofence_lat && userLoc ? ` • ${(getDistance({ latitude: userLoc.lat, longitude: userLoc.lon }, { latitude: schedule.geofence_lat, longitude: schedule.geofence_lon }) / 1000).toFixed(1)} km away` : ''}
-                      </Text>
-                    </View>
-                    <NavigateButton lat={schedule.geofence_lat} lon={schedule.geofence_lon} address={schedule.location} color={colors.brandBlue} />
-                  </View>
-                )}
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.brandBlue, marginTop: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} 
-                  onPress={() => openDirections(schedule?.geofence_lat, schedule?.geofence_lon, schedule?.location)}
-                >
-                  <Feather name="navigation" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.submitBtnText}>Navigate to site</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </RNModal>
-
         {/* NOTIFICATION DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <RNModal 
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating 
           isVisible={!!selectedNotif} 
           onBackdropPress={() => setSelectedNotif(null)} 
           onBackButtonPress={() => setSelectedNotif(null)} 
@@ -3450,7 +2971,7 @@ export default function HomeScreen() {
                       onPress={() => {
                         setSelectedNotif(null);
                         setNotifVisible(false);
-                        setDispatchVisible(true);
+                        openJobDetails();
                       }}
                     >
                       <Feather name="navigation" size={16} color="#fff" style={{ marginRight: 8 }} />
@@ -3463,155 +2984,8 @@ export default function HomeScreen() {
           </View>
         </RNModal>
 
-        {/* EQUIPMENT MODAL */}
-        <RNModal 
-          isVisible={equipModalVisible}   
-          onBackdropPress={() => setEquipModalVisible(false)} 
-          onBackButtonPress={() => setEquipModalVisible(false)} 
-          onSwipeComplete={() => setEquipModalVisible(false)} 
-          swipeDirection={['down']} 
-          propagateSwipe={true} 
-          swipeThreshold={50} 
-          style={{ margin: 0, justifyContent: 'flex-end' }}
-        >
-          <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '82%', backgroundColor: colors.bg }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
-              <View style={styles.modalHeaderRow}>
-                <View>
-                  <Text style={[styles.modalTitle, { color: colors.text }]}>My Equipment</Text>
-                  <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
-                    Assigned company tools & equipment custody
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => setEquipModalVisible(false)} style={{ padding: 4 }}>
-                  <Feather name="x" size={22} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-              
-              {toolsLoading ? (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color={BRAND.yellow} />
-                </View>
-              ) : (
-                <FlatList
-                  data={tools}
-                  keyExtractor={(item) => item.id}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 32, paddingTop: 12 }}
-                  ListEmptyComponent={() => (
-                    <View style={{ padding: 40, alignItems: 'center' }}>
-                      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: isDark ? '#1E293B' : '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-                        <Feather name="tool" size={28} color={colors.textMuted} />
-                      </View>
-                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 15, color: colors.text, textAlign: 'center', marginBottom: 6 }}>
-                        No Equipment Assigned
-                      </Text>
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 18 }}>
-                        You currently have no tools or machinery checked out under your custody.
-                      </Text>
-                    </View>
-                  )}
-                  renderItem={({ item }) => {
-                    const isCheckedOut = item.status === 'checked_out';
-                    const daysOut = item.handed_over_at
-                      ? Math.floor(Math.abs(Date.now() - new Date(item.handed_over_at).getTime()) / (1000 * 60 * 60 * 24))
-                      : 0;
-
-                    return (
-                      <View style={[
-                        styles.equipItem, 
-                        { 
-                          backgroundColor: colors.card, 
-                          borderColor: isCheckedOut ? (isDark ? '#334155' : '#E2E8F0') : (isDark ? '#1E293B' : '#F1F5F9'),
-                          opacity: isCheckedOut ? 1 : 0.8,
-                          marginBottom: 12,
-                          borderRadius: 16,
-                          padding: 14,
-                        }
-                      ]}>
-                        <View style={[styles.equipImagePlaceholder, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC' }]}>
-                          {item.tool_catalog?.image_url ? (
-                            <Image source={{ uri: item.tool_catalog.image_url }} style={styles.equipImg} />
-                          ) : (
-                            <Feather name="tool" size={24} color="#94A3B8" />
-                          )}
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                            <Text style={[styles.equipTitle, { color: colors.text, flex: 1 }]} numberOfLines={1}>
-                              {item.tool_catalog?.name || 'Equipment'}
-                            </Text>
-                            <View style={{
-                              paddingHorizontal: 8,
-                              paddingVertical: 2,
-                              borderRadius: 6,
-                              backgroundColor: isCheckedOut ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5') : (isDark ? '#334155' : '#F1F5F9'),
-                              borderWidth: 1,
-                              borderColor: isCheckedOut ? '#10B981' : '#CBD5E1',
-                            }}>
-                              <Text style={{
-                                fontSize: 10,
-                                fontFamily: 'DMSans-Bold',
-                                color: isCheckedOut ? '#10B981' : '#64748B',
-                              }}>
-                                {isCheckedOut ? 'IN CUSTODY' : item.status.toUpperCase()}
-                              </Text>
-                            </View>
-                          </View>
-
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                            {item.tool_catalog?.category && (
-                              <Text style={{ fontSize: 11, fontFamily: 'DMSans-Medium', color: colors.textMuted }}>
-                                {item.tool_catalog.category}
-                              </Text>
-                            )}
-                            {item.tool_catalog?.serial_number && (
-                              <Text style={{ fontSize: 10, fontFamily: 'DMSans-Medium', color: isDark ? '#94A3B8' : '#64748B', backgroundColor: isDark ? '#1E293B' : '#F1F5F9', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
-                                SN: {item.tool_catalog.serial_number}
-                              </Text>
-                            )}
-                          </View>
-
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                            <Text style={{ fontSize: 11, fontFamily: 'DMSans-Medium', color: colors.textMuted }}>
-                              Qty: {item.quantity || 1} • {isCheckedOut ? `${daysOut}d in custody` : `Returned ${item.returned_at ? new Date(item.returned_at).toLocaleDateString() : ''}`}
-                            </Text>
-
-                            {isCheckedOut && (
-                              <TouchableOpacity 
-                                onPress={() => handleReportToolIssue(item)}
-                                style={{
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  paddingHorizontal: 8,
-                                  paddingVertical: 3,
-                                  borderRadius: 8,
-                                  backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
-                                  borderWidth: 1,
-                                  borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#FEE2E2',
-                                }}
-                              >
-                                <Feather name="alert-circle" size={11} color="#EF4444" />
-                                <Text style={{ fontSize: 10, fontFamily: 'DMSans-Bold', color: '#EF4444' }}>
-                                  Report Issue
-                                </Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  }}
-                />
-              )}
-            </View>
-          </View>
-        </RNModal>
-
         {/* SUPPORT MODAL */}
-        <RNModal 
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating 
           isVisible={supportModalVisible}   
           onBackdropPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); setAiInitialQuery(''); setAiInitialTicketData(null); }} 
           onBackButtonPress={() => { setSupportModalVisible(false); setSelectedChatTicketId(null); setAiInitialQuery(''); setAiInitialTicketData(null); }} 
@@ -3630,7 +3004,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* SUPPORT TICKET DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <RNModal isVisible={!!selectedTicket}   onBackdropPress={() => setSelectedTicket(null)} onBackButtonPress={() => setSelectedTicket(null)} onSwipeComplete={() => setSelectedTicket(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating isVisible={!!selectedTicket}   onBackdropPress={() => setSelectedTicket(null)} onBackButtonPress={() => setSelectedTicket(null)} onSwipeComplete={() => setSelectedTicket(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 24 }}>
             {/* --- DETAILED VIEW: TICKET --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
@@ -3669,119 +3043,10 @@ export default function HomeScreen() {
           </View>
         </RNModal>
 
-        {/* UPDATES MODAL */}
-        <RNModal isVisible={updatesModalVisible}   onBackdropPress={() => setUpdatesModalVisible(false)} onBackButtonPress={() => setUpdatesModalVisible(false)} onSwipeComplete={() => setUpdatesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '85%' }]}>
-              <View style={styles.sheetHandle} />
-              <View style={styles.modalHeaderRow}>
-                <Text style={styles.modalTitle}>Company Updates</Text>
-                <TouchableOpacity onPress={() => setUpdatesModalVisible(false)}>
-                  <Feather name="x" size={24} color={colors.textSubtle} />
-                </TouchableOpacity>
-              </View>
-
-              {announcementsLoading ? (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color={BRAND.red} />
-                </View>
-              ) : (
-                <FlatList
-                  data={announcements}
-                  keyExtractor={(item) => item.id}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
-                  ListEmptyComponent={() => (
-                    <View style={{ padding: 32, alignItems: 'center' }}>
-                      <Feather name="radio" size={48} color={isDark ? '#334155' : '#CBD5E1'} style={{ marginBottom: 16 }} />
-                      <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: colors.textSubtle, textAlign: 'center' }}>
-                        No new announcements right now.
-                      </Text>
-                    </View>
-                  )}
-                  renderItem={({ item }) => {
-                    const isExpanded = !!expandedUpdates[item.id];
-                    const isLongText = (item.content || '').length > 150;
-                    const combinedText = ((item.title || '') + ' ' + (item.content || '')).toLowerCase();
-                    const isUrgent = combinedText.includes('urgent') || 
-                                     combinedText.includes('critical') ||
-                                     combinedText.includes('required') ||
-                                     combinedText.includes('important');
-
-                    return (
-                      <View style={styles.updateModernCard}>
-                        {/* Header: Avatar, Name, Priority Badge */}
-                        <View style={styles.updateHeader}>
-                          <View style={styles.updateAuthorRow}>
-                            <View style={styles.updateAvatar}>
-                              <Feather name="shield" size={18} color={colors.brandBlue} />
-                            </View>
-                            <View>
-                              <Text style={styles.updateAuthorName}>{item.profiles?.full_name || 'Operations HQ'}</Text>
-                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 11, color: colors.textSubtle }}>
-                                {formatRelativeTime(item.created_at)}
-                              </Text>
-                            </View>
-                          </View>
-                          
-                          <View style={[styles.updatePriorityBadge, {
-                            backgroundColor: isUrgent 
-                              ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2')
-                              : (isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF')
-                          }]}>
-                            <Text style={[styles.updatePriorityText, {
-                              color: isUrgent ? '#EF4444' : colors.brandBlue
-                            }]}>
-                              {isUrgent ? 'URGENT' : 'OFFICIAL'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {/* Title */}
-                        <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: colors.text, marginBottom: 8, lineHeight: 22 }}>
-                          {item.title}
-                        </Text>
-
-                        {/* Content Body */}
-                        <Text 
-                          style={{ fontFamily: 'DMSans-Regular', fontSize: 14, color: colors.textMuted, lineHeight: 22 }}
-                          numberOfLines={isExpanded ? undefined : 3}
-                        >
-                          {item.content}
-                        </Text>
-
-                        {/* Expand / Collapse toggle */}
-                        {isLongText && (
-                          <TouchableOpacity 
-                            style={styles.updateExpandBtn}
-                            onPress={() => {
-                              setExpandedUpdates(prev => ({ ...prev, [item.id]: !prev[item.id] }));
-                            }}
-                          >
-                            <Text style={styles.updateExpandText}>
-                              {isExpanded ? 'Show less' : 'Read full update'}
-                            </Text>
-                            <Feather name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.brandBlue} />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    );
-                  }}
-                />
-              )}
-            </View>
-          </View>
-        </RNModal>
-
-        
-
-
         {/* SCHEDULES MODAL (LIST VIEW) */}
-        <RNModal isVisible={schedulesModalVisible}   onBackdropPress={() => setSchedulesModalVisible(false)} onBackButtonPress={() => setSchedulesModalVisible(false)} onSwipeComplete={() => setSchedulesModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating isVisible={schedulesModalVisible}   onBackdropPress={() => setSchedulesModalVisible(false)} onBackButtonPress={() => setSchedulesModalVisible(false)} onSwipeComplete={() => setSchedulesModalVisible(false)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { height: '85%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
-              
               <View style={styles.modalHeaderRow}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>My Schedules</Text>
                 <TouchableOpacity onPress={() => setSchedulesModalVisible(false)}>
@@ -3854,7 +3119,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* SCHEDULES DETAILS MODAL (SEPARATED FOR ANIMATION) */}
-        <RNModal isVisible={!!selectedSchedule}   onBackdropPress={() => setSelectedSchedule(null)} onBackButtonPress={() => setSelectedSchedule(null)} onSwipeComplete={() => setSelectedSchedule(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating isVisible={!!selectedSchedule}   onBackdropPress={() => setSelectedSchedule(null)} onBackButtonPress={() => setSelectedSchedule(null)} onSwipeComplete={() => setSelectedSchedule(null)} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 20 }}>
             {/* --- DETAILED VIEW: SCHEDULE --- */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
@@ -4057,7 +3322,7 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* TIMESHEETS MODAL */}
-        <RNModal isVisible={timesheetModalVisible} onBackdropPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onBackButtonPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onSwipeComplete={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} swipeDirection={selectedTimeLog ? undefined : ['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating isVisible={timesheetModalVisible} onBackdropPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onBackButtonPress={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} onSwipeComplete={() => { if(selectedTimeLog) setSelectedTimeLog(null); else setTimesheetModalVisible(false); }} swipeDirection={undefined} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
           {selectedTimeLog ? (
             <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 24 }}>
               {/* --- DETAILED VIEW: TIMESHEET --- */}
@@ -4152,8 +3417,6 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.profileOverlay}>
               <View style={[styles.profileSheet, { height: '85%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
-                <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
-                
                 <View style={styles.modalHeaderRow}>
                   <Text style={[styles.modalTitle, { color: colors.text }]}>My Timesheets</Text>
                   <TouchableOpacity onPress={() => setTimesheetModalVisible(false)}>
@@ -4239,20 +3502,18 @@ export default function HomeScreen() {
         </RNModal>
 
         {/* CHUNK 46: SHIFT DISPUTE BOTTOM SHEET PICKER */}
-        <RNModal
+        <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
           isVisible={shiftDisputeModalVisible}
           onBackdropPress={() => setShiftDisputeModalVisible(false)}
           onBackButtonPress={() => setShiftDisputeModalVisible(false)}
           onSwipeComplete={() => setShiftDisputeModalVisible(false)}
-          swipeDirection={['down']}
+          swipeDirection={undefined}
           propagateSwipe={true}
           swipeThreshold={50}
           style={{ margin: 0, justifyContent: 'flex-end' }}
         >
           <View style={styles.profileOverlay}>
             <View style={[styles.profileSheet, { maxHeight: '80%', backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: isDark ? '#334155' : '#CBD5E1' }]} />
-              
               {/* Header */}
               <View style={styles.modalHeaderRow}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 }}>
@@ -4354,173 +3615,10 @@ export default function HomeScreen() {
           </View>
         </RNModal>
 
-        {/* LEAVE MODAL */}
-        <RNModal isVisible={leaveModalVisible}   onBackdropPress={() => setLeaveModalVisible(false)} onBackButtonPress={() => setLeaveModalVisible(false)} onSwipeComplete={() => setLeaveModalVisible(false)} swipeDirection={['down']} propagateSwipe={true} swipeThreshold={50} style={{ margin: 0, justifyContent: 'flex-end' }}>
-          <View style={styles.profileOverlay}>
-            <View style={[styles.profileSheet, { height: '85%' }]}>
-              <View style={styles.sheetHandle} />
-              
-              {createLeaveMode ? (
-                <>                  {/* --- CREATE LEAVE VIEW --- */}
-                  <View style={styles.modalHeaderRow}>
-                    <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => setCreateLeaveMode(false)}>
-                      <Feather name="arrow-left" size={20} color="#0F172A" />
-                      <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 16, color: '#0F172A', marginLeft: 8 }}>Back</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                    <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 24, color: '#0F172A', marginBottom: 24 }}>File Leave</Text>
-                    
-                    <Text style={styles.inputLabel}>Leave Type</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 24 }}>
-                      {['vacation', 'sick', 'emergency', 'unpaid'].map(type => (
-                        <TouchableOpacity
-                          key={type}
-                          style={[{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#E2E8F0', marginRight: 8, marginBottom: 8 }, newLeaveType === type && { backgroundColor: BRAND.blue, borderColor: BRAND.blue }]}
-                          onPress={() => setNewLeaveType(type)}
-                        >
-                          <Text style={[{ fontFamily: 'DMSans-Medium', fontSize: 14, color: '#64748B' }, newLeaveType === type && { color: '#fff' }]}>
-                            {type.charAt(0).toUpperCase() + type.slice(1)}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
 
-                    <Text style={styles.inputLabel}>Start Date</Text>
-                    <TouchableOpacity
-                      style={[styles.textInput, { justifyContent: 'center' }]}
-                      onPress={() => setShowStartDatePicker(true)}
-                    >
-                      <Text style={{ fontFamily: 'DMSans-Medium', color: newLeaveStartDate ? '#0F172A' : '#94A3B8' }}>
-                        {newLeaveStartDate || 'Select a start date'}
-                      </Text>
-                    </TouchableOpacity>
-                    {showStartDatePicker && (
-                      <DateTimePicker value={newLeaveStartDate ? new Date(newLeaveStartDate) : new Date()} minimumDate={new Date()}
-                        mode="date"
-                        display="default"
-                        onChange={(event, selectedDate) => {
-                          setShowStartDatePicker(Platform.OS === 'ios');
-                          if (selectedDate) {
-                            setNewLeaveStartDate(selectedDate.toISOString().split('T')[0]);
-                          }
-                        }}
-                      />
-                    )}
-
-                    <Text style={styles.inputLabel}>End Date</Text>
-                    <TouchableOpacity
-                      style={[styles.textInput, { justifyContent: 'center' }]}
-                      onPress={() => setShowEndDatePicker(true)}
-                    >
-                      <Text style={{ fontFamily: 'DMSans-Medium', color: newLeaveEndDate ? '#0F172A' : '#94A3B8' }}>
-                        {newLeaveEndDate || 'Select an end date'}
-                      </Text>
-                    </TouchableOpacity>
-                    {showEndDatePicker && (
-                      <DateTimePicker
-                        value={newLeaveEndDate ? new Date(newLeaveEndDate) : new Date()}
-                        mode="date"
-                        display="default"
-                        minimumDate={newLeaveStartDate ? new Date(newLeaveStartDate) : undefined}
-                        onChange={(event, selectedDate) => {
-                          setShowEndDatePicker(Platform.OS === 'ios');
-                          if (selectedDate) {
-                            setNewLeaveEndDate(selectedDate.toISOString().split('T')[0]);
-                          }
-                        }}
-                      />
-                    )}
-
-                    <Text style={styles.inputLabel}>Reason</Text>
-                    <TextInput
-                      style={[styles.textInput, { height: 100, textAlignVertical: 'top' }]}
-                      placeholder="Please explain why you need this leave..."
-                      placeholderTextColor="#94A3B8"
-                      multiline
-                      value={newLeaveReason}
-                      onChangeText={setNewLeaveReason} />
-
-                      {newLeaveType === 'sick' && (
-                        <View style={{ marginBottom: 16 }}>
-                          <Text style={styles.inputLabel}>Medical Certificate (Max 5MB) *</Text>
-                          <TouchableOpacity style={[styles.textInput, { justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }]} onPress={async () => { const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true }); if(!res.canceled) setLeaveFile(res.assets[0]); }}>
-                            <Feather name='upload-cloud' size={20} color='#94A3B8' style={{ marginRight: 8 }} />
-                            <Text style={{ fontFamily: 'DMSans-Medium', color: leaveFile ? '#0F172A' : '#94A3B8' }}>{leaveFile ? leaveFile.name : 'Tap to upload certificate'}</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-
-                      <TouchableOpacity style={[styles.submitBtn, { backgroundColor: BRAND.blue }]} onPress={submitLeaveRequest}>
-                      <Text style={styles.submitBtnText}>Submit Leave Request</Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </>
-              ) : (
-                <>                  {/* --- LIST VIEW --- */}
-                  <View style={styles.modalHeaderRow}>
-                    <Text style={styles.modalTitle}>My Leaves</Text>
-                    <TouchableOpacity onPress={() => setLeaveModalVisible(false)}>
-                      <Feather name="x" size={24} color="#64748B" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <TouchableOpacity style={[styles.submitBtn, { backgroundColor: BRAND.blue, marginBottom: 16, flexDirection: 'row', justifyContent: 'center' }]} onPress={() => setCreateLeaveMode(true)}>
-                    <Feather name="plus" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.submitBtnText}>File New Leave</Text>
-                  </TouchableOpacity>
-
-                  {leaveLoading ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                      <ActivityIndicator size="large" color={BRAND.blue} />
-                    </View>
-                  ) : (
-                    <FlatList
-                      data={leaveRequests}
-                      keyExtractor={(item) => item.id}
-                      showsVerticalScrollIndicator={false}
-                      contentContainerStyle={{ paddingBottom: 24, paddingTop: 16 }}
-                      ListEmptyComponent={() => (
-                        <View style={{ padding: 32, alignItems: 'center' }}>
-                          <Feather name="sun" size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
-                          <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 16, color: '#64748B', textAlign: 'center' }}>
-                            You have no leave requests.
-                          </Text>
-                        </View>
-                      )}
-                      renderItem={({ item }) => (
-                        <View style={styles.updateCard}>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.updateTitle}>{item.leave_type.charAt(0).toUpperCase() + item.leave_type.slice(1)} leave</Text>
-                              <Text style={styles.updateSub}>{new Date(item.start_date).toLocaleDateString()} - {new Date(item.end_date).toLocaleDateString()}</Text>
-                              <Text style={[styles.updateContent, { marginTop: 8 }]} numberOfLines={2}>{item.reason}</Text>
-                            </View>
-                            <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: item.status === 'approved' ? '#ECFDF5' : item.status === 'rejected' ? '#FEF2F2' : '#FFFBEB' }}>
-                              <Text style={{ fontFamily: 'DMSans-Medium', fontSize: 10, color: item.status === 'approved' ? BRAND.green : item.status === 'rejected' ? BRAND.red : '#B45309' }}>
-                                {item.status === 'approved' ? 'Approved' : item.status === 'rejected' ? 'Declined' : 'Waiting for HR'}
-                              </Text>
-                            </View>
-                          </View>
-                          {/* HR must give a reason when declining (leaves.rejection_reason, since 15 Nov) */}
-                          {item.status === 'rejected' && !!item.rejection_reason && (
-                            <View style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2' }}>
-                              <Text style={{ fontFamily: 'DMSans-Bold', fontSize: 12, color: BRAND.red, marginBottom: 2 }}>Why HR declined</Text>
-                              <Text style={{ fontFamily: 'DMSans-Regular', fontSize: 13, color: colors.text, lineHeight: 18 }}>{item.rejection_reason}</Text>
-                            </View>
-                          )}
-                        </View>
-                      )}
-                    />
-                  )}
-                </>
-              )}
-            </View>
-          </View>
-        </RNModal>
 
       </SafeAreaView>
-    </View>
+    </GlowScreen>
   );
 }
 
@@ -4544,7 +3642,7 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   headerTitle: { fontFamily: 'DMSans-Bold', fontSize: 20, color: colors.text, letterSpacing: -0.5 },
   notificationDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: BRAND.red },
-  mainContent: { paddingHorizontal: 24, flex: 1, paddingTop: 8 },
+  mainContent: { paddingHorizontal: 24, flex: 1, paddingTop: 8, paddingBottom: 110 },
   clockInCard: { backgroundColor: colors.card, borderRadius: 28, padding: 24, flexDirection: 'row', alignItems: 'center', shadowColor: isDark ? '#000' : BRAND.blue, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 24, elevation: 8, marginBottom: 40, borderWidth: isDark ? 1 : 0, borderColor: colors.cardBorder },
   clockInIconContainer: { width: 64, height: 64, borderRadius: 20, backgroundColor: isDark ? colors.subCard : '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
   clockInTextContainer: { flex: 1 },

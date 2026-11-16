@@ -2,7 +2,7 @@
 // older Android phones get plain translucent white instead (expo-blur 'dimezisBlurViewSdk31Plus'),
 // so it never slows a cheap phone down. Lists and reading cards use <Card>, not glass.
 import React from 'react';
-import { StyleProp, View, ViewStyle } from 'react-native';
+import { Platform, StyleProp, View, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useGlowTarget } from './Glow';
 import { useTokens } from './useTokens';
@@ -22,7 +22,8 @@ export default function Glass({ children, style, radius, intensity = 40 }: Props
         blurMethod={target ? 'dimezisBlurViewSdk31Plus' : 'none'}
         blurTarget={target ?? undefined}
       />
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.glass }} />
+      {/* Without blur behind it (Android, no glow) plain glass is too see-through over text: use near-solid card */}
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: !target && Platform.OS === 'android' ? c.card : c.glass, opacity: !target && Platform.OS === 'android' ? 0.96 : 1 }} />
       {children}
     </View>
   );

@@ -56,7 +56,7 @@ export default function PolicyEnforcementModal({
   const meta = getReasonMeta();
 
   return (
-    <RNModal
+    <RNModal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
       isVisible={visible}
       onBackdropPress={onDismiss}
       onBackButtonPress={onDismiss}

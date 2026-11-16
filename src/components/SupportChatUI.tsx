@@ -1263,7 +1263,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           </View>
         )}
 
-      <Modal 
+      <Modal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating 
         isVisible={historyModalVisible} 
         onBackdropPress={() => setHistoryModalVisible(false)}
         style={{ margin: 0, justifyContent: 'flex-end' }}
@@ -1385,7 +1385,7 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
       />
 
       {/* Fullscreen Image Lightbox Modal */}
-      <Modal
+      <Modal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
         isVisible={!!lightboxImage}
         onBackdropPress={() => setLightboxImage(null)}
         onBackButtonPress={() => setLightboxImage(null)}

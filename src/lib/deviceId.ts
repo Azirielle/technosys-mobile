@@ -1,37 +1,48 @@
-// This phone's id for the "one registered phone" rule. A random id is made once and kept in the
-// phone's secure storage (Android Keystore / iOS Keychain), so it can't be copied to another phone.
-// Uninstalling the app makes a new id: the technician then asks HR to approve the "new" phone.
+// This phone's id for the "one registered phone" rule.
+// It comes from the id the phone itself gives this app (Android ID / iOS vendor id), so it stays the
+// same after "Clear data" or reinstalling the app. Only a one-way scrambled copy (SHA-256) leaves the
+// phone, so the office can't use it to look up anything else about the phone.
+// It changes only after a factory reset, or when moving from Expo Go to the real app (a different app):
+// then the technician asks HR to approve the "new" phone.
 import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import * as Device from 'expo-device';
 
-const KEY = 'technosys_phone_id';
+const FALLBACK_KEY = 'technosys_phone_id';
 let cached: string | null = null;
 
-async function read(): Promise<string | null> {
-  if (Platform.OS === 'web') return AsyncStorage.getItem(KEY);
-  return SecureStore.getItemAsync(KEY);
+/** The phone's own id for this app, or null if it has none (web, rare phones). */
+async function phoneOwnId(): Promise<string | null> {
+  try {
+    if (Platform.OS === 'android') return Application.getAndroidId() || null;
+    if (Platform.OS === 'ios') return (await Application.getIosIdForVendorAsync()) || null;
+  } catch {
+    // fall through to the saved id
+  }
+  return null;
 }
 
-async function write(value: string): Promise<void> {
-  if (Platform.OS === 'web') return AsyncStorage.setItem(KEY, value);
-  return SecureStore.setItemAsync(KEY, value);
+/** Only when the phone gives no id: a random id saved by the app. */
+async function savedRandomId(): Promise<string> {
+  let id = await AsyncStorage.getItem(FALLBACK_KEY);
+  if (!id) {
+    id = Crypto.randomUUID();
+    await AsyncStorage.setItem(FALLBACK_KEY, id);
+  }
+  return id;
 }
 
 export async function getDeviceId(): Promise<string> {
   if (cached) return cached;
-  let id = await read();
-  if (!id) {
-    id = `phone-${Crypto.randomUUID()}`;
-    await write(id);
-  }
-  cached = id;
-  return id;
+  const raw = (await phoneOwnId()) ?? (await savedRandomId());
+  const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `technosys:${raw}`);
+  cached = `${Platform.OS}-${hash}`;
+  return cached;
 }
 
-/** A name HR recognises in the 201 file, e.g. "Samsung SM-A155F". */
+/** A name HR recognises on the Work phones page, e.g. "Samsung SM-A155F". */
 export function getDeviceName(): string {
   const name = [Device.manufacturer, Device.modelName].filter(Boolean).join(' ');
   return name || 'Phone';

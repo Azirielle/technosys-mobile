@@ -12,6 +12,7 @@ add it here first. A hidden preview screen (development builds only) shows every
 | `TabBar` | Home · Jobs · DTR · Me (no center button), sliding active pill (motion #6) |
 | `TimeInCard` | glass card on Home: status pill, clock (or time worked), shift line, shift progress (accent), Time in / Time out button with the confirmation sequence |
 | `Header` | title, optional back button, optional bell (plain icon, brand badge with the unread count) |
+| `BackHeader` | the back arrow on a pushed screen (Handbook, DTR day, Ask HR); Back returns to where you came from |
 
 ## Content
 
@@ -33,9 +34,14 @@ add it here first. A hidden preview screen (development builds only) shows every
 |---|---|
 | `Button` | primary (navy), action (yellow, one per screen), secondary (outline), ghost, danger; sizes md/lg; loading state |
 | `ExpandingButton` | "New request" that springs open into choices (motion #3) |
-| `SegmentedControl` | Requests / Attendance / Tools switch with sliding thumb |
+| `Segmented` | 2–3 choice switch with a sliding thumb (Appearance, Language on Me) |
 | `Sheet` | short choice sheet, closes with a button or Back, no drag on scrolling content (motion #8) |
 | `TextField` | label, input, hint, error with shake (motion #11) |
+| `TextBox` | label + multi-line note (Ask HR) |
+| `DateField` | label + date box that opens the phone's date picker (File a leave) |
+| `Toggle` | on/off switch in the app's colors (Vibrate on tap) |
+| `PushedScreen` | frame of every full screen opened from a tab: back arrow, title, scrolling content, pinned bottom button |
+| `SentScreen` | after sending to the office: drawing check, title, what happens next, Done |
 | `PinBoxes` | 4-digit PIN boxes (already built for sign-in) |
 
 ## Feedback
@@ -47,7 +53,9 @@ add it here first. A hidden preview screen (development builds only) shows every
 | `Toast` | short message at the bottom for small confirmations ("Copied") |
 | `Techy` | the mascot as an SVG, with moods: ready, cheer, wave, worry, rest. Used in empty states |
 | `TechyDock` | the overlay: Techy docked at the left or right screen edge above the tab bar on every tab; tucked, slides out to react or speak, tap = Ask Techy, drag to switch sides (side is remembered) |
-| `DtrSummary`, `DtrDay` | DTR totals and one day (times, work-type tag, status words, tap to see why) |
+| `DtrHero`, `DtrDayRow`, `DayLine` | DTR tab: one summary card, day rows; the day screen's "label … value" lines |
+| `JobHero`, `JobCard`, `JobChanges`, `JobTags`, `WorkTag` | Jobs tab: the job now/next, a job row, "What changed", tags (work type, VIP, moved/cancelled) |
+| `home/*` | Home: `HomeHeader`, `TimeInCard`, `TodayJob`, `QuickActions`, `AttentionList`, arranged by `HomeBody` |
 
 ## Loading rules
 

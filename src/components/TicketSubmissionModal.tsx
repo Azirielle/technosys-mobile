@@ -540,7 +540,7 @@ export default function TicketSubmissionModal({
   }, [ticketCategory, isSubmitting]);
 
   return (
-    <Modal
+    <Modal useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
       isVisible={isVisible}
       onBackdropPress={onClose}
       onBackButtonPress={() => {
@@ -557,8 +557,6 @@ export default function TicketSubmissionModal({
     >
       <View style={[styles.sheetContainer, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
         {/* Drag Handle */}
-        <View style={[styles.dragHandle, { backgroundColor: colors.cardBorder }]} />
-
         {formStep === 'category' ? (
           /* =========================================================================
              SCREEN 1: CATEGORY SELECTION (CLEAN ENTRY POINT)

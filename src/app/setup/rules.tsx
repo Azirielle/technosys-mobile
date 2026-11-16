@@ -70,7 +70,8 @@ export default function RulesStep() {
       <InfoCard index={1} icon="map-pin" title={t('setup.rules.timeinTitle')} text={t('setup.rules.timeinText')} />
       <InfoCard index={2} icon="navigation" title={t('setup.rules.locationTitle')} text={t('setup.rules.locationText')} />
       <InfoCard index={3} icon="users" title={t('setup.rules.whoTitle')} text={t('setup.rules.whoText')} />
-      <InfoCard index={4} icon="message-circle" title={t('setup.rules.aiTitle')} text={t('setup.rules.aiText')} />
+      <InfoCard index={4} icon="smartphone" title={t('setup.rules.phoneTitle')} text={t('setup.rules.phoneText')} />
+      <InfoCard index={5} icon="message-circle" title={t('setup.rules.aiTitle')} text={t('setup.rules.aiText')} />
 
       {loadError ? (
         <>

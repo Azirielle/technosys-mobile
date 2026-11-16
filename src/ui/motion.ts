@@ -7,17 +7,20 @@ import {
   Easing, FadeIn, FadeInDown, FadeOut, LinearTransition, useReducedMotion,
   useAnimatedStyle, useSharedValue, withSpring, withTiming,
 } from 'react-native-reanimated';
-import { duration, spring, stagger } from './tokens';
+import { duration, spring } from './tokens';
 
 export { useReducedMotion };
 export const easeOut = Easing.out(Easing.cubic);
 
-/** Motion #4: items arriving one after another (fade in and rise 8 px). Only the first 6 are delayed. */
-export function arrive(index: number, reduced: boolean) {
+/**
+ * Motion #4: content arriving (fade in and rise 6 px). Everything on a screen arrives TOGETHER, at the same
+ * moment: Andrew's feedback (16 Nov) was that items appearing one after another felt delayed. The `index`
+ * is kept so callers don't change, but no longer adds a delay.
+ */
+export function arrive(_index: number, reduced: boolean) {
   if (reduced) return FadeIn.duration(duration.quick);
   return FadeInDown.duration(duration.base)
-    .delay(Math.min(index, stagger.max) * stagger.step)
-    .withInitialValues({ opacity: 0, transform: [{ translateY: 8 }] })
+    .withInitialValues({ opacity: 0, transform: [{ translateY: 6 }] })
     .easing(easeOut);
 }
 export const leave = FadeOut.duration(duration.quick);
@@ -38,8 +41,12 @@ export function usePressScale(to = 0.97) {
 }
 
 /** Haptics (motion.md): light tap on main actions, success and error. Silent where unsupported. */
+// Every vibration in the app goes through here, so Profile → "Vibrate on tap" can turn them all off.
+let hapticsOn = true;
+export function setHapticsEnabled(on: boolean) { hapticsOn = on; }
+const canBuzz = () => hapticsOn && Platform.OS !== 'web';
 export const haptic = {
-  tap: () => { if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); },
-  success: () => { if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); },
-  error: () => { if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}); },
+  tap: () => { if (canBuzz()) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); },
+  success: () => { if (canBuzz()) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); },
+  error: () => { if (canBuzz()) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}); },
 };

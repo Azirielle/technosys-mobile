@@ -1,4 +1,4 @@
-import { Slot, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CopilotProvider } from 'react-native-copilot';
 import { StatusBar } from 'expo-status-bar';
@@ -8,6 +8,7 @@ import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@
 import { PlusJakartaSans_400Regular, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
+import { loadHapticsSetting } from '../lib/hapticsSetting';
 
 SplashScreen.preventAutoHideAsync();
 LogBox.ignoreLogs(['Accessing element.ref was removed']);
@@ -29,6 +30,9 @@ export default function RootLayout() {
     'Jakarta-SemiBold': PlusJakartaSans_600SemiBold,
     'Jakarta-Bold': PlusJakartaSans_700Bold,
   });
+
+  // "Vibrate on tap" (Profile) is read before any button can buzz
+  useEffect(() => { loadHapticsSetting(); }, []);
 
   // Safety fallback timeout to ensure native splash never freezes
   useEffect(() => {
@@ -70,7 +74,13 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <RootStatusBar />
         <CopilotProvider tooltipStyle={{ backgroundColor: '#ffffff', borderRadius: 16 }} stepNumberComponent={() => null}>
-          <Slot />
+          {/* A real stack: screens opened from a tab (handbook, a DTR day) slide in on top, and Back returns to that tab.
+              'ios_from_right' is the smooth native slide (the screen underneath moves a little too), on Android as well. */}
+          <Stack screenOptions={{ headerShown: false, animation: 'ios_from_right', gestureEnabled: true }}>
+            <Stack.Screen name="index" options={{ animation: 'fade' }} />
+            <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+            <Stack.Screen name="setup" options={{ animation: 'fade' }} />
+          </Stack>
         </CopilotProvider>
       </SafeAreaProvider>
     </ThemeProvider>
