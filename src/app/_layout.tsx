@@ -3,7 +3,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CopilotProvider } from 'react-native-copilot';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { BackHandler, Alert, LogBox } from 'react-native';
+import { BackHandler, Alert, LogBox, Platform } from 'react-native';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { PlusJakartaSans_400Regular, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import * as SplashScreen from 'expo-splash-screen';
@@ -12,6 +12,9 @@ import { loadHapticsSetting } from '../lib/hapticsSetting';
 
 SplashScreen.preventAutoHideAsync();
 LogBox.ignoreLogs(['Accessing element.ref was removed']);
+
+/** How full screens slide in and out (see the comment on <Stack> below). */
+const PUSH_ANIMATION = Platform.OS === 'android' ? ('slide_from_right' as const) : ('ios_from_right' as const);
 
 function RootStatusBar() {
   const { isDark } = useAppTheme();
@@ -43,10 +46,11 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // The phone's Back button: the stack itself goes back (with its slide). Only on the first screen
+    // (Home or sign-in) do we step in and ask before closing the app.
     const onBackPress = () => {
       if (router.canGoBack()) {
-        router.back();
-        return true;
+        return false;
       } else {
         // At root (Home or Login)
         Alert.alert('Exit App', 'Are you sure you want to exit TechnoCycle?', [
@@ -75,8 +79,9 @@ export default function RootLayout() {
         <RootStatusBar />
         <CopilotProvider tooltipStyle={{ backgroundColor: '#ffffff', borderRadius: 16 }} stepNumberComponent={() => null}>
           {/* A real stack: screens opened from a tab (handbook, a DTR day) slide in on top, and Back returns to that tab.
-              'ios_from_right' is the smooth native slide (the screen underneath moves a little too), on Android as well. */}
-          <Stack screenOptions={{ headerShown: false, animation: 'ios_from_right', gestureEnabled: true }}>
+              Android uses its own full slide (both screens move together, about 400 ms). Its 'ios_from_right' copy is
+              fixed at about 200 ms and shows the screen underneath at once, so Back looked done before it animated. */}
+          <Stack screenOptions={{ headerShown: false, animation: PUSH_ANIMATION, gestureEnabled: true }}>
             <Stack.Screen name="index" options={{ animation: 'fade' }} />
             <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
             <Stack.Screen name="setup" options={{ animation: 'fade' }} />

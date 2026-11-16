@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 
-const AFTER_TRANSITION_MS = 400;
+const AFTER_TRANSITION_MS = 450; // the Android slide takes about 400 ms
 
 export function useFocusRefresh(refresh: () => void, { onMount = true } = {}) {
   const latest = useRef(refresh);
