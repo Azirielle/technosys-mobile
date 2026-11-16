@@ -68,12 +68,12 @@ export default function PermissionsStep() {
         )
       }
     >
-      <InfoCard icon="map-pin" tint="#2563EB" title={t('setup.permissions.locationTitle')} text={t('setup.permissions.locationText')} status={states ? status(states.location) : undefined} />
-      <InfoCard icon="camera" tint="#7C3AED" title={t('setup.permissions.cameraTitle')} text={t('setup.permissions.cameraText')} status={states ? status(states.camera) : undefined} />
+      <InfoCard index={1} icon="map-pin" title={t('setup.permissions.locationTitle')} text={t('setup.permissions.locationText')} status={states ? status(states.location) : undefined} />
+      <InfoCard index={2} icon="camera" title={t('setup.permissions.cameraTitle')} text={t('setup.permissions.cameraText')} status={states ? status(states.camera) : undefined} />
       {states?.notifications === 'unavailable' ? (
-        <InfoCard icon="bell" tint="#D97706" title={t('setup.permissions.notificationsTitle')} text={t('setup.permissions.notificationsLater')} />
+        <InfoCard index={3} icon="bell" title={t('setup.permissions.notificationsTitle')} text={t('setup.permissions.notificationsLater')} />
       ) : (
-        <InfoCard icon="bell" tint="#D97706" title={t('setup.permissions.notificationsTitle')} text={t('setup.permissions.notificationsText')} status={states ? status(states.notifications) : undefined} />
+        <InfoCard index={3} icon="bell" title={t('setup.permissions.notificationsTitle')} text={t('setup.permissions.notificationsText')} status={states ? status(states.notifications) : undefined} />
       )}
       {askedAlready && locationMissing && <NoticeBox kind="warning" text={t('setup.permissions.locationNeeded')} />}
     </SetupFrame>

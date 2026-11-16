@@ -1,0 +1,159 @@
+<!doctype html>
+<!-- TechnoSys mobile: clickable prototype of the look and motion (design A + glass + Techy). Reference only, not app code. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TechnoSys motion prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="prototype.css">
+  <link rel="stylesheet" href="techy.css">
+</head>
+<body>
+  <main class="stage">
+    <div class="phone" id="phone" data-p="air">
+      <div class="glow" aria-hidden="true"><span></span><span></span></div>
+
+      <div class="toast" id="toast" role="status" aria-live="polite">
+        <span class="toast-icon"><i class="ti ti-check"></i></span>
+        <div><b id="toastTitle">Timed in</b><span id="toastText"></span></div>
+      </div>
+
+      <!-- HOME -->
+      <section class="screen active" id="s-home" data-tab="home">
+        <header class="top">
+          <div><span class="ink2" id="today">Monday, Nov 16</span><h1>Today</h1></div>
+          <button class="bell" id="bell" aria-label="Inbox, 3 new">
+            <i class="ti ti-bell"></i><span class="badge" id="badge">3</span>
+          </button>
+        </header>
+
+        <div class="timecard glass stag" id="timecard">
+          <span class="pill info" id="tcPill"><span class="dot"></span><span id="tcPillText">Not timed in yet</span></span>
+          <div class="clock" id="clock">8:02 AM</div>
+          <div class="ink2 small" id="tcSub">Shift 8:00 AM – 5:00 PM · you're at the site</div>
+          <div class="shift" aria-hidden="true"><span id="shiftBar"></span></div>
+          <div class="tc-action">
+            <button class="tbtn" id="tbtn">
+              <span class="tlabel"><span id="tlabel">Time in</span></span>
+              <svg class="ring" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="22"/></svg>
+              <svg class="check" viewBox="0 0 52 52" aria-hidden="true"><path d="M16 27 l7 7 l14 -15"/></svg>
+            </button>
+            <span class="ink2 small checking" id="checking">Checking your location…</span>
+          </div>
+        </div>
+
+        <h2 class="label stag">Today's job</h2>
+        <article class="card job stag" id="job" tabindex="0" role="button" aria-expanded="false">
+          <div class="row">
+            <span class="chip"><i class="ti ti-air-conditioning"></i></span>
+            <div class="grow"><b>Batangas beach resort</b><span class="ink2 small">Aircon cleaning · 9:00 AM · On-site</span>
+              <span class="pill info small" id="jobPill"><span class="dot pulse"></span><span id="jobPillText">Upcoming</span></span></div>
+            <i class="ti ti-chevron-down chev"></i>
+          </div>
+          <div class="expand"><div class="expand-in">
+            <div class="row detail"><i class="ti ti-map-pin ink2"></i><span>107 Consuelo St, Nasugbu, Batangas</span></div>
+            <div class="row detail"><span class="avatars"><span>RS</span><span>JD</span><span>PR</span></span><span>You and 2 others · lead: you</span></div>
+            <div class="row gap">
+              <button class="btn primary"><i class="ti ti-navigation"></i> Navigate</button>
+              <button class="btn outline"><i class="ti ti-phone"></i> Call office</button>
+            </div>
+          </div></div>
+        </article>
+
+        <div class="quick stag">
+          <button class="qa"><span class="chip"><i class="ti ti-clock-hour-4"></i></span><b>My hours</b><span class="ink2 small">38.5 h so far</span></button>
+          <button class="qa"><span class="chip"><i class="ti ti-tool"></i></span><b>My tools</b><span class="ink2 small">2 with you</span></button>
+          <button class="qa"><span class="chip"><i class="ti ti-beach"></i></span><b>File leave</b><span class="ink2 small">5 days left</span></button>
+        </div>
+
+        <h2 class="label stag">Needs your attention</h2>
+        <div class="card list stag">
+          <div class="li"><span class="chip"><i class="ti ti-beach"></i></span><div class="grow">Sick leave · Nov 20</div><span class="st pending">Waiting for HR</span></div>
+          <div class="li"><span class="chip"><i class="ti ti-tool"></i></span><div class="grow">Vacuum pump</div><span class="st error">Due back today</span></div>
+          <div class="li"><span class="chip"><i class="ti ti-book"></i></span><div class="grow">Company policies</div><span class="st info">2 to read</span></div>
+        </div>
+      </section>
+
+      <!-- INBOX (opened from the bell) -->
+      <section class="screen push" id="s-inbox">
+        <header class="top bar">
+          <button class="iconbtn" id="inboxBack" aria-label="Back"><i class="ti ti-arrow-left"></i></button>
+          <h1 class="h-sm">Inbox</h1>
+          <button class="link" id="markRead">Mark all read</button>
+        </header>
+        <div class="seg" id="seg"><span class="thumb"></span><button class="on" data-f="all">All</button><button data-f="unread">Unread <span id="unreadCount">3</span></button></div>
+        <div id="notifs"></div>
+        <div class="empty" id="empty">
+          <svg class="techy big mood-wave" viewBox="0 0 120 110" aria-hidden="true">
+            <g class="float">
+              <rect x="14" y="18" width="92" height="50" rx="18" class="body"/><path d="M26 56h68" class="vent"/>
+              <g class="eyes"><ellipse cx="44" cy="37" rx="5" ry="5.5"/><ellipse cx="76" cy="37" rx="5" ry="5.5"/></g>
+              <path class="mouth happy" d="M51 45 q9 8 18 0"/>
+              <circle cx="34" cy="46" r="4.5" class="cheek"/><circle cx="86" cy="46" r="4.5" class="cheek"/>
+              <g class="arm"><path d="M104 40 l11 -12" class="arm-line"/><path d="M111 20 l8 4 -3 7 -8 -3z" class="wrench"/></g>
+            </g>
+            <path class="breeze" d="M34 74 q-3 8 1 14 M60 74 v15 M86 74 q3 8 -1 14"/>
+          </svg>
+          <b>You're all caught up</b>
+          <span class="ink2">New messages from HR and the office show up here.</span>
+          <button class="btn outline" id="seeAll">See all messages</button>
+        </div>
+      </section>
+
+      <!-- OTHER TABS (skeleton first, then content) -->
+      <section class="screen" id="s-jobs" data-tab="jobs"><header class="top"><h1>Jobs</h1></header><div class="loadable" data-kind="jobs"></div></section>
+      <section class="screen" id="s-dtr" data-tab="dtr"><header class="top"><h1>DTR</h1></header><div class="loadable" data-kind="dtr"></div></section>
+      <section class="screen" id="s-me" data-tab="me"><header class="top"><h1>Me</h1></header><div class="loadable" data-kind="me"></div></section>
+
+      <!-- TECHY OVERLAY: docked at the edge, slides out when it has something to say; drag to the other side -->
+      <div class="techy-dock right tucked" id="techyDock">
+        <span class="bubble" id="bubble" role="status"></span>
+        <button class="techy-spot" id="techy" aria-label="Techy, your helper. Tap to ask a question. Drag to move it to the other side.">
+            <svg class="techy mood-ready" id="techySvg" viewBox="0 0 120 110" aria-hidden="true">
+              <g class="float">
+                <rect x="14" y="18" width="92" height="50" rx="18" class="body"/>
+                <path d="M26 56h68" class="vent"/>
+                <g class="eyes"><ellipse cx="44" cy="37" rx="5" ry="5.5"/><ellipse cx="76" cy="37" rx="5" ry="5.5"/></g>
+                <path class="lid" d="M38 34 q6 -3 12 0 M70 34 q6 -3 12 0"/>
+                <path class="mouth happy" d="M51 45 q9 8 18 0"/>
+                <path class="mouth cheer" d="M49 44 q11 13 22 0 z"/>
+                <path class="mouth worry" d="M52 49 q8 -5 16 0"/>
+                <circle cx="34" cy="46" r="4.5" class="cheek"/><circle cx="86" cy="46" r="4.5" class="cheek"/>
+                <g class="arm"><path d="M104 40 l11 -12" class="arm-line"/><path d="M111 20 l8 4 -3 7 -8 -3z" class="wrench"/></g>
+              </g>
+              <path class="breeze" d="M34 74 q-3 8 1 14 M60 74 v15 M86 74 q3 8 -1 14"/>
+            </svg>
+        </button>
+      </div>
+
+      <!-- BOTTOM BAR: four tabs, no center button -->
+      <nav class="nav glass" id="nav" aria-label="Main">
+        <span class="indicator" id="indicator" aria-hidden="true"></span>
+        <button class="tab on" data-tab="home"><i class="ti ti-home"></i><span>Home</span></button>
+        <button class="tab" data-tab="jobs"><i class="ti ti-calendar-event"></i><span>Jobs</span></button>
+        <button class="tab" data-tab="dtr"><i class="ti ti-report-analytics"></i><span>DTR</span></button>
+        <button class="tab" data-tab="me"><i class="ti ti-user"></i><span>Me</span></button>
+      </nav>
+    </div>
+
+    <aside class="notes">
+      <h2>Cool air · 70 / 20 / 10</h2>
+      <div class="split" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p class="small-note"><b>70%</b> cloud white and cool grey (calm, clean) · <b>20%</b> Technocycle blue from the logo (trust, "this is ours") · <b>10%</b> cool-air cyan (fresh, the company's job), only for small highlights: the active tab, shift progress, Techy's air.<br>Status colors are the logo's arrows: green OK, yellow pending, red problem, blue information.</p>
+      <h2>Try it</h2>
+      <ol>
+        <li><b>Techy</b> is docked at the right edge on every tab. It slides out when it has something to say, cheers when you time in, and tucks back. Tap it, or drag it to the left edge.</li>
+        <li><b>Time in</b>: location check, check mark, new status, success message. Tap again to time out.</li>
+        <li><b>Today's job</b>: tap to open the details.</li>
+        <li><b>DTR</b> tab: hours, overtime, night shift, lates, the kind of work each day; tap a day.</li>
+        <li><b>Bell</b> → Inbox. "Mark all read", then Unread shows Techy waving.</li>
+      </ol>
+    </aside>
+  </main>
+  <script src="prototype.js"></script>
+  <script src="techy.js"></script>
+</body>
+</html>

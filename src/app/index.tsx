@@ -3,7 +3,7 @@
 // After signing in, first-time setup (app/setup/) runs for whatever is still left on this phone.
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, type Href } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import Animated from 'react-native-reanimated';
 import * as SplashScreen from 'expo-splash-screen';
 import {
   StyleSheet, Text, View, TouchableOpacity, Alert, Image, KeyboardAvoidingView, ScrollView, Platform,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-import { useAppTheme } from '../hooks/use-theme';
+import { GlowScreen, Techy, arrive, useReducedMotion, useTokens, tokens } from '../ui';
 import PolicyReaderModal, { CompanyPolicy } from '../components/PolicyReaderModal';
 import PhoneSignInForm from '../components/login/PhoneSignInForm';
 import EmailSignInForm from '../components/login/EmailSignInForm';
@@ -27,8 +27,9 @@ type Screen =
 
 export default function SignInPage() {
   const router = useRouter();
-  const { colors, isDark } = useAppTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { c } = useTokens();
+  const reduced = useReducedMotion();
+  const styles = useMemo(() => getStyles(c), [c]);
   const [checkingSession, setCheckingSession] = useState(true);
   const [screen, setScreen] = useState<Screen>({ name: 'phone' });
   const [legalPolicy, setLegalPolicy] = useState<CompanyPolicy | null>(null);
@@ -89,19 +90,14 @@ export default function SignInPage() {
   if (checkingSession) return null;
   if (opening) {
     return (
-      <View style={[styles.page, { justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color={colors.brandBlue} />
+      <View style={[styles.page, { alignItems: 'center' }]}>
+        <Techy mood="wave" size={120} />
       </View>
     );
   }
 
   return (
-    <View style={styles.page}>
-      <LinearGradient
-        colors={isDark ? ['#0B0F17', '#131B26', '#0B0F17'] : ['#FFFFFF', '#F8FAFC', '#E2E8F0']}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+    <GlowScreen>
       <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -109,10 +105,10 @@ export default function SignInPage() {
             <Text style={styles.title}>TechnoCycle</Text>
             <Text style={styles.subtitle}>Field Service Operations</Text>
 
+            {/* Each form fades in and rises a little when you switch (motion #4) */}
+            <Animated.View key={screen.name} entering={arrive(0, reduced)} style={{ width: '100%' }}>
             {screen.name === 'phone' && (
               <PhoneSignInForm
-                colors={colors}
-                isDark={isDark}
                 onSignedIn={openApp}
                 onOtherPhone={(mobile, pin) => setScreen({ name: 'other_phone', via: 'pin', mobile, pin })}
                 onUseEmail={() => setScreen({ name: 'email' })}
@@ -120,16 +116,15 @@ export default function SignInPage() {
             )}
             {screen.name === 'email' && (
               <EmailSignInForm
-                colors={colors}
-                isDark={isDark}
                 onSignedIn={openApp}
                 onOtherPhone={() => setScreen({ name: 'other_phone', via: 'email' })}
                 onUsePhone={() => setScreen({ name: 'phone' })}
               />
             )}
             {screen.name === 'other_phone' && (
-              <OtherPhoneNotice colors={colors} isDark={isDark} onRequest={requestChange} onBack={backToSignIn} />
+              <OtherPhoneNotice onRequest={requestChange} onBack={backToSignIn} />
             )}
+            </Animated.View>
 
             <View style={styles.legal}>
               <View style={styles.legalLinks}>
@@ -141,6 +136,11 @@ export default function SignInPage() {
                   <Text style={styles.legalLink}>Privacy Policy</Text>
                 </TouchableOpacity>
               </View>
+              {__DEV__ && (
+                <TouchableOpacity onPress={() => router.push('/ui-preview' as Href)} style={{ marginTop: 14 }}>
+                  <Text style={styles.legalText}>UI preview (development only)</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -153,19 +153,19 @@ export default function SignInPage() {
         readOnly
         onClose={() => setLegalPolicy(null)}
       />
-    </View>
+    </GlowScreen>
   );
 }
 
-const getStyles = (colors: any) =>
+const getStyles = (c: tokens.Palette) =>
   StyleSheet.create({
-    page: { flex: 1, backgroundColor: colors.bg },
-    content: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 32 },
-    logo: { width: 88, height: 88, resizeMode: 'contain', marginBottom: 16 },
-    title: { fontFamily: 'DMSans-Bold', fontSize: 30, color: colors.text, marginBottom: 4 },
-    subtitle: { fontFamily: 'DMSans-Medium', fontSize: 15, color: colors.textMuted, marginBottom: 28 },
+    page: { flex: 1, backgroundColor: c.canvas, justifyContent: 'center' },
+    content: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 32 },
+    logo: { width: 84, height: 84, resizeMode: 'contain', marginBottom: 14 },
+    title: { ...tokens.type.display, color: c.ink, marginBottom: 2 },
+    subtitle: { ...tokens.type.body, color: c.ink2, marginBottom: 26 },
     legal: { marginTop: 24, alignItems: 'center' },
-    legalText: { fontFamily: 'DMSans-Regular', fontSize: 12, color: colors.textMuted },
+    legalText: { ...tokens.type.caption, color: c.ink2 },
     legalLinks: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
-    legalLink: { fontFamily: 'DMSans-Bold', fontSize: 12, textDecorationLine: 'underline', color: colors.brandBlue },
+    legalLink: { ...tokens.type.label, fontSize: 12, textDecorationLine: 'underline', color: c.brand },
   });

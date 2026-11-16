@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { BackHandler, Alert, LogBox } from 'react-native';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
+import { PlusJakartaSans_400Regular, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 
@@ -23,6 +24,10 @@ export default function RootLayout() {
     'DMSans-Regular': DMSans_400Regular,
     'DMSans-Medium': DMSans_500Medium,
     'DMSans-Bold': DMSans_700Bold,
+    // The app's font (docs/ui-library/type-and-layout.md). DM Sans stays until every old screen is redone.
+    'Jakarta-Regular': PlusJakartaSans_400Regular,
+    'Jakarta-SemiBold': PlusJakartaSans_600SemiBold,
+    'Jakarta-Bold': PlusJakartaSans_700Bold,
   });
 
   // Safety fallback timeout to ensure native splash never freezes

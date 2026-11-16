@@ -1,10 +1,9 @@
 // Setup step: the app rules in four plain points, links to the full Terms of use and Privacy
 // notice, and "I agree". Agreeing records a signature for both (HR sees it in Policies).
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
-import { useAppTheme } from '../../context/ThemeContext';
 import { useT } from '../../lib/i18n';
 import { agreeToRules, goAfter, loadAppRules, stepNumber } from '../../lib/setup';
 import SetupFrame from '../../components/setup/SetupFrame';
@@ -12,11 +11,12 @@ import SetupButton from '../../components/setup/SetupButton';
 import InfoCard from '../../components/setup/InfoCard';
 import NoticeBox from '../../components/setup/NoticeBox';
 import PolicyReaderModal, { CompanyPolicy } from '../../components/PolicyReaderModal';
+import { Card, ChoiceCard, ListRow, SkeletonRow, arrive, useReducedMotion } from '../../ui';
 
 export default function RulesStep() {
   const router = useRouter();
   const t = useT();
-  const { colors } = useAppTheme();
+  const reduced = useReducedMotion();
   const { step, total } = stepNumber('rules');
   const [rules, setRules] = useState<CompanyPolicy[] | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -67,57 +67,41 @@ export default function RulesStep() {
         </>
       }
     >
-      <InfoCard icon="map-pin" tint="#2563EB" title={t('setup.rules.timeinTitle')} text={t('setup.rules.timeinText')} />
-      <InfoCard icon="navigation" tint="#059669" title={t('setup.rules.locationTitle')} text={t('setup.rules.locationText')} />
-      <InfoCard icon="users" tint="#7C3AED" title={t('setup.rules.whoTitle')} text={t('setup.rules.whoText')} />
-      <InfoCard icon="message-circle" tint="#D97706" title={t('setup.rules.aiTitle')} text={t('setup.rules.aiText')} />
+      <InfoCard index={1} icon="map-pin" title={t('setup.rules.timeinTitle')} text={t('setup.rules.timeinText')} />
+      <InfoCard index={2} icon="navigation" title={t('setup.rules.locationTitle')} text={t('setup.rules.locationText')} />
+      <InfoCard index={3} icon="users" title={t('setup.rules.whoTitle')} text={t('setup.rules.whoText')} />
+      <InfoCard index={4} icon="message-circle" title={t('setup.rules.aiTitle')} text={t('setup.rules.aiText')} />
 
       {loadError ? (
         <>
           <NoticeBox kind="error" text={t('setup.rules.loadFailed')} />
           <SetupButton kind="plain" label={t('setup.rules.retry')} onPress={load} />
         </>
-      ) : !rules ? (
-        <ActivityIndicator color={colors.brandBlue} style={{ marginVertical: 8 }} />
       ) : (
-        <View style={{ gap: 4 }}>
-          {terms && <ReadLink label={t('setup.rules.readTerms')} onPress={() => setReading(terms)} color={colors.brandBlue} />}
-          {privacy && <ReadLink label={t('setup.rules.readPrivacy')} onPress={() => setReading(privacy)} color={colors.brandBlue} />}
-        </View>
+        <Animated.View entering={arrive(5, reduced)}>
+          <Card padded={false}>
+            {!rules ? (
+              <><SkeletonRow /><SkeletonRow /></>
+            ) : (
+              <>
+                {terms && <ListRow icon="file-text" title={t('setup.rules.readTerms')} onPress={() => setReading(terms)} last={!privacy} />}
+                {privacy && <ListRow icon="shield" title={t('setup.rules.readPrivacy')} onPress={() => setReading(privacy)} last />}
+              </>
+            )}
+          </Card>
+        </Animated.View>
       )}
 
-      <TouchableOpacity
-        onPress={() => { setAgreed(a => !a); setError(null); }}
-        style={[styles.agree, { backgroundColor: colors.card, borderColor: agreed ? colors.brandBlue : colors.cardBorder }]}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: agreed }}
-        activeOpacity={0.8}
-      >
-        <View style={[styles.box, { borderColor: agreed ? colors.brandBlue : colors.textSubtle, backgroundColor: agreed ? colors.brandBlue : 'transparent' }]}>
-          {agreed && <Feather name="check" size={16} color="#FFFFFF" />}
-        </View>
-        <Text style={[styles.agreeText, { color: colors.text }]}>{t('setup.rules.agree')}</Text>
-      </TouchableOpacity>
+      <Animated.View entering={arrive(6, reduced)}>
+        <ChoiceCard
+          title={t('setup.rules.agree')}
+          selected={agreed}
+          onPress={() => { setAgreed((a) => !a); setError(null); }}
+        />
+      </Animated.View>
+      <View />
 
       <PolicyReaderModal visible={!!reading} policy={reading} isAcknowledged={false} readOnly onClose={() => setReading(null)} />
     </SetupFrame>
   );
 }
-
-function ReadLink({ label, onPress, color }: { label: string; onPress: () => void; color: string }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.link} accessibilityRole="link">
-      <Feather name="file-text" size={16} color={color} />
-      <Text style={[styles.linkText, { color }]}>{label}</Text>
-      <Feather name="chevron-right" size={16} color={color} />
-    </TouchableOpacity>
-  );
-}
-
-const styles = StyleSheet.create({
-  link: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 },
-  linkText: { flex: 1, fontFamily: 'DMSans-Bold', fontSize: 14 },
-  agree: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, borderWidth: 2, marginTop: 4 },
-  box: { width: 26, height: 26, borderRadius: 7, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  agreeText: { flex: 1, fontFamily: 'DMSans-Bold', fontSize: 15 },
-});
