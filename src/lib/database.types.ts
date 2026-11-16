@@ -600,6 +600,229 @@ export type Database = {
         }
         Relationships: []
       }
+      job_events: {
+        Row: {
+          at: string
+          by_id: string | null
+          details: Json
+          id: string
+          job_id: string
+          kind: string
+          lat: number | null
+          lon: number | null
+          person_id: string | null
+          reason: string | null
+          work_day_id: string | null
+        }
+        Insert: {
+          at?: string
+          by_id?: string | null
+          details?: Json
+          id?: string
+          job_id: string
+          kind: string
+          lat?: number | null
+          lon?: number | null
+          person_id?: string | null
+          reason?: string | null
+          work_day_id?: string | null
+        }
+        Update: {
+          at?: string
+          by_id?: string | null
+          details?: Json
+          id?: string
+          job_id?: string
+          kind?: string
+          lat?: number | null
+          lon?: number | null
+          person_id?: string | null
+          reason?: string | null
+          work_day_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_events_by_id_fkey"
+            columns: ["by_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_events_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_events_work_day_id_fkey"
+            columns: ["work_day_id"]
+            isOneToOne: false
+            referencedRelation: "work_days"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_members: {
+        Row: {
+          added_at: string
+          id: string
+          is_acting_lead: boolean
+          job_id: string
+          person_id: string | null
+          removed_at: string | null
+          role: string
+          temp_worker_id: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          added_at?: string
+          id?: string
+          is_acting_lead?: boolean
+          job_id: string
+          person_id?: string | null
+          removed_at?: string | null
+          role: string
+          temp_worker_id?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          added_at?: string
+          id?: string
+          is_acting_lead?: boolean
+          job_id?: string
+          person_id?: string | null
+          removed_at?: string | null
+          role?: string
+          temp_worker_id?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_members_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_members_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_members_temp_worker_id_fkey"
+            columns: ["temp_worker_id"]
+            isOneToOne: false
+            referencedRelation: "casual_helpers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_members_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          address: string
+          cancel_reason: string | null
+          client_name: string
+          created_at: string
+          created_by: string | null
+          end_date: string
+          end_time: string
+          hq_office_id: string | null
+          id: string
+          legacy_schedule_id: string | null
+          notes: string | null
+          project_name: string | null
+          report_to: string
+          site_lat: number
+          site_lon: number
+          site_radius_m: number
+          start_date: string
+          start_time: string
+          status: string
+          updated_at: string
+          work_type: string
+        }
+        Insert: {
+          address: string
+          cancel_reason?: string | null
+          client_name: string
+          created_at?: string
+          created_by?: string | null
+          end_date: string
+          end_time: string
+          hq_office_id?: string | null
+          id?: string
+          legacy_schedule_id?: string | null
+          notes?: string | null
+          project_name?: string | null
+          report_to?: string
+          site_lat: number
+          site_lon: number
+          site_radius_m?: number
+          start_date: string
+          start_time: string
+          status?: string
+          updated_at?: string
+          work_type?: string
+        }
+        Update: {
+          address?: string
+          cancel_reason?: string | null
+          client_name?: string
+          created_at?: string
+          created_by?: string | null
+          end_date?: string
+          end_time?: string
+          hq_office_id?: string | null
+          id?: string
+          legacy_schedule_id?: string | null
+          notes?: string | null
+          project_name?: string | null
+          report_to?: string
+          site_lat?: number
+          site_lon?: number
+          site_radius_m?: number
+          start_date?: string
+          start_time?: string
+          status?: string
+          updated_at?: string
+          work_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_hq_office_id_fkey"
+            columns: ["hq_office_id"]
+            isOneToOne: false
+            referencedRelation: "office_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leaves: {
         Row: {
           attachment_url: string | null
@@ -768,6 +991,7 @@ export type Database = {
           reviewed_by: string | null
           status: string | null
           technician_id: string
+          work_day_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -779,6 +1003,7 @@ export type Database = {
           reviewed_by?: string | null
           status?: string | null
           technician_id: string
+          work_day_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -790,6 +1015,7 @@ export type Database = {
           reviewed_by?: string | null
           status?: string | null
           technician_id?: string
+          work_day_id?: string | null
         }
         Relationships: [
           {
@@ -804,6 +1030,13 @@ export type Database = {
             columns: ["technician_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_requests_work_day_id_fkey"
+            columns: ["work_day_id"]
+            isOneToOne: false
+            referencedRelation: "work_days"
             referencedColumns: ["id"]
           },
         ]
@@ -1116,6 +1349,54 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: true
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reviews: {
+        Row: {
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          kind: string
+          note: string | null
+          status: string
+          work_day_id: string
+        }
+        Insert: {
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          kind: string
+          note?: string | null
+          status?: string
+          work_day_id: string
+        }
+        Update: {
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          kind?: string
+          note?: string | null
+          status?: string
+          work_day_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_work_day_id_fkey"
+            columns: ["work_day_id"]
+            isOneToOne: false
+            referencedRelation: "work_days"
             referencedColumns: ["id"]
           },
         ]
@@ -1714,15 +1995,170 @@ export type Database = {
           },
         ]
       }
+      vehicles: {
+        Row: {
+          created_at: string
+          home_office_id: string
+          id: string
+          name: string
+          plate: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          home_office_id: string
+          id?: string
+          name: string
+          plate: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          home_office_id?: string
+          id?: string
+          name?: string
+          plate?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicles_home_office_id_fkey"
+            columns: ["home_office_id"]
+            isOneToOne: false
+            referencedRelation: "office_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_days: {
+        Row: {
+          counted_from: string
+          created_at: string
+          device_id: string | null
+          hours: number | null
+          id: string
+          in_accuracy_m: number | null
+          in_check: string
+          in_distance_m: number | null
+          in_lat: number | null
+          in_lon: number | null
+          in_reason: string | null
+          is_mocked: boolean
+          job_id: string | null
+          late_minutes: number
+          legacy_log_id: string | null
+          out_check: string | null
+          out_lat: number | null
+          out_lon: number | null
+          person_id: string
+          place: string
+          place_name: string
+          selfie_path: string | null
+          status: string
+          time_in: string
+          time_out: string | null
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          counted_from: string
+          created_at?: string
+          device_id?: string | null
+          hours?: number | null
+          id?: string
+          in_accuracy_m?: number | null
+          in_check: string
+          in_distance_m?: number | null
+          in_lat?: number | null
+          in_lon?: number | null
+          in_reason?: string | null
+          is_mocked?: boolean
+          job_id?: string | null
+          late_minutes?: number
+          legacy_log_id?: string | null
+          out_check?: string | null
+          out_lat?: number | null
+          out_lon?: number | null
+          person_id: string
+          place: string
+          place_name: string
+          selfie_path?: string | null
+          status?: string
+          time_in?: string
+          time_out?: string | null
+          updated_at?: string
+          work_date: string
+        }
+        Update: {
+          counted_from?: string
+          created_at?: string
+          device_id?: string | null
+          hours?: number | null
+          id?: string
+          in_accuracy_m?: number | null
+          in_check?: string
+          in_distance_m?: number | null
+          in_lat?: number | null
+          in_lon?: number | null
+          in_reason?: string | null
+          is_mocked?: boolean
+          job_id?: string | null
+          late_minutes?: number
+          legacy_log_id?: string | null
+          out_check?: string | null
+          out_lat?: number | null
+          out_lon?: number | null
+          person_id?: string
+          place?: string
+          place_name?: string
+          selfie_path?: string | null
+          status?: string
+          time_in?: string
+          time_out?: string | null
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_days_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_days_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
       check_my_phone: { Args: { p_device_id: string }; Returns: string }
+      coordinator_time_out: {
+        Args: { p_reason: string; p_time_out: string; p_work_day_id: string }
+        Returns: Json
+      }
+      decide_overtime: {
+        Args: { p_approve: boolean; p_request_id: string }
+        Returns: Json
+      }
       decide_phone_change: {
         Args: { p_approve: boolean; p_request_id: string }
         Returns: undefined
+      }
+      decide_review: {
+        Args: { p_approve: boolean; p_note?: string; p_review_id: string }
+        Returns: Json
       }
       file_phone_change: {
         Args: {
@@ -1735,9 +2171,36 @@ export type Database = {
       get_email_from_contact: { Args: { p_contact: string }; Returns: string }
       get_server_time: { Args: never; Returns: string }
       is_ceo_or_hr: { Args: never; Returns: boolean }
+      is_my_phone: { Args: { p_device_id: string }; Returns: boolean }
       is_office_staff: { Args: never; Returns: boolean }
+      is_on_job: { Args: { p_job_id: string }; Returns: boolean }
       is_on_schedule: { Args: { p_schedule_id: string }; Returns: boolean }
+      job_save_checks: {
+        Args: {
+          p_end_date: string
+          p_end_time: string
+          p_exclude_job_id?: string
+          p_person_ids: string[]
+          p_start_date: string
+          p_start_time: string
+          p_vehicle_id?: string
+        }
+        Returns: {
+          blocking: boolean
+          detail: string
+          kind: string
+          person_id: string
+          vehicle_id: string
+        }[]
+      }
       login_pin_status: { Args: { p_profile_id: string }; Returns: Json }
+      manila_at: { Args: { d: string; t: string }; Returns: string }
+      manila_today: { Args: never; Returns: string }
+      mark_job_progress: {
+        Args: { p_job_id: string; p_kind: string; p_lat: number; p_lon: number }
+        Returns: Json
+      }
+      mark_no_time_outs: { Args: never; Returns: number }
       match_documents: {
         Args: {
           filter?: Json
@@ -1761,8 +2224,14 @@ export type Database = {
         }
         Returns: string
       }
+      meters_between: {
+        Args: { lat1: number; lat2: number; lon1: number; lon2: number }
+        Returns: number
+      }
       my_role: { Args: never; Returns: string }
       normalize_ph_mobile: { Args: { p: string }; Returns: string }
+      office_day_end: { Args: never; Returns: string }
+      office_day_start: { Args: never; Returns: string }
       phone_status: {
         Args: { p_device_id: string; p_profile_id: string }
         Returns: string
@@ -1781,17 +2250,56 @@ export type Database = {
         Args: { p_device_id: string; p_device_name: string }
         Returns: string
       }
+      report_left_at: {
+        Args: { p_left_at: string; p_work_day_id: string }
+        Returns: Json
+      }
       request_my_phone_change: {
         Args: { p_device_id: string; p_device_name: string }
         Returns: undefined
+      }
+      request_overtime: {
+        Args: { p_hours: number; p_reason: string }
+        Returns: Json
       }
       reset_registered_phone: {
         Args: { p_profile_id: string }
         Returns: undefined
       }
+      set_acting_lead: {
+        Args: { p_job_id: string; p_person_id: string }
+        Returns: Json
+      }
       set_login_pin: {
         Args: { p_pin: string; p_profile_id: string }
         Returns: undefined
+      }
+      time_in: {
+        Args: {
+          p_accuracy_m: number
+          p_device_id: string
+          p_lat: number
+          p_lon: number
+          p_mocked: boolean
+          p_office_duty?: boolean
+          p_queued_at?: string
+          p_reason?: string
+          p_selfie_path?: string
+        }
+        Returns: Json
+      }
+      time_out: {
+        Args: {
+          p_device_id: string
+          p_lat: number
+          p_lon: number
+          p_queued_at?: string
+        }
+        Returns: Json
+      }
+      work_hours: {
+        Args: { p_out: string; p_work_day_id: string }
+        Returns: number
       }
     }
     Enums: {
