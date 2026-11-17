@@ -1,18 +1,18 @@
-// Three same-size shortcuts on Home: My tools, File leave, Updates from the office. Same chip color for all
+// Three same-size shortcuts on Home: My tools, File leave, your DTR. Same chip color for all
 // (color is only for status words).
 import React from 'react';
 import { View } from 'react-native';
 import { useT } from '../../lib/i18n';
 import { Card, IconChip, Txt } from '../../ui';
 
-type Props = { toolsWithYou: number; onTools: () => void; onLeave: () => void; onUpdates: () => void };
+type Props = { toolsWithYou: number; onTools: () => void; onLeave: () => void; onDtr: () => void };
 
-export default function QuickActions({ toolsWithYou, onTools, onLeave, onUpdates }: Props) {
+export default function QuickActions({ toolsWithYou, onTools, onLeave, onDtr }: Props) {
   const t = useT();
   const tiles = [
     { key: 'tools', icon: 'tool', title: t('home.myTools'), sub: toolsWithYou ? t('home.toolsWithYou', { n: toolsWithYou }) : t('home.noTools'), onPress: onTools },
     { key: 'leave', icon: 'sun', title: t('home.fileLeave'), sub: t('home.fileLeaveSub'), onPress: onLeave },
-    { key: 'updates', icon: 'radio', title: t('home.updates'), sub: t('home.updatesSub'), onPress: onUpdates },
+    { key: 'dtr', icon: 'clipboard', title: t('tabs.dtr'), sub: t('home.dtrSub'), onPress: onDtr },
   ] as const;
   return (
     <View style={{ flexDirection: 'row', gap: 10 }}>

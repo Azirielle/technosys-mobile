@@ -81,7 +81,6 @@
     "toolsSub": "Tools you borrowed",
     "leave": "Leave",
     "leaveSub": "File a leave, see your requests",
-    "updates": "Updates from the office",
     "handbook": "Handbook and forms",
     "toRead": "{n} to read",
     "techy": "Ask Techy",
@@ -257,9 +256,9 @@
     "done": "Done"
   },
   "home": {
+    "dtrSub": "Days and hours",
     "today": "Today",
     "inbox": "Inbox",
-    "inboxNew": "Inbox, {n} new",
     "notYet": "Not timed in yet",
     "working": "Working · since {time}",
     "elapsed": "{h}h {m}m",
@@ -283,7 +282,6 @@
     "fileLeave": "Leave",
     "fileLeaveSub": "File or check",
     "updates": "Updates",
-    "updatesSub": "From the office",
     "attention": "Needs your attention",
     "allClear": "Nothing needs you right now",
     "leaveItem": "{type} leave · {date}",
@@ -457,6 +455,8 @@
     "savedText": "{date}: you left at {time} ({hours} h). HR will check it."
   },
   "inbox": {
+    "warning": "Warning",
+    "warningNote": "Talk to HR if you want to explain your side.",
     "title": "Inbox",
     "subtitle": "HR's replies and news from the office.",
     "markAll": "Mark all as read",

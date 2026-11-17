@@ -8,7 +8,7 @@ import { sanitizeNotification } from '../utils/notification-sanitizer';
 
 export type InboxItem = {
   id: string;
-  kind: 'reply' | 'leave' | 'announcement';
+  kind: 'reply' | 'leave' | 'warning' | 'announcement';
   title: string;
   text: string;
   at: string;
@@ -16,11 +16,17 @@ export type InboxItem = {
   ticketId?: string;
   /** 'Approved' / 'Refused' when HR decided a request */
   decision?: string;
+  /** Announcement the office marked Important or Urgent */
+  important?: boolean;
   /** Leave decisions: the screen words the title as "Sick leave · Nov 20" */
   leave?: { type: string; date: string };
 };
 
 const readKey = (userId: string) => `READ_NOTIFS_${userId}`;
+
+// Told when items are marked read, so the Inbox tab's count drops right away
+const readListeners = new Set<() => void>();
+export function onInboxRead(cb: () => void): () => void { readListeners.add(cb); return () => { readListeners.delete(cb); }; }
 
 async function readIds(userId: string): Promise<Set<string>> {
   try { return new Set(JSON.parse((await AsyncStorage.getItem(readKey(userId))) ?? '[]')); } catch { return new Set(); }
@@ -63,11 +69,19 @@ export async function getInbox(): Promise<InboxItem[]> {
       decision: l.status === 'approved' ? 'Approved' : 'Refused', leave: { type: l.leave_type, date } });
   }
 
-  const { data: news } = await supabase.from('announcements').select('id, title, content, created_at').order('created_at', { ascending: false }).limit(5);
+  // Written warnings HR recorded in your 201 file (the notice: tap shows the details)
+  const { data: warnings } = await supabase.from('employee_warnings').select('id, subject, details, created_at')
+    .eq('employee_id', user.id).order('created_at', { ascending: false }).limit(10);
+  for (const w of warnings ?? []) {
+    const id = `wr_${w.id}`;
+    items.push({ id, kind: 'warning', title: w.subject, text: w.details ?? '', at: w.created_at as string, read: read.has(id) });
+  }
+
+  const { data: news } = await supabase.from('announcements').select('id, title, content, created_at, priority').order('created_at', { ascending: false }).limit(10);
   for (const a of news ?? []) {
     const p = sanitizeNotification(a.title, a.content || '', 'admin', 'Announcement');
     const id = `ann_${a.id}`;
-    items.push({ id, kind: 'announcement', title: p.title, text: p.summary, at: a.created_at as string, read: read.has(id) });
+    items.push({ id, kind: 'announcement', title: p.title, text: p.summary, at: a.created_at as string, read: read.has(id), important: a.priority === 'important' || a.priority === 'urgent' });
   }
   return items.sort((x, y) => Date.parse(y.at) - Date.parse(x.at));
 }
@@ -82,6 +96,7 @@ export async function markRead(ids: string[]): Promise<void> {
   const read = await readIds(user.id);
   ids.forEach((id) => read.add(id));
   await AsyncStorage.setItem(readKey(user.id), JSON.stringify([...read])).catch(() => {});
+  readListeners.forEach((cb) => cb());
 }
 
 /** Calls `onChange` when HR replies, a ticket changes or an announcement is posted. Returns the unsubscribe. */

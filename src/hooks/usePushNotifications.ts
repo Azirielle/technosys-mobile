@@ -2,6 +2,7 @@
 // notifications. Does nothing in Expo Go on Android, where push notifications aren't available (see lib/notifications).
 import { useState, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
+import { router, type Href } from 'expo-router';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import type { Notification } from 'expo-notifications';
@@ -53,8 +54,14 @@ export function usePushNotifications(userId?: string) {
       setNotification(n);
     });
 
+    // Tapping a push opens where it belongs (tags set by the admin's sendPushToUser): a job → that job, the
+    // Coordinator's decisions on your day → DTR, a policy to sign → Handbook, anything else from HR / office → Inbox
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      console.log(response);
+      const d = (response.notification.request.content.data ?? {}) as { jobId?: string; kind?: string; type?: string };
+      if (d.jobId) router.push(`/job/${d.jobId}` as Href);
+      else if (d.kind === 'review' || d.kind === 'overtime' || d.kind === 'time_out') router.push('/dtr' as Href);
+      else if (d.type === 'policy_acknowledgment') router.push('/handbook' as Href);
+      else router.navigate('/(tabs)/inbox' as Href);
     });
 
     return () => {

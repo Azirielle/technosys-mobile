@@ -1,7 +1,7 @@
-// Home, top to bottom by importance: date and bell → time-in card → today's job → three shortcuts → needs your
-// attention. Everything arrives together. Time in/out comes from lib/useTimeIn (via the Home screen); this file
-// arranges what you see. The Inbox, Details, My tools, Leave and Updates open as full screens (slide in).
-import React, { useCallback, useEffect, useState } from 'react';
+// Home, top to bottom by importance: date → time-in card → today's job → three shortcuts (My tools, Leave, DTR)
+// → needs your attention. Everything arrives together. Time in/out comes from the Home screen; this file arranges
+// what you see. Details, My tools, Leave and DTR open as full screens (slide in); the Inbox is its own tab.
+import React, { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useRouter, type Href } from 'expo-router';
@@ -9,7 +9,6 @@ import { useFocusRefresh } from '../../lib/useFocusRefresh';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../../lib/i18n';
 import { getHomeSummary, AttentionItem, HomeSummary } from '../../lib/homeSummary';
-import { countUnread, watchInbox } from '../../lib/inbox';
 import { manilaDay, type Job } from '../../lib/jobs';
 import { SectionLabel, TAB_BAR_HEIGHT, arrive, useReducedMotion, useTokens } from '../../ui';
 import { dateOf } from '../jobs/jobWords';
@@ -40,13 +39,10 @@ export default function HomeBody(p: Props) {
   const reduced = useReducedMotion();
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [unread, setUnread] = useState(0);
 
-  const loadUnread = useCallback(() => { countUnread().then(setUnread).catch(() => {}); }, []);
-  const loadSummary = useCallback(() => { getHomeSummary().then(setSummary).catch(() => {}); loadUnread(); }, [loadUnread]);
+  const loadSummary = useCallback(() => { getHomeSummary().then(setSummary).catch(() => {}); }, []);
   useFocusRefresh(loadSummary);
-  useEffect(() => watchInbox(loadUnread), [loadUnread]);
-  const refresh = async () => { setRefreshing(true); await Promise.all([p.onRefresh(), getHomeSummary().then(setSummary).catch(() => {}), countUnread().then(setUnread).catch(() => {})]); setRefreshing(false); };
+  const refresh = async () => { setRefreshing(true); await Promise.all([p.onRefresh(), getHomeSummary().then(setSummary).catch(() => {})]); setRefreshing(false); };
 
   const openItem = (item: AttentionItem) => {
     if (item.kind === 'leave') go('/leave');
@@ -62,7 +58,7 @@ export default function HomeBody(p: Props) {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brand} colors={[c.brand]} />}
     >
       <Animated.View entering={arrive(0, reduced)}>
-        <HomeHeader unread={unread} onBell={() => go('/inbox')} />
+        <HomeHeader />
         <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} />
 
         <SectionLabel>{!p.job || isToday ? t('home.todaysJob') : t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>
@@ -70,7 +66,7 @@ export default function HomeBody(p: Props) {
         {p.jobExtra}
 
         <SectionLabel>{t('home.shortcuts')}</SectionLabel>
-        <QuickActions toolsWithYou={summary?.toolsWithYou ?? 0} onTools={() => go('/tools')} onLeave={() => go('/leave')} onUpdates={() => go('/updates')} />
+        <QuickActions toolsWithYou={summary?.toolsWithYou ?? 0} onTools={() => go('/tools')} onLeave={() => go('/leave')} onDtr={() => go('/dtr')} />
 
         <SectionLabel>{t('home.attention')}</SectionLabel>
         {summary && <AttentionList items={summary.attention} onOpen={openItem} />}

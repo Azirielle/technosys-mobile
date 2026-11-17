@@ -1,28 +1,28 @@
-// DTR tab, for a first-time user: one summary card (hours counted, workdays you showed up), then the days that
+// DTR screen (opened from Home), for a first-time user: one summary card (hours counted, workdays you showed up), then the days that
 // need a look (late, absent, no time-out, HR checking), then every day. Tapping a day opens its own screen with
 // how it was counted and an "Ask HR about this day" button. Same rules as the admin DTR (lib/dtr.ts).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useRouter, type Href } from 'expo-router';
-import { useFocusRefresh } from '../../lib/useFocusRefresh';
+import { useFocusRefresh } from '../lib/useFocusRefresh';
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useT } from '../../lib/i18n';
-import { Cutoff, DtrResult, cutoffFor, getMyDtr, manilaDate, shiftCutoff } from '../../lib/dtr';
-import DtrHero from '../../components/dtr/DtrHero';
-import DtrDayRow from '../../components/dtr/DtrDayRow';
-import { needsALook } from '../../components/dtr/dayTags';
+import { useT } from '../lib/i18n';
+import { Cutoff, DtrResult, cutoffFor, getMyDtr, manilaDate, shiftCutoff } from '../lib/dtr';
+import DtrHero from '../components/dtr/DtrHero';
+import DtrDayRow from '../components/dtr/DtrDayRow';
+import { needsALook } from '../components/dtr/dayTags';
 import {
-  Card, Notice, SectionLabel, SkeletonCard, SkeletonRow, StatusText, TAB_BAR_HEIGHT, Txt, arrive, useReducedMotion, useShowSkeleton, useTokens,
-} from '../../ui';
+  BackHeader, Card, Notice, SectionLabel, SkeletonCard, SkeletonRow, StatusText, Txt, arrive, useReducedMotion, useShowSkeleton, useTokens,
+} from '../ui';
 
 const label = (c: Cutoff) => {
   const s = new Date(`${c.start}T00:00:00Z`), e = new Date(`${c.end}T00:00:00Z`);
   return `${s.toLocaleDateString([], { month: 'short', timeZone: 'UTC' })} ${s.getUTCDate()} – ${e.getUTCDate()}`;
 };
 
-export default function DtrTab() {
+export default function DtrScreen() {
   const t = useT();
   const router = useRouter();
   const { c, space } = useTokens();
@@ -37,7 +37,7 @@ export default function DtrTab() {
   const cutRef = useRef(cut);
   cutRef.current = cut;
 
-  // Coming back to the tab refreshes quietly (no blank screen, no replayed animation).
+  // Coming back to the screen refreshes quietly (no blank screen, no replayed animation).
   const load = useCallback(async (which: Cutoff) => {
     try {
       const r = await getMyDtr(which);
@@ -60,8 +60,9 @@ export default function DtrTab() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }} edges={['top']}>
+      <BackHeader label={t('common.back')} />
       <ScrollView
-        contentContainerStyle={{ padding: space.lg, paddingBottom: TAB_BAR_HEIGHT + insets.bottom + 40 }}
+        contentContainerStyle={{ padding: space.lg, paddingTop: 0, paddingBottom: insets.bottom + 40 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brand} colors={[c.brand]} />}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>

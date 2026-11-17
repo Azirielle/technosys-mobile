@@ -81,7 +81,6 @@
     "toolsSub": "Mga gamit na hiniram mo",
     "leave": "Leave",
     "leaveSub": "Mag-file ng leave, tingnan ang mga request mo",
-    "updates": "Balita mula sa opisina",
     "handbook": "Handbook at mga form",
     "toRead": "{n} babasahin",
     "techy": "Tanungin si Techy",
@@ -257,9 +256,9 @@
     "done": "Tapos"
   },
   "home": {
+    "dtrSub": "Mga araw at oras",
     "today": "Ngayon",
     "inbox": "Inbox",
-    "inboxNew": "Inbox, {n} bago",
     "notYet": "Hindi pa naka-time in",
     "working": "Nagtatrabaho · mula {time}",
     "elapsed": "{h}h {m}m",
@@ -283,7 +282,6 @@
     "fileLeave": "Leave",
     "fileLeaveSub": "Mag-file o tingnan",
     "updates": "Updates",
-    "updatesSub": "Mula sa opisina",
     "attention": "Kailangan ng pansin mo",
     "allClear": "Wala kang kailangang asikasuhin ngayon",
     "leaveItem": "{type} leave · {date}",
@@ -457,6 +455,8 @@
     "savedText": "{date}: umalis ka nang {time} ({hours} h). Titingnan ito ng HR."
   },
   "inbox": {
+    "warning": "Babala",
+    "warningNote": "Kausapin ang HR kung gusto mong ipaliwanag ang panig mo.",
     "title": "Inbox",
     "subtitle": "Mga sagot ng HR at balita mula sa opisina.",
     "markAll": "Markahang nabasa lahat",

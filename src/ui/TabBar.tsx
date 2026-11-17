@@ -17,7 +17,7 @@ export const TAB_BAR_HEIGHT = 70;
 const SLIDE_MS = 200;
 type IconName = React.ComponentProps<typeof Feather>['name'];
 
-export default function TabBar({ state, descriptors, navigation, icons }: BottomTabBarProps & { icons: Record<string, IconName> }) {
+export default function TabBar({ state, descriptors, navigation, icons, badges }: BottomTabBarProps & { icons: Record<string, IconName>; badges?: Record<string, number> }) {
   const { c } = useTokens();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
@@ -56,6 +56,7 @@ export default function TabBar({ state, descriptors, navigation, icons }: Bottom
                 label={label}
                 icon={icons[route.name] ?? 'circle'}
                 focused={focused}
+                badge={badges?.[route.name] ?? 0}
                 onPress={() => {
                   const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                   if (!focused && !event.defaultPrevented) {
@@ -74,7 +75,7 @@ export default function TabBar({ state, descriptors, navigation, icons }: Bottom
   );
 }
 
-function TabButton({ label, icon, focused, onPress }: { label: string; icon: IconName; focused: boolean; onPress: () => void }) {
+function TabButton({ label, icon, focused, badge, onPress }: { label: string; icon: IconName; focused: boolean; badge: number; onPress: () => void }) {
   const { c } = useTokens();
   const reduced = useReducedMotion();
   const grow = useSharedValue(focused ? 1 : 0);
@@ -86,11 +87,16 @@ function TabButton({ label, icon, focused, onPress }: { label: string; icon: Ico
       onPress={onPress}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
-      accessibilityLabel={label}
+      accessibilityLabel={badge ? `${label}, ${badge}` : label}
       style={{ flex: 1, height: 54, alignItems: 'center', justifyContent: 'center', gap: 2 }}
     >
       <Animated.View style={iconStyle}>
         <Feather name={icon} size={22} color={focused ? c.brand : c.ink3} />
+        {badge > 0 && (
+          <View style={{ position: 'absolute', top: -4, right: -10, minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, backgroundColor: c.error, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: c.card }}>
+            <Txt variant="caption" style={{ color: c.onBrand, fontSize: 10, lineHeight: 12 }}>{badge > 9 ? '9+' : badge}</Txt>
+          </View>
+        )}
       </Animated.View>
       <Txt variant="label" style={{ fontSize: 11, color: focused ? c.brand : c.ink3 }}>{label}</Txt>
     </Pressable>
