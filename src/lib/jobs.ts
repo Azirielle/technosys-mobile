@@ -1,7 +1,10 @@
 // Jobs for the Jobs tab: every job this person is on (the access rules return only those: lead, partner,
 // driver or crew), split into now/next, later today, coming up and earlier, plus what the office changed
 // this week (moved, cancelled, VIP squeeze-ins, crew added), read from schedule_history.
+// With WORK_V2 on, the same lists come from the new jobs tables (lib/work/workJobs).
 import { supabase } from './supabase';
+import { WORK_V2 } from './work/workApi';
+import { loadWorkJobs } from './work/workJobs';
 
 export type WorkType = 'onSite' | 'outOfTown' | 'officeHq';
 export type Job = {
@@ -75,15 +78,21 @@ async function getChanges(jobs: Job[]): Promise<JobChange[]> {
 }
 
 export async function getMyJobs(): Promise<MyJobs> {
-  const { data, error } = await supabase
-    .from('schedules')
-    .select('id, technician_id, client_name, location, start_time, end_time, status, assignment_type, geofence_lat, geofence_lon, is_vip_hook, cancellation_reason')
-    .gte('start_time', new Date(Date.now() - 30 * DAY).toISOString())
-    .order('start_time', { ascending: true })
-    .limit(80);
-  if (error) throw error;
-  const all = (data ?? []) as Job[];
-  const changes = await getChanges(all);
+  let all: Job[];
+  let changes: JobChange[];
+  if (WORK_V2) {
+    ({ jobs: all, changes } = await loadWorkJobs());
+  } else {
+    const { data, error } = await supabase
+      .from('schedules')
+      .select('id, technician_id, client_name, location, start_time, end_time, status, assignment_type, geofence_lat, geofence_lon, is_vip_hook, cancellation_reason')
+      .gte('start_time', new Date(Date.now() - 30 * DAY).toISOString())
+      .order('start_time', { ascending: true })
+      .limit(80);
+    if (error) throw error;
+    all = (data ?? []) as Job[];
+    changes = await getChanges(all);
+  }
   const today = manilaDay(new Date());
   const live = all.filter((j) => j.status !== 'cancelled');
   const todays = live.filter((j) => manilaDay(j.start_time) === today);
@@ -129,7 +138,7 @@ export async function getHomeJob(): Promise<HomeJob | null> {
 export function watchMyJobs(onChange: () => void): () => void {
   const channel = supabase
     .channel(`my-jobs-${Date.now()}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => onChange())
+    .on('postgres_changes', { event: '*', schema: 'public', table: WORK_V2 ? 'jobs' : 'schedules' }, () => onChange())
     .subscribe();
   return () => { supabase.removeChannel(channel); };
 }

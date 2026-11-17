@@ -1,6 +1,8 @@
 // Loads everyone on one job: the lead (schedules.technician_id), the crew the coordinator
 // added (schedule_crew, still active) and casual helpers (schedule_casual_helpers).
 import { supabase } from './supabase';
+import { WORK_V2 } from './work/workApi';
+import { getWorkCrew } from './work/workJobs';
 
 export type CrewMember = {
   id: string;
@@ -21,6 +23,7 @@ export async function getJobCrew(
   job: { id: string; technician_id?: string | null },
   myId?: string | null
 ): Promise<CrewMember[]> {
+  if (WORK_V2) return getWorkCrew(job.id, myId);
   const [leadRes, crewRes, casualRes] = await Promise.all([
     job.technician_id
       ? supabase.from('profiles').select('id, full_name, contact_number').eq('id', job.technician_id).maybeSingle()

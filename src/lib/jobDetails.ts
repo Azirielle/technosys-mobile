@@ -3,10 +3,13 @@
 import * as Location from 'expo-location';
 import { supabase } from './supabase';
 import type { Job } from './jobs';
+import { WORK_V2 } from './work/workApi';
+import { getWorkJob } from './work/workJobs';
 
 export type JobDetails = Job & { reporting_instruction: string | null; project_name: string | null; geofence_radius: number | null };
 
 export async function getJob(id: string): Promise<JobDetails | null> {
+  if (WORK_V2) return getWorkJob(id);
   const { data, error } = await supabase
     .from('schedules')
     .select('id, technician_id, client_name, location, start_time, end_time, status, assignment_type, geofence_lat, geofence_lon, geofence_radius, is_vip_hook, cancellation_reason, reporting_instruction, project_name')
