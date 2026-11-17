@@ -44,7 +44,7 @@ export default function ToolsScreen() {
             <Card padded={false}>
               {lists.withYou.map((x, i) => (
                 <ListRow key={x.id} icon="tool" leading={photo(x)} title={x.quantity > 1 ? `${x.name} × ${x.quantity}` : x.name} subtitle={sub(x)}
-                  last={i === lists.withYou.length - 1} right={<StatusText tone="info" label={t('tools.days', { n: daysWithYou(x) })} />}
+                  last={i === lists.withYou.length - 1} right={x.reported ? <StatusText tone="pending" label={t('tools.reported')} /> : <StatusText tone="info" label={t('tools.days', { n: daysWithYou(x) })} />}
                   onPress={() => router.push(`/tool-report?id=${x.id}` as Href)} />
               ))}
             </Card>

@@ -12,6 +12,8 @@ export type MyTool = {
   category: string | null;
   serial: string | null;
   imageUrl: string | null;
+  /** You reported a problem with it and HR hasn't closed the report yet */
+  reported: boolean;
 };
 
 export type MyToolLists = { withYou: MyTool[]; returned: MyTool[] };
@@ -22,18 +24,25 @@ export const getLoadedTool = (id: string) => lastLoaded?.withYou.find((x) => x.i
 export async function getMyTools(): Promise<MyToolLists> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { withYou: [], returned: [] };
-  const { data, error } = await supabase
-    .from('tool_borrowings')
-    .select('id, quantity, status, handed_over_at, returned_at, tool:tools ( name, category, serial_number, image_url )')
-    .eq('technician_id', user.id)
-    .order('handed_over_at', { ascending: false })
-    .limit(40);
+  const [{ data, error }, { data: reports }] = await Promise.all([
+    supabase
+      .from('tool_borrowings')
+      .select('id, quantity, status, handed_over_at, returned_at, tool:tools ( name, category, serial_number, image_url )')
+      .eq('technician_id', user.id)
+      .order('handed_over_at', { ascending: false })
+      .limit(40),
+    supabase.from('tickets').select('title').eq('employee_id', user.id).eq('category', 'Equipment / Tools').neq('status', 'resolved'),
+  ]);
   if (error) throw error;
+  // shortcut: a report is matched to the tool by its title ("Tool problem: <name>"), so two borrowings of the same
+  // tool both show it; store the borrowing id on the ticket if that ever matters
+  const reported = new Set((reports ?? []).map((r) => r.title.replace(/^Tool problem: /, '')));
   const tools: MyTool[] = (data ?? []).map((b) => {
     const tool = (Array.isArray(b.tool) ? b.tool[0] : b.tool) as { name?: string; category?: string; serial_number?: string; image_url?: string } | null;
     return {
       id: b.id, status: b.status ?? 'checked_out', quantity: b.quantity ?? 1, handedOverAt: b.handed_over_at, returnedAt: b.returned_at,
       name: tool?.name ?? 'Tool', category: tool?.category ?? null, serial: tool?.serial_number ?? null, imageUrl: tool?.image_url ?? null,
+      reported: reported.has(tool?.name ?? 'Tool'),
     };
   });
   lastLoaded = { withYou: tools.filter((x) => x.status === 'checked_out'), returned: tools.filter((x) => x.status !== 'checked_out').slice(0, 10) };

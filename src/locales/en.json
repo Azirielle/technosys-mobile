@@ -311,6 +311,7 @@
   "tools": {
     "title": "My tools",
     "subtitle": "Tools from the warehouse that are under your name.",
+    "reported": "Problem reported",
     "withYou": "With you ({n})",
     "none": "No tools are under your name right now.",
     "days": "{n} d with you",

@@ -311,6 +311,7 @@
   "tools": {
     "title": "Mga tool ko",
     "subtitle": "Mga tool mula sa warehouse na nakapangalan sa iyo.",
+    "reported": "Naiulat na ang problema",
     "withYou": "Nasa iyo ({n})",
     "none": "Walang tool na nakapangalan sa iyo ngayon.",
     "days": "{n} araw sa iyo",
