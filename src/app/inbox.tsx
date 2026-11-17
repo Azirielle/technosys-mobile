@@ -25,6 +25,7 @@ export default function InboxScreen() {
   const open = async (item: InboxItem) => {
     if (!item.read) await markRead([item.id]);
     if (item.kind === 'announcement') { router.push('/updates' as Href); return; }
+    if (item.kind === 'leave') { router.push('/leave' as Href); return; }
     // The Support chat lives on Home: go back there and open it on this ticket
     router.dismissTo('/(tabs)' as Href);
     setTimeout(() => sendHomeAction({ kind: 'support', ticketId: item.ticketId }), 450);
@@ -51,8 +52,8 @@ export default function InboxScreen() {
           {items.map((item, i) => (
             <ListRow
               key={item.id}
-              icon={item.kind === 'announcement' ? 'volume-2' : 'message-square'}
-              title={item.title}
+              icon={item.kind === 'announcement' ? 'volume-2' : item.kind === 'leave' ? 'sun' : 'message-square'}
+              title={item.leave ? t('home.leaveItem', { type: t(`home.leaveTypes.${item.leave.type}`), date: item.leave.date }) : item.title}
               subtitle={`${item.text ? `${item.text.slice(0, 90)} · ` : ''}${ago(item.at, t)}`}
               right={item.decision
                 ? <StatusText tone={item.decision === 'Approved' ? 'ok' : item.decision === 'Refused' ? 'error' : 'info'} label={item.decision === 'Approved' ? t('inbox.approved') : item.decision === 'Refused' ? t('inbox.refused') : item.decision} />

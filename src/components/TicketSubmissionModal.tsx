@@ -468,6 +468,7 @@ export default function TicketSubmissionModal({
           attachment_url: uploadedUrl,
           attachment_type: uploadedType,
           status: 'open',
+          handling_mode: 'AI', // filed inside the AI chat: the AI keeps answering (plain forms default to HR)
           idempotency_key: idempotencyKey,
         }).select().single();
 

@@ -1,4 +1,5 @@
-// The Inbox: HR's replies on your tickets and the office's announcements, newest first. Which ones you've
+// The Inbox: every answer from HR (replies on your tickets, leave approved / declined) and the office's
+// announcements, newest first. Which ones you've
 // opened is remembered on this phone. HR replies also show as a phone notification while the app is open.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
@@ -7,7 +8,7 @@ import { sanitizeNotification } from '../utils/notification-sanitizer';
 
 export type InboxItem = {
   id: string;
-  kind: 'reply' | 'announcement';
+  kind: 'reply' | 'leave' | 'announcement';
   title: string;
   text: string;
   at: string;
@@ -15,6 +16,8 @@ export type InboxItem = {
   ticketId?: string;
   /** 'Approved' / 'Refused' when HR decided a request */
   decision?: string;
+  /** Leave decisions: the screen words the title as "Sick leave · Nov 20" */
+  leave?: { type: string; date: string };
 };
 
 const readKey = (userId: string) => `READ_NOTIFS_${userId}`;
@@ -46,6 +49,18 @@ export async function getInbox(): Promise<InboxItem[]> {
       const id = `tc_${r.id}`;
       items.push({ id, kind: 'reply', title: p.title, text: p.summary, at: r.created_at as string, read: read.has(id), ticketId: r.ticket_id, decision: p.statusTag });
     }
+  }
+
+  // Leave HR decided in the last 14 days (the one still waiting stays on Home's "Needs your attention")
+  const since = new Date(Date.now() - 14 * 86400000).toISOString();
+  const { data: leaves } = await supabase.from('leaves').select('id, leave_type, start_date, status, rejection_reason, updated_at')
+    .eq('technician_id', user.id).in('status', ['approved', 'rejected']).gte('updated_at', since)
+    .order('updated_at', { ascending: false }).limit(10);
+  for (const l of leaves ?? []) {
+    const id = `lv_${l.id}_${l.status}`;
+    const date = new Date(`${l.start_date.slice(0, 10)}T00:00:00Z`).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    items.push({ id, kind: 'leave', title: '', text: l.rejection_reason ?? '', at: (l.updated_at ?? l.start_date) as string, read: read.has(id),
+      decision: l.status === 'approved' ? 'Approved' : 'Refused', leave: { type: l.leave_type, date } });
   }
 
   const { data: news } = await supabase.from('announcements').select('id, title, content, created_at').order('created_at', { ascending: false }).limit(5);
@@ -88,6 +103,7 @@ export function watchInbox(onChange: () => void): () => void {
       }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets' }, () => onChange())
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leaves' }, () => onChange())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, () => onChange())
     .subscribe();
   return () => { supabase.removeChannel(channel); };

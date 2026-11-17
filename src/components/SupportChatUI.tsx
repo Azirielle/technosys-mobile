@@ -892,7 +892,8 @@ const MarkdownText = ({ text, style }: { text: string, style: any }) => {
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>AI Support</Text>
+          {/* A ticket HR handles (e.g. a DTR question) isn't an AI chat: show its title instead */}
+          <Text style={[styles.headerTitle, { flexShrink: 1 }]} numberOfLines={1}>{activeTicket?.handling_mode === 'ADMIN' ? activeTicket.title : 'AI Support'}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <TouchableOpacity onPress={() => loadActiveTicket(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="add-circle-outline" size={24} color={isDark ? colors.brandBlue : BRAND.blue} />

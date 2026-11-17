@@ -8,7 +8,6 @@ import { Card, ListRow, StatusText, type Tone } from '../../ui';
 const ICON = { leave: 'sun', policy: 'book-open', shift: 'clock' } as const;
 const STATUS: Record<AttentionItem['status'], { tone: Tone; key: string }> = {
   waiting: { tone: 'pending', key: 'home.waitingHr' },
-  notApproved: { tone: 'error', key: 'home.notApproved' },
   toRead: { tone: 'info', key: 'home.toRead' },
   checking: { tone: 'pending', key: 'dtr.hrChecking' },
 };
