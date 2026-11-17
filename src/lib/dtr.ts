@@ -178,41 +178,43 @@ export async function getDayDetails(date: string): Promise<DayDetails> {
   if (!user) throw new Error('Not signed in');
   const from = new Date(dayStartMs(date)).toISOString();
   const to = new Date(dayStartMs(date) + 24 * H - 1).toISOString();
-  if (WORK_V2) {
-    const { data: wd, error } = await supabase.from('work_days').select('in_check, selfie_path, status, out_check')
-      .eq('person_id', user.id).eq('work_date', date).maybeSingle();
-    if (error) throw error;
-    return {
-      geofence: wd ? (wd.in_check === 'selfie' ? 'outside' : 'inside') : null,
-      selfie: !!wd?.selfie_path,
-      typedInLater: wd?.out_check === 'told_later' || wd?.out_check === 'by_coordinator' || wd?.status === 'needs_review',
-      corrections: [],
-    };
-  }
-  const [log, corr] = await Promise.all([
-    supabase.from('attendance_logs').select('geofence_status, photo_url, is_manual_entry, status')
-      .eq('technician_id', user.id).gte('app_time_in', from).lte('app_time_in', to).order('app_time_in').limit(1).maybeSingle(),
+  // HR's corrections are kept per person and date, the same for old and Work v2 days
+  const [corr, log, wd] = await Promise.all([
     supabase.from('attendance_corrections').select('created_at, reason, original_time_in, original_time_out, corrected_time_in, corrected_time_out')
       .eq('technician_id', user.id).eq('target_date', date).order('created_at', { ascending: false }),
+    WORK_V2 ? null : supabase.from('attendance_logs').select('geofence_status, photo_url, is_manual_entry, status')
+      .eq('technician_id', user.id).gte('app_time_in', from).lte('app_time_in', to).order('app_time_in').limit(1).maybeSingle(),
+    WORK_V2 ? supabase.from('work_days').select('in_check, selfie_path, status, out_check').eq('person_id', user.id).eq('work_date', date).maybeSingle() : null,
   ]);
-  if (log.error) throw log.error;
+  if (log?.error) throw log.error;
+  if (wd?.error) throw wd.error;
   const t = (iso: string | null) => (iso ? fmtTime(Date.parse(iso)) : null);
+  const corrections = (corr.data ?? []).map((c) => {
+    const inChanged = c.original_time_in !== c.corrected_time_in;
+    const outChanged = c.original_time_out !== c.corrected_time_out;
+    const what: 'in' | 'out' | 'both' = inChanged && outChanged ? 'both' : outChanged ? 'out' : 'in';
+    return {
+      when: new Date(c.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      reason: c.reason,
+      before: what === 'out' ? t(c.original_time_out) : t(c.original_time_in),
+      after: what === 'out' ? t(c.corrected_time_out) : t(c.corrected_time_in),
+      what,
+    };
+  });
+  if (wd) {
+    const d = wd.data;
+    return {
+      geofence: d ? (d.in_check === 'selfie' ? 'outside' : 'inside') : null,
+      selfie: !!d?.selfie_path,
+      typedInLater: d?.out_check === 'told_later' || d?.out_check === 'by_coordinator' || d?.status === 'needs_review',
+      corrections,
+    };
+  }
   return {
-    geofence: (log.data?.geofence_status as DayDetails['geofence']) ?? null,
-    selfie: !!log.data?.photo_url,
-    typedInLater: log.data?.status === 'pending_close',
-    corrections: (corr.data ?? []).map((c) => {
-      const inChanged = c.original_time_in !== c.corrected_time_in;
-      const outChanged = c.original_time_out !== c.corrected_time_out;
-      const what = inChanged && outChanged ? 'both' : outChanged ? 'out' : 'in';
-      return {
-        when: new Date(c.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }),
-        reason: c.reason,
-        before: what === 'out' ? t(c.original_time_out) : t(c.original_time_in),
-        after: what === 'out' ? t(c.corrected_time_out) : t(c.corrected_time_in),
-        what,
-      };
-    }),
+    geofence: (log?.data?.geofence_status as DayDetails['geofence']) ?? null,
+    selfie: !!log?.data?.photo_url,
+    typedInLater: log?.data?.status === 'pending_close',
+    corrections,
   };
 }
 

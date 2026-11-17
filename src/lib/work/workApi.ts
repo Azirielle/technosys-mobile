@@ -7,7 +7,7 @@ import { syncQueue } from '../syncQueue';
 import { uploadPhoto } from '../photoUpload';
 import type { Spot } from '../timeIn';
 
-export const WORK_V2 = false; // flipped at the switch-over (PROJECT_STATE.md §8); until then Home uses the old time-in
+export const WORK_V2 = true; // on since the switch-over on 2026-11-17 (PROJECT_STATE.md §8)
 
 export type WorkResult = { status: string; [key: string]: unknown };
 export type WorkDay = {

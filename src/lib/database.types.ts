@@ -191,6 +191,7 @@ export type Database = {
           target_date: string
           technician_id: string
           time_log_id: string | null
+          work_day_id: string | null
         }
         Insert: {
           actor_role: string
@@ -206,6 +207,7 @@ export type Database = {
           target_date: string
           technician_id: string
           time_log_id?: string | null
+          work_day_id?: string | null
         }
         Update: {
           actor_role?: string
@@ -221,6 +223,7 @@ export type Database = {
           target_date?: string
           technician_id?: string
           time_log_id?: string | null
+          work_day_id?: string | null
         }
         Relationships: [
           {
@@ -2143,6 +2146,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      hr_correct_work_day: {
+        Args: {
+          p_date: string
+          p_person_id: string
+          p_reason: string
+          p_time_in: string
+          p_time_out: string
+          p_work_day_id: string
+        }
+        Returns: Json
+      }
       check_my_phone: { Args: { p_device_id: string }; Returns: string }
       coordinator_time_out: {
         Args: { p_reason: string; p_time_out: string; p_work_day_id: string }
