@@ -64,7 +64,7 @@ export default function HomeBody(p: Props) {
         <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} />
 
         <SectionLabel>{!p.job || isToday ? t('home.todaysJob') : t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>
-        <TodayJob job={p.job} onDetails={() => p.job && go(`/job/${p.job.id}`)} onAllJobs={() => router.navigate('/(tabs)/jobs' as Href)} />
+        <TodayJob job={p.job} shift={p.shift} onDetails={() => p.job && go(`/job/${p.job.id}`)} onAllJobs={() => router.navigate('/(tabs)/jobs' as Href)} />
         {p.jobExtra}
 
         <SectionLabel>{t('home.shortcuts')}</SectionLabel>

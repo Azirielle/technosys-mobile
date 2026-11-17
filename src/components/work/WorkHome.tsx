@@ -12,15 +12,16 @@ import HomeBody from '../home/HomeBody';
 import TimeInProblemSheet from '../timein/TimeInProblemSheet';
 import ForgottenShiftSheet from '../timein/ForgottenShiftSheet';
 import WorkCheckSheet from './WorkCheckSheet';
+import EarlyTimeOutSheet from './EarlyTimeOutSheet';
 import JobProgressCard from './JobProgressCard';
 
 const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty' };
 
-/** Today's job if one runs today, else the next one; shaped like the Home card expects (one day of it). */
-function pickJob(jobs: MyJob[]): { card: Job | null; job: MyJob | null } {
+/** The job you timed in on, else today's job, else the next one; shaped like the Home card expects (one day of it). */
+function pickJob(jobs: MyJob[], timedInJobId?: string | null): { card: Job | null; job: MyJob | null } {
   const today = manilaDay(new Date());
   const live = jobs.filter((j) => j.status !== 'cancelled' && j.end_date >= today);
-  const job = live.find((j) => j.start_date <= today) ?? live[0] ?? null;
+  const job = live.find((j) => j.id === timedInJobId) ?? live.find((j) => j.start_date <= today) ?? live[0] ?? null;
   if (!job) return { card: null, job: null };
   const day = job.start_date <= today ? today : job.start_date;
   const at = (time: string) => new Date(`${day}T${time.slice(0, 8)}+08:00`).toISOString();
@@ -42,8 +43,8 @@ export default function WorkHome() {
   useEffect(() => { loadJobs(); }, [loadJobs]);
   useFocusRefresh(() => { loadJobs(); work.reload().catch(() => {}); }, { onMount: false });
 
-  const { card, job } = useMemo(() => pickJob(jobs), [jobs]);
   const today = work.days.today;
+  const { card, job } = useMemo(() => pickJob(jobs, today?.job_id), [jobs, today?.job_id]);
   const working = !!today && !today.time_out;
 
   // While timed in, the office's live map gets your position every minute
@@ -77,8 +78,10 @@ export default function WorkHome() {
         onRetry={work.retry} onSelfie={(reason) => work.sendSelfie(reason)} onClose={work.closeSheet} />
       <TimeInProblemSheet problem={work.problem} sending={work.sending}
         onRetry={() => work.selfie && work.sendSelfie(work.selfie.reason, true)} onTellHr={work.tellHr} onClose={work.closeProblem} />
+      <EarlyTimeOutSheet early={work.early} busy={work.busy} onTimeOut={(reason) => work.sendTimeOut(reason)} onClose={work.closeEarly} />
       <ForgottenShiftSheet shift={forgotten}
-        onSave={(time) => work.saveLeftAt(previewLeftAt(new Date(forgotten!.app_time_in), time).leftAt)}
+        // Checked, not `forgotten!.`: the React Compiler reads that path on every render, which crashed Home when it was null
+        onSave={async (time) => (forgotten ? work.saveLeftAt(previewLeftAt(new Date(forgotten.app_time_in), time).leftAt) : false)}
         onLater={() => setHideForgotten(true)} />
     </>
   );

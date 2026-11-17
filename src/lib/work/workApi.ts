@@ -42,8 +42,9 @@ export async function workTimeIn(here: Spot | null, extra: { selfiePath?: string
   });
 }
 
-export async function workTimeOut(here: Spot | null) {
-  return call('time_out', { p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_device_id: await getDeviceId() });
+/** Time out. More than 15 min before the end the server answers "early" until a reason is sent. */
+export async function workTimeOut(here: Spot | null, reason?: string) {
+  return call('time_out', { p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_device_id: await getDeviceId(), p_reason: reason ?? null });
 }
 
 /** Selfie for a time-in outside the site: private bucket, path must start with your id (the server checks). */

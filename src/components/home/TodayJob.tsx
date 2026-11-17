@@ -1,18 +1,20 @@
 // "Today's job" on Home: the client, time and work type, the address, and two buttons: Details (the full
-// dispatch sheet) and Navigate. With no job today it says so plainly and points to the Jobs tab.
+// dispatch sheet) and Navigate, plus your time-in status on it (working since / done for today). With no job today
+// it says so plainly and points to the Jobs tab.
 import React from 'react';
 import { View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useT } from '../../lib/i18n';
 import { openDirections } from '../../lib/directions';
 import type { Job } from '../../lib/jobs';
+import type { ShiftState } from './TimeInCard';
 import WorkTag from '../jobs/WorkTag';
 import { timeRange } from '../jobs/jobWords';
 import { Button, Card, IconChip, StatusText, Txt, useTokens } from '../../ui';
 
-type Props = { job: Job | null; onDetails: () => void; onAllJobs: () => void };
+type Props = { job: Job | null; shift?: ShiftState; onDetails: () => void; onAllJobs: () => void };
 
-export default function TodayJob({ job, onDetails, onAllJobs }: Props) {
+export default function TodayJob({ job, shift, onDetails, onAllJobs }: Props) {
   const t = useT();
   const { c } = useTokens();
   if (!job) {
@@ -38,6 +40,8 @@ export default function TodayJob({ job, onDetails, onAllJobs }: Props) {
             <WorkTag assignmentType={job.assignment_type} />
             {job.is_vip_hook && <StatusText tone="pending" label={t('jobs.vip')} />}
           </View>
+          {shift?.kind === 'working' && <StatusText tone={shift.verified ? 'ok' : 'pending'} label={t('home.working', { time: clock(shift.startedAt) })} />}
+          {shift?.kind === 'done' && <StatusText tone="info" label={t('home.doneToday')} />}
         </View>
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -51,3 +55,5 @@ export default function TodayJob({ job, onDetails, onAllJobs }: Props) {
     </Card>
   );
 }
+
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });

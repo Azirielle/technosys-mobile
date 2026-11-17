@@ -3,6 +3,7 @@
 //   no location / no GPS / outside / fake GPS → the outside sheet: map, Try again, or selfie + reason
 //   no signal → saved on the phone · too early → when it opens · no job → office duty? · other phone · forgot
 //   driver away from HQ → bring the vehicle back, or call the Coordinator
+//   time out early (15+ min before the end) → say why; the Coordinator checks it
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -32,6 +33,7 @@ export function useWork() {
   const [selfie, setSelfie] = useState<{ uri: string; reason: string } | null>(null);
   const [sending, setSending] = useState<'selfie' | 'hr' | null>(null);
   const [busy, setBusy] = useState(false);
+  const [early, setEarly] = useState<{ endsAt: string; minutes: number } | null>(null);
 
   const reload = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -133,19 +135,24 @@ export function useWork() {
     const mins = Math.max(0, Math.floor((Date.now() - Date.parse(day.time_in)) / 60000));
     Alert.alert(t('timeIn.outTitle'), t('timeIn.outText', { time: timeText(day.time_in), h: Math.floor(mins / 60), m: mins % 60 }), [
       { text: t('common.cancel'), style: 'cancel' },
-      { text: t('timeIn.outYes'), style: 'destructive', onPress: async () => {
-        setBusy(true);
-        const found = await locateMe().catch(() => 'no_gps' as const);
-        const r = await workTimeOut(typeof found === 'string' ? null : found);
-        setBusy(false);
-        if (r.status === 'timed_out') { techy.react('wave'); Alert.alert(t('timeIn.outDoneTitle'), t('timeIn.outDoneText', { hours: Number(r.hours) })); }
-        else if (r.status === 'queued') Alert.alert(t('timeIn.queuedTitle'), t('work.outQueued'));
-        else if (r.status === 'bring_vehicle_back') Alert.alert(t('work.vehicleTitle'), t('work.vehicleText', { office: String(r.office_name) }));
-        else if (r.status === 'other_phone') Alert.alert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
-        else if (r.status !== 'forgot_time_out') Alert.alert(t('timeIn.outFailTitle'), t('common.noSignal'));
-        reload();
-      } },
+      { text: t('timeIn.outYes'), style: 'destructive', onPress: () => sendTimeOut() },
     ]);
+  }
+
+  /** Sends the time-out (again with a reason after "early") and says what happened */
+  async function sendTimeOut(reason?: string) {
+    setBusy(true);
+    const found = await locateMe().catch(() => 'no_gps' as const);
+    const r = await workTimeOut(typeof found === 'string' ? null : found, reason);
+    setBusy(false);
+    if (r.status === 'early') return setEarly({ endsAt: String(r.ends_at), minutes: Number(r.minutes_early) });
+    setEarly(null);
+    if (r.status === 'timed_out') { techy.react('wave'); Alert.alert(t('timeIn.outDoneTitle'), t('timeIn.outDoneText', { hours: Number(r.hours) })); }
+    else if (r.status === 'queued') Alert.alert(t('timeIn.queuedTitle'), t('work.outQueued'));
+    else if (r.status === 'bring_vehicle_back') Alert.alert(t('work.vehicleTitle'), t('work.vehicleText', { office: String(r.office_name) }));
+    else if (r.status === 'other_phone') Alert.alert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
+    else if (r.status !== 'forgot_time_out') Alert.alert(t('timeIn.outFailTitle'), t('common.noSignal'));
+    reload();
   }
 
   /** "I left at HH:MM" for a day without a time-out (HR checks it) */
@@ -160,6 +167,7 @@ export function useWork() {
 
   return {
     me, days, sheet, problem, selfie, sending, busy, reload, startTimeIn, sendSelfie, tellHr, timeOut, saveLeftAt,
+    early, sendTimeOut, closeEarly: () => setEarly(null),
     retry: () => startTimeIn(sheet.officeDuty),
     closeSheet: () => setSheet(closed),
     closeProblem: () => setProblem((p) => ({ ...p, open: false })),

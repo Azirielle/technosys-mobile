@@ -2308,6 +2308,7 @@ export type Database = {
           p_lat: number
           p_lon: number
           p_queued_at?: string
+          p_reason?: string
         }
         Returns: Json
       }
