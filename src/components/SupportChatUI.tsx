@@ -120,6 +120,9 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     return '#3B82F6'; 
   };
   const [activeTicket, setActiveTicket] = useState<any>(null);
+  // The typing listener below is set up once; it reads the open ticket from here
+  const activeTicketIdRef = useRef<string | undefined>(undefined);
+  activeTicketIdRef.current = activeTicket?.id;
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatAttachment, setChatAttachment] = useState<{ uri: string, name: string, mimeType: string } | null>(null);
   const [isUploadingChatAttachment, setIsUploadingChatAttachment] = useState(false);
@@ -213,7 +216,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     })
       .on('broadcast', { event: 'typing_status' }, (payload: any) => {
         const data = payload?.payload || payload;
-        if (data?.ticket_id && activeTicket?.id === data.ticket_id && data.role === 'admin') {
+        if (data?.ticket_id && activeTicketIdRef.current === data.ticket_id && data.role === 'admin') {
           if (data.is_typing) {
             setIsAdminTyping(true);
             if (adminTypingWatchdog.current) clearTimeout(adminTypingWatchdog.current);
@@ -232,7 +235,9 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
       if (techTypingDebounceRef.current) clearTimeout(techTypingDebounceRef.current);
       if (broadcastChannelRef.current) supabase.removeChannel(broadcastChannelRef.current);
     };
-  }, [activeTicket?.id]);
+    // Once: rebuilding 'system-updates' on every ticket change reused the old, already-running channel (removal
+    // finishes later) and threw "cannot add callbacks after subscribe()". The name must stay: the admin listens on it.
+  }, []);
 
 
   useEffect(() => {
@@ -313,7 +318,8 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
       // Subscribe to new comments
       // Also listen to ticket status changes
       if (channelRef.current) supabase.removeChannel(channelRef.current);
-      channelRef.current = supabase.channel(`mobile-chat-${ticket.id}`)
+      // Unique name: removing the old channel finishes later, and reusing its name returned the running one
+      channelRef.current = supabase.channel(`mobile-chat-${ticket.id}-${Date.now()}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${ticket.id}` }, (payload) => {
           setActiveTicket(payload.new);
         })
