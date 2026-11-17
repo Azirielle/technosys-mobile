@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, AppState, Image, Pressable, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { router, type Href } from 'expo-router';
+import { router, useNavigation, type Href } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -18,7 +18,7 @@ import { useFocusRefresh } from '../../lib/useFocusRefresh';
 import { jobTitle } from '../../lib/jobTitle';
 import { getDeviceName } from '../../lib/deviceId';
 import { loadHapticsSetting, saveHapticsSetting } from '../../lib/hapticsSetting';
-import { Card, ListRow, SectionLabel, SkeletonRow, TAB_BAR_HEIGHT, Toggle, Txt, arrive, haptic, useReducedMotion, useTokens } from '../../ui';
+import { Card, ConfirmDialog, ListRow, SectionLabel, SkeletonRow, TAB_BAR_HEIGHT, Toggle, Txt, arrive, haptic, useReducedMotion, useTokens } from '../../ui';
 
 const AVATAR = 64;
 
@@ -70,10 +70,15 @@ export default function ProfileTab() {
     else if (notif === 'denied') openPhoneSettings();
   };
   const themeValue = { light: t('me.light'), dark: t('me.dark'), system: t('me.system') }[themeMode];
-  const signOut = () => Alert.alert(t('me.signOutTitle'), t('me.signOutText'), [
-    { text: t('common.cancel'), style: 'cancel' },
-    { text: t('me.signOut'), style: 'destructive', onPress: async () => { await supabase.auth.signOut().catch(() => {}); router.replace('/' as Href); } },
-  ]);
+  const navigation = useNavigation();
+  const [askSignOut, setAskSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  // By name, not router.replace('/'): inside the tabs "/" is the Home tab, so that landed on Home still open
+  const signOut = async () => {
+    setSigningOut(true);
+    await supabase.auth.signOut().catch(() => {});
+    navigation.getParent()?.reset({ index: 0, routes: [{ name: 'index' as never }] });
+  };
   const isFieldStaff = !profile || ['technician', 'helper'].includes(profile.role);
   const group = { paddingVertical: 6 };
 
@@ -120,8 +125,10 @@ export default function ProfileTab() {
           </Card>
 
           <Card padded={false} style={[group, { marginTop: 22 }]}>
-            <ListRow look="settings" danger icon="log-out" title={t('me.signOut')} onPress={signOut} />
+            <ListRow look="settings" danger icon="log-out" title={t('me.signOut')} onPress={() => setAskSignOut(true)} />
           </Card>
+          <ConfirmDialog open={askSignOut} title={t('me.signOutTitle')} text={t('me.signOutText')} confirmLabel={t('me.signOut')}
+            cancelLabel={t('common.cancel')} busy={signingOut} onConfirm={signOut} onCancel={() => setAskSignOut(false)} />
         </Animated.View>
       </ScrollView>
     </SafeAreaView>

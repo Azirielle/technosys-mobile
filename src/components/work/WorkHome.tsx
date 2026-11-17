@@ -9,6 +9,7 @@ import { previewLeftAt } from '../../lib/forgottenShift';
 import { startLocationUpdates } from '../../lib/liveLocation';
 import { useFocusRefresh } from '../../lib/useFocusRefresh';
 import HomeBody from '../home/HomeBody';
+import type { ShiftState } from '../home/TimeInCard';
 import TimeInProblemSheet from '../timein/TimeInProblemSheet';
 import ForgottenShiftSheet from '../timein/ForgottenShiftSheet';
 import WorkCheckSheet from './WorkCheckSheet';
@@ -58,14 +59,17 @@ export default function WorkHome() {
     ? { id: work.days.forgotten.id, app_time_in: work.days.forgotten.time_in, app_time_out: null, total_hours: null, geofence_status: null }
     : null;
 
+  const shift: ShiftState = today
+    ? (today.time_out
+      ? { kind: 'done', timeIn: today.time_in, timeOut: today.time_out, hours: today.hours != null ? Number(today.hours) : null }
+      : { kind: 'working', startedAt: today.time_in, verified: today.in_check === 'inside' })
+    : { kind: 'off', shiftStart: card?.start_time };
+
   return (
     <>
       <HomeBody
-        shift={today
-          ? (today.time_out
-            ? { kind: 'done', timeIn: today.time_in, timeOut: today.time_out, hours: today.hours != null ? Number(today.hours) : null }
-            : { kind: 'working', startedAt: today.time_in, verified: today.in_check === 'inside' })
-          : { kind: 'off', shiftStart: card?.start_time }}
+        shift={shift}
+        jobShift={today && job && today.job_id === job.id ? shift : undefined}
         busy={work.busy}
         onTimeIn={() => work.startTimeIn()}
         onTimeOut={work.timeOut}

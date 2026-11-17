@@ -21,6 +21,8 @@ import AttentionList from './AttentionList';
 
 type Props = {
   shift: ShiftState;
+  /** Shown on the job card only when today's time-in is on that job */
+  jobShift?: ShiftState;
   busy: boolean;
   job: Job | null;
   onTimeIn: () => void;
@@ -64,7 +66,7 @@ export default function HomeBody(p: Props) {
         <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} />
 
         <SectionLabel>{!p.job || isToday ? t('home.todaysJob') : t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>
-        <TodayJob job={p.job} shift={p.shift} onDetails={() => p.job && go(`/job/${p.job.id}`)} onAllJobs={() => router.navigate('/(tabs)/jobs' as Href)} />
+        <TodayJob job={p.job} shift={p.jobShift} onDetails={() => p.job && go(`/job/${p.job.id}`)} onAllJobs={() => router.navigate('/(tabs)/jobs' as Href)} />
         {p.jobExtra}
 
         <SectionLabel>{t('home.shortcuts')}</SectionLabel>

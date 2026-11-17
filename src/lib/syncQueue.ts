@@ -204,7 +204,9 @@ export const syncQueue = {
             }
           } else if (item.type === 'work_time_in' || item.type === 'work_time_out') {
             // The server decides (and refuses a time older than 12 h / 24 h); a refusal isn't retried
-            const { error: err } = await supabase.rpc(item.type === 'work_time_in' ? 'time_in' : 'time_out', item.payload);
+            // addToQueue adds an `id` to every payload; the database functions take only their own inputs
+            const { id: _id, ...args } = item.payload;
+            const { error: err } = await supabase.rpc(item.type === 'work_time_in' ? 'time_in' : 'time_out', args);
             error = err;
           } else if (item.type === 'leave_request') {
             const leaveId = item.payload.id || item.id;
