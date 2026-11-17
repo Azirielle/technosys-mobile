@@ -16,7 +16,8 @@ export function generateUUID(): string {
 
 export interface QueueItem {
   id: string;
-  type: 'time_in' | 'time_out' | 'leave_request' | 'ticket_submission' | 'post_comment' | 'close_ticket';
+  // work_time_in / work_time_out: Work v2, sent through the database's time_in / time_out with the time taken
+  type: 'time_in' | 'time_out' | 'leave_request' | 'ticket_submission' | 'post_comment' | 'close_ticket' | 'work_time_in' | 'work_time_out';
   payload: any;
   timestamp: string;
 }
@@ -201,6 +202,10 @@ export const syncQueue = {
                 .eq('id', item.payload.log_id);
               error = err;
             }
+          } else if (item.type === 'work_time_in' || item.type === 'work_time_out') {
+            // The server decides (and refuses a time older than 12 h / 24 h); a refusal isn't retried
+            const { error: err } = await supabase.rpc(item.type === 'work_time_in' ? 'time_in' : 'time_out', item.payload);
+            error = err;
           } else if (item.type === 'leave_request') {
             const leaveId = item.payload.id || item.id;
             const { error: err } = await supabase.from('leaves').upsert({

@@ -26,6 +26,8 @@ type Props = {
   onTimeIn: () => void;
   onTimeOut: () => void;
   onRefresh: () => Promise<void>;
+  /** Shown under today's job (Work v2: Arrived / Done / Ask for overtime) */
+  jobExtra?: React.ReactNode;
 };
 
 export default function HomeBody(p: Props) {
@@ -63,6 +65,7 @@ export default function HomeBody(p: Props) {
 
         <SectionLabel>{!p.job || isToday ? t('home.todaysJob') : t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>
         <TodayJob job={p.job} onDetails={() => p.job && go(`/job/${p.job.id}`)} onAllJobs={() => router.navigate('/(tabs)/jobs' as Href)} />
+        {p.jobExtra}
 
         <SectionLabel>{t('home.shortcuts')}</SectionLabel>
         <QuickActions toolsWithYou={summary?.toolsWithYou ?? 0} onTools={() => go('/tools')} onLeave={() => go('/leave')} onUpdates={() => go('/updates')} />

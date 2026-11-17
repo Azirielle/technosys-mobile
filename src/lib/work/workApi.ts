@@ -1,0 +1,98 @@
+// Work v2 data for the phone: today's work day, your jobs, and the database functions that time you in and
+// out (they decide everything: window, phone, distance, late, driver rule). Every call returns the
+// database's plain status; lib/work/workMessages.ts turns it into words.
+import { supabase } from '../supabase';
+import { getDeviceId } from '../deviceId';
+import { syncQueue } from '../syncQueue';
+import { uploadPhoto } from '../photoUpload';
+import type { Spot } from '../timeIn';
+
+export const WORK_V2 = false; // flipped at the switch-over (PROJECT_STATE.md §8); until then Home uses the old time-in
+
+export type WorkResult = { status: string; [key: string]: unknown };
+export type WorkDay = {
+  id: string; work_date: string; job_id: string | null; place: 'site' | 'hq'; place_name: string; time_in: string;
+  time_out: string | null; late_minutes: number; in_check: string; hours: number | null; status: string;
+};
+export type MyJob = {
+  id: string; client_name: string; address: string; project_name: string | null; notes: string | null;
+  site_lat: number; site_lon: number; site_radius_m: number; start_date: string; end_date: string;
+  start_time: string; end_time: string; work_type: string; report_to: 'site' | 'hq'; status: string; cancel_reason: string | null;
+  role: string; vehicle: string | null;
+};
+
+const isNetwork = (e: unknown) => /fetch|network|timeout/i.test(String((e as { message?: string })?.message ?? e));
+
+async function call(fn: 'time_in' | 'time_out', args: Record<string, unknown>): Promise<WorkResult> {
+  const { data, error } = await supabase.rpc(fn, args as never);
+  if (error) {
+    if (!isNetwork(error)) return { status: error.message.includes('Not signed in') ? 'signed_out' : 'error' };
+    // No signal: kept on the phone and sent later with the time it was taken
+    await syncQueue.addToQueue(fn === 'time_in' ? 'work_time_in' : 'work_time_out', { ...args, p_queued_at: new Date().toISOString() });
+    return { status: 'queued' };
+  }
+  return (data ?? { status: 'error' }) as WorkResult;
+}
+
+/** Time in. Without a selfie the server answers outside / fake_gps / need_selfie when it can't confirm the site. */
+export async function workTimeIn(here: Spot | null, extra: { selfiePath?: string; reason?: string; officeDuty?: boolean } = {}) {
+  return call('time_in', {
+    p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_accuracy_m: here?.accuracy ?? null, p_mocked: here?.isMocked ?? false,
+    p_device_id: await getDeviceId(), p_selfie_path: extra.selfiePath ?? null, p_reason: extra.reason ?? null, p_office_duty: extra.officeDuty ?? false,
+  });
+}
+
+export async function workTimeOut(here: Spot | null) {
+  return call('time_out', { p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_device_id: await getDeviceId() });
+}
+
+/** Selfie for a time-in outside the site: private bucket, path must start with your id (the server checks). */
+export async function uploadWorkSelfie(userId: string, uri: string): Promise<string> {
+  const path = `${userId}-${Date.now()}.jpg`;
+  await uploadPhoto('dtr-selfies', path, uri);
+  return path;
+}
+
+export async function reportLeftAt(workDayId: string, leftAt: Date): Promise<WorkResult> {
+  const { data, error } = await supabase.rpc('report_left_at', { p_work_day_id: workDayId, p_left_at: leftAt.toISOString() });
+  return error ? { status: 'error' } : (data as WorkResult);
+}
+
+export async function markProgress(jobId: string, kind: 'arrived' | 'done', here: Spot | null): Promise<WorkResult> {
+  const { data, error } = await supabase.rpc('mark_job_progress', { p_job_id: jobId, p_kind: kind, p_lat: here?.lat ?? null, p_lon: here?.lon ?? null } as never);
+  return error ? { status: 'error' } : (data as WorkResult);
+}
+
+export async function askOvertime(hours: number, reason: string): Promise<WorkResult> {
+  const { data, error } = await supabase.rpc('request_overtime', { p_hours: hours, p_reason: reason });
+  return error ? { status: 'error' } : (data as WorkResult);
+}
+
+/** Today's work day (Manila), and an earlier day still without a time-out. */
+export async function getMyDays(): Promise<{ today: WorkDay | null; forgotten: WorkDay | null }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { today: null, forgotten: null };
+  const todayDate = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+  const { data } = await supabase.from('work_days')
+    .select('id, work_date, job_id, place, place_name, time_in, time_out, late_minutes, in_check, hours, status')
+    .eq('person_id', user.id).or(`work_date.eq.${todayDate},time_out.is.null`).order('work_date', { ascending: false });
+  const days = (data ?? []) as WorkDay[];
+  return { today: days.find((d) => d.work_date === todayDate) ?? null, forgotten: days.find((d) => d.work_date < todayDate && !d.time_out) ?? null };
+}
+
+/** Jobs you're on (the access rules return only those), with your role and, for drivers, the vehicle. */
+export async function getMyWorkJobs(): Promise<MyJob[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const { data, error } = await supabase.from('jobs')
+    .select(`id, client_name, address, project_name, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time,
+      work_type, report_to, status, cancel_reason, job_members ( person_id, role, removed_at, vehicle:vehicles ( name, plate ) )`)
+    .gte('end_date', since).order('start_date').order('start_time');
+  if (error) throw error;
+  return (data ?? []).map(({ job_members, ...j }) => {
+    const me = (job_members ?? []).find((m) => m.person_id === user.id && !m.removed_at);
+    const v = me?.vehicle as { name?: string; plate?: string } | null;
+    return { ...(j as Omit<MyJob, 'role' | 'vehicle'>), role: me?.role ?? 'crew', vehicle: v ? `${v.name} · ${v.plate}` : null };
+  });
+}
