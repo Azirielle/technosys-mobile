@@ -89,7 +89,7 @@ export async function getMyDtr(cut: Cutoff): Promise<DtrResult> {
   const fromIso = new Date(dayStartMs(cut.start)).toISOString();
   const toIso = new Date(dayStartMs(cut.end) + 24 * H - 1).toISOString();
 
-  const [logs, jobs, ot, leaves, holidays] = await Promise.all([
+  const [logs, jobs, ot, leaves, holidays, me] = await Promise.all([
     supabase.from('attendance_logs').select('id, app_time_in, app_time_out, status').eq('technician_id', user.id)
       .gte('app_time_in', fromIso).lte('app_time_in', toIso).order('app_time_in'),
     supabase.from('schedules').select('id, client_name, start_time, assignment_type').neq('status', 'cancelled')
@@ -99,8 +99,9 @@ export async function getMyDtr(cut: Cutoff): Promise<DtrResult> {
     supabase.from('leaves').select('start_date, end_date, leave_type').eq('technician_id', user.id)
       .eq('status', 'approved').lte('start_date', cut.end).gte('end_date', cut.start),
     supabase.from('holidays').select('holiday_date, name').eq('is_active', true).gte('holiday_date', cut.start).lte('holiday_date', cut.end),
+    supabase.from('profiles').select('hire_date').eq('id', user.id).maybeSingle(),
   ]);
-  const failed = logs.error || jobs.error || ot.error || leaves.error || holidays.error;
+  const failed = logs.error || jobs.error || ot.error || leaves.error || holidays.error || me.error;
   if (failed) throw failed;
   const v2 = WORK_V2 ? await workDayRows(user.id, cut) : null;
   const logRows: LogRow[] = v2?.logs ?? (logs.data ?? []);
@@ -111,6 +112,7 @@ export async function getMyDtr(cut: Cutoff): Promise<DtrResult> {
 
   for (let ms = Date.parse(`${cut.start}T00:00:00Z`); ms <= Date.parse(`${cut.end}T00:00:00Z`); ms += 86400000) {
     const date = new Date(ms).toISOString().slice(0, 10);
+    if (me.data?.hire_date && date < me.data.hire_date) continue; // days before you were hired don't count
     const isSunday = new Date(ms).getUTCDay() === 0;
     const holiday = (holidays.data ?? []).find((h) => h.holiday_date === date);
     if (!isSunday && !holiday) { result.workdays += 1; if (date <= today) result.workdaysSoFar += 1; }
