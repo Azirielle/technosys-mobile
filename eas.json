@@ -10,6 +10,7 @@
       "channel": "development"
     },
     "preview": {
+      "environment": "preview",
       "autoIncrement": true,
       "distribution": "internal",
       "android": {
