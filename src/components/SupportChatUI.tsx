@@ -836,7 +836,11 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
                      content: localAccumulatedAiText,
                      author_id: session.user.id
                   }).select().single().then(({ data: insertedAi, error }) => {
-                     if (error) console.error("AI Insert Error:", error);
+                     if (error) {
+                       // Refused: HR took over while the AI was typing. Remove the answer so the phone matches what HR sees.
+                       console.warn("AI answer not saved:", error.message);
+                       setMessages(prev => prev.filter(m => m.id !== aiMessageId));
+                     }
                      if (insertedAi) {
                         setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, id: insertedAi.id } : m));
                       }
