@@ -17,7 +17,7 @@ export function generateUUID(): string {
 export interface QueueItem {
   id: string;
   // work_time_in / work_time_out: Work v2, sent through the database's time_in / time_out with the time taken
-  type: 'time_in' | 'time_out' | 'leave_request' | 'ticket_submission' | 'post_comment' | 'close_ticket' | 'work_time_in' | 'work_time_out';
+  type: 'time_in' | 'time_out' | 'leave_request' | 'work_time_in' | 'work_time_out';
   payload: any;
   timestamp: string;
 }
@@ -219,40 +219,6 @@ export const syncQueue = {
               reason: item.payload.reason,
               status: 'pending'
             }, { onConflict: 'id' });
-            error = err;
-          } else if (item.type === 'ticket_submission') {
-            const ticketId = item.payload.id || item.id;
-            const { error: err } = await supabase.from('tickets').upsert({
-              id: ticketId,
-              employee_id: item.payload.employee_id,
-              title: item.payload.title,
-              category: item.payload.category,
-              priority: item.payload.priority,
-              description: item.payload.description,
-              status: item.payload.status || 'open',
-              created_at: item.payload.created_at || new Date().toISOString()
-            }, { onConflict: 'id' });
-            error = err;
-          } else if (item.type === 'post_comment') {
-            const commentId = item.payload.id || item.id;
-            const { error: err } = await supabase.from('ticket_comments').upsert({
-              id: commentId,
-              ticket_id: item.payload.ticket_id,
-              author_id: item.payload.author_id,
-              content: item.payload.content,
-              created_at: item.payload.created_at || new Date().toISOString()
-            }, { onConflict: 'id' });
-            error = err;
-            if (!err) {
-              // Also update the parent ticket's updated_at timestamp on Supabase
-              await supabase.from('tickets')
-                .update({ updated_at: new Date().toISOString() })
-                .eq('id', item.payload.ticket_id);
-            }
-          } else if (item.type === 'close_ticket') {
-            const { error: err } = await supabase.from('tickets')
-              .update({ status: 'closed', updated_at: new Date().toISOString() })
-              .eq('id', item.payload.ticket_id);
             error = err;
           }
 
