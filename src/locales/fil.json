@@ -541,5 +541,13 @@
       "leave": "Mag-file ng leave",
       "tool": "Mag-report ng problema sa gamit"
     }
+  },
+  "hrChat": {
+    "title": "Usapan kasama ang HR",
+    "open": "Dito sasagot ang HR",
+    "finished": "Tinapos na ng HR",
+    "finishedNote": "Tapos na ng HR ang request na ito. Para sa bago, magtanong kay Techy o gamitin ang mga form sa Home.",
+    "sending": "Ipinapadala…",
+    "sent": "Naipadala · Dito sasagot ang HR"
   }
 }

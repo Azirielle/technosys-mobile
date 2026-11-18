@@ -46,7 +46,10 @@ export async function getInbox(): Promise<InboxItem[]> {
       .from('ticket_comments').select('id, ticket_id, content, created_at')
       .in('ticket_id', tickets.map((t) => t.id)).in('sender_role', ['admin', 'system']).eq('is_internal', false)
       .order('created_at', { ascending: false }).limit(20);
+    const shown = new Set<string>(); // one row per ticket: its newest HR message (a new reply makes it unread again)
     for (const r of replies ?? []) {
+      if (shown.has(r.ticket_id)) continue;
+      shown.add(r.ticket_id);
       const ticket = tickets.find((t) => t.id === r.ticket_id);
       const approved = r.content.includes('[DECISION: APPROVED');
       const refused = r.content.includes('[DECISION: REFUSED');

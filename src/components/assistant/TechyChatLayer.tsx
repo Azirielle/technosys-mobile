@@ -1,7 +1,7 @@
 // TechyChatLayer: wraps the tabs so Techy's chat can open the way Andrew chose (motion #15, useTechyOpening): the
 // screen you're on turns over like a page with the chat underneath, and Techy flies to its seat in the chat header.
 // The phone's Back button and "End" both close it (the chat slides down, Techy goes home).
-// Open it from anywhere with openTechyChat(): Techy's dock, or an HR reply in the Inbox (with its ticket).
+// Techy's dock opens it with openTechyChat(). (HR replies in the Inbox open their own screen, app/ticket/[id].tsx.)
 import React, { useEffect, useRef, useState } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -9,14 +9,14 @@ import TechyChat from './TechyChat';
 import { BIG, TECHY_H, useTechyOpening } from './useTechyOpening';
 import { Techy, techy, useTokens } from '../../ui';
 
-const listeners = new Set<(ticketId?: string) => void>();
-/** Opens Techy's chat: your unfinished Techy chat, or the conversation on this ticket (an HR reply). */
-export function openTechyChat(ticketId?: string) { listeners.forEach((l) => l(ticketId)); }
+const listeners = new Set<() => void>();
+/** Opens Techy's chat: your unfinished Techy chat, or a new one. */
+export function openTechyChat() { listeners.forEach((l) => l()); }
 
 export default function TechyChatLayer({ children }: { children: React.ReactNode }) {
   const { c } = useTokens();
   const motion = useTechyOpening();
-  const [chat, setChat] = useState<{ ticketId?: string } | null>(null); // mounted while open
+  const [chat, setChat] = useState(false); // mounted while open
   const [onTop, setOnTop] = useState(false); // under the turning page while opening, on top once open
   const busy = useRef(false);
   const opening = useRef(false);
@@ -25,11 +25,11 @@ export default function TechyChatLayer({ children }: { children: React.ReactNode
   const { open, close } = motion;
 
   useEffect(() => {
-    const listener = async (ticketId?: string) => {
+    const listener = async () => {
       if (busy.current) return;
       busy.current = true;
       techy.away(true); // the dock is empty: this Techy is the one doing the opening
-      setOnTop(false); setChat({ ticketId });
+      setOnTop(false); setChat(true);
       opening.current = true;
       await open();
       opening.current = false;
@@ -45,7 +45,7 @@ export default function TechyChatLayer({ children }: { children: React.ReactNode
     if (busy.current) return;
     busy.current = true;
     await close();
-    setChat(null); setOnTop(false);
+    setChat(false); setOnTop(false);
     techy.away(false);
     busy.current = false;
   };
@@ -68,7 +68,7 @@ export default function TechyChatLayer({ children }: { children: React.ReactNode
     <View style={{ flex: 1 }} collapsable={false}>
       {chat && (
         <Animated.View style={[StyleSheet.absoluteFill, { zIndex: onTop ? 2 : 0 }, motion.chatStyle]}>
-          <TechyChat ticketId={chat.ticketId} onEnd={shut} dimStyle={motion.chatDimStyle} />
+          <TechyChat onEnd={shut} dimStyle={motion.chatDimStyle} />
         </Animated.View>
       )}
       {/* The screen you're on: it turns over like a page when the chat opens */}

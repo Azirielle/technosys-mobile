@@ -1,11 +1,13 @@
 // TabBar (motion #6): the glass bottom bar for Home · Jobs · DTR · Profile. A light-blue pill slides under the
 // active tab, a short cyan underline marks it, and the active icon grows a little. The pill moves the moment
 // you tap (it doesn't wait for the screen to draw), in 200 ms with no bounce. Light haptic tap.
-// Used by app/(tabs)/_layout.tsx.
+// Used by app/(tabs)/_layout.tsx. Behind it, the screen fades into the background color, so lists scrolling under the
+// floating bar don't show through the gap below it (Andrew, 19 Nov: "Company policies" peeked out under the bar on Home).
 import React, { useEffect, useState } from 'react';
 import { LayoutChangeEvent, Pressable, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import Glass from './Glass';
@@ -33,8 +35,12 @@ export default function TabBar({ state, descriptors, navigation, icons, badges }
   useEffect(() => { if (slot) slideTo(active); }, [active, slot, reduced]); // eslint-disable-line react-hooks/exhaustive-deps
   const pill = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
 
+  const gap = Math.max(insets.bottom, 10);
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 10) }}>
+    <>
+    <LinearGradient pointerEvents="none" colors={[`${c.canvas}00`, c.canvas]} locations={[0, 0.45]}
+      style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: gap + TAB_BAR_HEIGHT + 24 }} />
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: gap }}>
       <Glass radius={26} intensity={50}>
         <View
           onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width - 12)}
@@ -72,6 +78,7 @@ export default function TabBar({ state, descriptors, navigation, icons, badges }
         </View>
       </Glass>
     </View>
+    </>
   );
 }
 

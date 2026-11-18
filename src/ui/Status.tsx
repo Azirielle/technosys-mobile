@@ -11,14 +11,15 @@ function toneColors(c: ReturnType<typeof useTokens>['c'], tone: Tone) {
   return { ok: [c.ok, c.okBg], pending: [c.pending, c.pendingBg], error: [c.error, c.errorBg], info: [c.info, c.infoBg] }[tone];
 }
 
-/** A pill with an optional dot: "Waiting for HR", "Timed in · 8:02 AM". */
-export function StatusPill({ tone, label, dot = true }: { tone: Tone; label: string; dot?: boolean }) {
+/** A pill with an optional dot: "Waiting for HR", "Timed in · 8:02 AM". `large` for the main status of a screen. */
+export function StatusPill({ tone, label, dot = true, large }: { tone: Tone; label: string; dot?: boolean; large?: boolean }) {
   const { c } = useTokens();
   const [fg, bg] = toneColors(c, tone);
+  const d = large ? 8 : 7;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: bg }}>
-      {dot && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: fg }} />}
-      <Txt variant="label" style={{ color: fg, fontSize: 12 }}>{label}</Txt>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: large ? 7 : 6, alignSelf: 'flex-start', paddingHorizontal: large ? 12 : 10, paddingVertical: large ? 5 : 4, borderRadius: 999, backgroundColor: bg }}>
+      {dot && <View style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: fg }} />}
+      <Txt variant="label" style={{ color: fg, fontSize: large ? 14 : 12, lineHeight: large ? 20 : 18 }}>{label}</Txt>
     </View>
   );
 }

@@ -1,28 +1,28 @@
 // TechyChat: Techy's chat window. Ask Techy (the AI assistant) about tools, safety, your DTR, leaves or company rules.
-// Shown by TechyChatLayer (tap Techy, or an HR reply in the Inbox opens it on that ticket). The only button at the top
-// is "End"; Techy itself sits in the empty seat at the top-left (drawn by the layer). Once HR takes over, Techy stays
-// quiet and your messages go to HR.
+// Shown by TechyChatLayer when you tap Techy: your unfinished Techy chat, or a new one. The only button at the top is
+// "End"; Techy itself sits in the empty seat at the top-left (drawn by the layer). Once HR takes over, Techy stays
+// quiet and your messages go to HR. (HR replies in the Inbox open app/ticket/[id].tsx instead.)
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View, type ViewStyle } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, View, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { type AnimatedStyle } from 'react-native-reanimated';
-import { Feather } from '@expo/vector-icons';
 import { useT } from '../../lib/i18n';
 import {
   type ChatMessage, type Ticket, askTechy, endConversation, listenToConversation, mergeMessage, openConversation,
   saveTechyAnswer, sendMine, startChat, techyAnswers,
 } from '../../lib/assistant';
 import ChatBubble from './ChatBubble';
+import ChatComposer from './ChatComposer';
 import { SEAT, SEAT_LEFT, SEAT_TOP } from './useTechyOpening';
 import { Notice, Txt, haptic, useTokens } from '../../ui';
 
 const STREAM_ID = 'stream'; // Techy's answer while it is still being written
 
-type Props = { ticketId?: string; onEnd: () => void; dimStyle: AnimatedStyle<ViewStyle> };
+type Props = { onEnd: () => void; dimStyle: AnimatedStyle<ViewStyle> };
 
-export default function TechyChat({ ticketId, onEnd, dimStyle }: Props) {
+export default function TechyChat({ onEnd, dimStyle }: Props) {
   const t = useT();
-  const { c, radius, fonts } = useTokens();
+  const { c, radius } = useTokens();
   const [ticket, setTicketState] = useState<Ticket | null>(null);
   const ticketRef = useRef<Ticket | null>(null); // the latest ticket for code running after an await
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -41,12 +41,13 @@ export default function TechyChat({ ticketId, onEnd, dimStyle }: Props) {
   }, [setTicket]);
 
   useEffect(() => {
-    openConversation(ticketId)
-      .then(({ ticket: found, messages: shown }) => { if (found) { setTicket(found); listen(found.id); } setMessages(shown); })
-      .catch(() => setProblem('load'))
-      .finally(() => setLoading(false));
-    return () => { stopListening.current?.(); stopAsking.current?.(); };
-  }, [ticketId, listen, setTicket]);
+    let gone = false; // closed before it finished loading: don't start listening
+    openConversation()
+      .then(({ ticket: found, messages: shown }) => { if (gone) return; if (found) { setTicket(found); listen(found.id); } setMessages(shown); })
+      .catch(() => { if (!gone) setProblem('load'); })
+      .finally(() => { if (!gone) setLoading(false); });
+    return () => { gone = true; stopListening.current?.(); stopAsking.current?.(); };
+  }, [listen, setTicket]);
 
   const send = async () => {
     const text = input.trim();
@@ -125,16 +126,8 @@ export default function TechyChat({ ticketId, onEnd, dimStyle }: Props) {
               ListFooterComponent={thinking ? <Txt variant="caption" color="ink2" style={{ marginTop: 4 }}>{t('assistant.thinking')}</Txt> : null}
             />
             {problem && <View style={{ paddingHorizontal: 14 }}><Notice tone="error" text={t(problem === 'load' ? 'assistant.loadFailed' : 'common.noSignal')} /></View>}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: c.line }}>
-              <TextInput value={input} onChangeText={setInput} multiline maxLength={1000}
-                placeholder={hrHasIt || !techyAnswers(ticket) ? t('assistant.placeholderHr') : t('assistant.placeholder')} placeholderTextColor={c.ink3}
-                accessibilityLabel={t('assistant.placeholder')}
-                style={{ flex: 1, maxHeight: 120, minHeight: 44, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 11, borderRadius: radius.control, borderWidth: 1, borderColor: c.line, backgroundColor: c.card, color: c.ink, fontFamily: fonts.regular, fontSize: 15 }} />
-              <Pressable onPress={send} disabled={!input.trim() || asking} accessibilityRole="button" accessibilityLabel={t('assistant.send')}
-                style={{ width: 44, height: 44, borderRadius: radius.round, alignItems: 'center', justifyContent: 'center', backgroundColor: c.brand, opacity: !input.trim() || asking ? 0.4 : 1 }}>
-                <Feather name="send" size={19} color={c.onBrand} />
-              </Pressable>
-            </View>
+            <ChatComposer value={input} onChangeText={setInput} onSend={send} busy={asking} sendLabel={t('assistant.send')}
+              placeholder={hrHasIt || !techyAnswers(ticket) ? t('assistant.placeholderHr') : t('assistant.placeholder')} />
           </KeyboardAvoidingView>
         </SafeAreaView>
         {/* in the page's shadow until the page has turned away */}

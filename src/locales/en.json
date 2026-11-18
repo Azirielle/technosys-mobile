@@ -541,5 +541,13 @@
       "leave": "File a leave",
       "tool": "Report a tool problem"
     }
+  },
+  "hrChat": {
+    "title": "Conversation with HR",
+    "open": "HR will reply here",
+    "finished": "Finished by HR",
+    "finishedNote": "HR has finished this request. For something new, ask Techy or use the forms on Home.",
+    "sending": "Sending…",
+    "sent": "Sent · HR will reply here"
   }
 }
