@@ -52,8 +52,8 @@ export default function WorkHome() {
   const meId = work.me?.id;
   useEffect(() => {
     if (!working || !meId) return;
-    return startLocationUpdates(meId, work.me?.full_name ?? '');
-  }, [working, meId]); // eslint-disable-line react-hooks/exhaustive-deps
+    return startLocationUpdates(meId);
+  }, [working, meId]);
 
   const forgotten = work.days.forgotten && !hideForgotten
     ? { id: work.days.forgotten.id, app_time_in: work.days.forgotten.time_in, app_time_out: null, total_hours: null, geofence_status: null }

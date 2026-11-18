@@ -21,7 +21,7 @@ export default function ClassicHome() {
   const activeId = shift.active?.id;
   useEffect(() => {
     if (!activeId || !me) return;
-    return startLocationUpdates(me.id, me.full_name ?? '');
+    return startLocationUpdates(me.id);
   }, [activeId, me]);
 
   const active = shift.active;

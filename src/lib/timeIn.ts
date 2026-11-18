@@ -71,8 +71,7 @@ export async function saveTimeIn(me: Me, here: Spot | null, selfiePath?: string)
     .single();
   if (error) throw error;
   await updateLivePin({
-    techId: me.id, name: me.full_name ?? '', lat: spot.lat, lon: spot.lon, status: 'working',
-    at: data.app_time_in ?? new Date().toISOString(), action: outside ? 'clock_in_override' : 'clock_in',
+    techId: me.id, lat: spot.lat, lon: spot.lon, status: 'working', at: data.app_time_in ?? new Date().toISOString(),
   });
   return data as ShiftLog;
 }
@@ -125,7 +124,7 @@ export async function saveTimeOut(me: Me, log: ShiftLog): Promise<{ timeOut: str
   } catch {
     // no position: the pin just goes offline
   }
-  await updateLivePin({ techId: me.id, name: me.full_name ?? '', lat, lon, status: 'offline', at: timeOut, action: 'clock_out' });
+  await updateLivePin({ techId: me.id, lat, lon, status: 'offline', at: timeOut });
   return { timeOut, hours };
 }
 
