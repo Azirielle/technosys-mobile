@@ -8,7 +8,7 @@ import { useT } from '../../lib/i18n';
 import { getInbox, markRead, InboxItem } from '../../lib/inbox';
 import { useFocusRefresh } from '../../lib/useFocusRefresh';
 import { ago } from '../../components/jobs/jobWords';
-import { Card, ListRow, Notice, SkeletonCard, StatusText, TAB_BAR_HEIGHT, Techy, Txt, useTokens } from '../../ui';
+import { Card, ListRow, Notice, SkeletonCard, StatusText, TAB_BAR_HEIGHT, Techy, Txt, tourTarget, useTokens } from '../../ui';
 
 export default function InboxScreen() {
   const t = useT();
@@ -55,8 +55,8 @@ export default function InboxScreen() {
       {items && items.length > 0 && (
         <Card padded={false}>
           {items.map((item, i) => (
+            <View key={item.id} ref={i === 0 ? tourTarget('inbox-first') : undefined} collapsable={false}>{/* Techy's Inbox tip points at the first */}
             <ListRow
-              key={item.id}
               icon={item.kind === 'announcement' ? 'volume-2' : item.kind === 'leave' ? 'sun' : item.kind === 'warning' ? 'alert-triangle' : 'message-square'}
               title={item.leave ? t('home.leaveItem', { type: t(`home.leaveTypes.${item.leave.type}`), date: item.leave.date }) : item.title}
               subtitle={`${item.text ? `${item.text.slice(0, 90)} · ` : ''}${ago(item.at, t)}`}
@@ -66,6 +66,7 @@ export default function InboxScreen() {
               onPress={() => open(item)}
               last={i === items.length - 1}
             />
+            </View>
           ))}
         </Card>
       )}

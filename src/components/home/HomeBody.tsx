@@ -2,7 +2,7 @@
 // → needs your attention. Everything arrives together. Time in/out comes from the Home screen; this file arranges
 // what you see. Details, My tools, Leave and DTR open as full screens (slide in); the Inbox is its own tab.
 import React, { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useRouter, type Href } from 'expo-router';
 import { useFocusRefresh } from '../../lib/useFocusRefresh';
@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../../lib/i18n';
 import { getHomeSummary, AttentionItem, HomeSummary } from '../../lib/homeSummary';
 import { manilaDay, type Job } from '../../lib/jobs';
-import { SectionLabel, TAB_BAR_HEIGHT, arrive, useReducedMotion, useTokens } from '../../ui';
+import { SectionLabel, TAB_BAR_HEIGHT, arrive, tourTarget, useReducedMotion, useTokens } from '../../ui';
 import { dateOf } from '../jobs/jobWords';
 import HomeHeader from './HomeHeader';
 import TimeInCard, { ShiftState } from './TimeInCard';
@@ -59,7 +59,9 @@ export default function HomeBody(p: Props) {
     >
       <Animated.View entering={arrive(0, reduced)}>
         <HomeHeader />
-        <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} />
+        <View ref={tourTarget('timeIn')} collapsable={false}>{/* Techy's tour points here */}
+          <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} />
+        </View>
 
         <SectionLabel>{!p.job || isToday ? t('home.todaysJob') : t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>
         <TodayJob job={p.job} shift={p.jobShift} onDetails={() => p.job && go(`/job/${p.job.id}`)} onAllJobs={() => router.navigate('/(tabs)/jobs' as Href)} />

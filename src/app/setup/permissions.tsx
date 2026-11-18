@@ -2,10 +2,10 @@
 // Saying no never blocks finishing setup, but time-in needs location, so we say so plainly.
 import React, { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useT } from '../../lib/i18n';
 import { getPermissionStates, openPhoneSettings, requestMissingPermissions, type PermissionState, type PermissionStates } from '../../lib/permissions';
-import { markPermissionsDone, stepNumber } from '../../lib/setup';
+import { goAfter, markPermissionsDone, stepNumber } from '../../lib/setup';
 import SetupFrame from '../../components/setup/SetupFrame';
 import SetupButton from '../../components/setup/SetupButton';
 import InfoCard from '../../components/setup/InfoCard';
@@ -41,7 +41,7 @@ export default function PermissionsStep() {
 
   const finish = async () => {
     await markPermissionsDone();
-    router.replace('/(tabs)' as Href);
+    goAfter(router, 'permissions');
   };
 
   const allGranted = !!states && Object.values(states).every(s => s === 'granted' || s === 'unavailable');

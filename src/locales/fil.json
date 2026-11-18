@@ -549,5 +549,24 @@
     "finishedNote": "Tapos na ng HR ang request na ito. Para sa bago, magtanong kay Techy o gamitin ang mga form sa Home.",
     "sending": "Ipinapadala…",
     "sent": "Naipadala · Dito sasagot ang HR"
+  },
+  "tour": {
+    "replay": "Ulitin ang tour ni Techy",
+    "skip": "Laktawan",
+    "next": "Susunod",
+    "showMe": "Ipakita mo sa akin",
+    "done": "Tara na!",
+    "of": "{n} sa {total}",
+    "hello1": "Hi, ako si Techy!",
+    "hello2": "Tutulungan kitang mag-time in, makita ang trabaho mo, at makahanap ng sagot agad.",
+    "timeIn": "I-tap ang Time in pagdating sa site. Titingnan ko kung nasa tamang lugar ka, para mabilang ang oras mo.",
+    "inbox": "Dito dumarating ang sagot ng HR at balita ng kompanya, para walang sagot na makaligtaan mo.",
+    "techy": "Naiipit ka? I-tap mo ako kahit kailan at magtanong tungkol sa gamit, kaligtasan, o patakaran ng kompanya.",
+    "action": "Ikaw naman! I-tap ang Jobs para makita ang iskedyul mo.",
+    "celebrate": "Galing! Handa ka na.",
+    "gotIt": "Sige",
+    "inboxTip": "Dito dumarating ang sagot ng HR, desisyon sa leave, at balita. I-tap para buksan: ang sagot ng HR ay magbubukas ng usapan ninyo.",
+    "languageTip": "Mas gusto ang English o Filipino? Palitan dito ang wika ng app kahit kailan.",
+    "replayTip": "Gusto mong makita ulit ang tour ko? I-tap dito at ipapakita ko ulit."
   }
 }

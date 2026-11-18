@@ -26,5 +26,6 @@ export { default as Techy, type TechyMood } from './Techy';
 export { default as TabBar, TAB_BAR_HEIGHT } from './TabBar';
 export { default as TechyDock, techy, techyDock } from './TechyDock';
 export { useTokens } from './useTokens';
+export { tourTarget, findTarget, type TargetBox } from './tourTargets';
 export { arrive, leave, layout, usePressScale, haptic, setHapticsEnabled, useReducedMotion } from './motion';
 export * as tokens from './tokens';

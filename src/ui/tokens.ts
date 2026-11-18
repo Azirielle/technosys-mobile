@@ -7,7 +7,7 @@ export type Palette = {
   ink: string; ink2: string; ink3: string;
   brand: string; brandStrong: string; tint: string; onBrand: string;
   accent: string; accentSoft: string;
-  glow1: string; glow2: string; glass: string; glassLine: string; scrim: string;
+  glow1: string; glow2: string; glass: string; glassLine: string; scrim: string; scrimStrong: string;
   ok: string; okBg: string; pending: string; pendingBg: string;
   error: string; errorBg: string; info: string; infoBg: string;
 };
@@ -20,7 +20,7 @@ const light: Palette = {
   brand: '#154C84', brandStrong: '#0F3A66', tint: '#E6EFF8', onBrand: '#FFFFFF',
   accent: '#22B8F0', accentSoft: 'rgba(34, 184, 240, 0.16)',
   glow1: 'rgba(21, 76, 132, 0.30)', glow2: 'rgba(34, 184, 240, 0.40)',
-  glass: 'rgba(255, 255, 255, 0.62)', glassLine: 'rgba(255, 255, 255, 0.75)', scrim: 'rgba(16, 17, 22, 0.32)',
+  glass: 'rgba(255, 255, 255, 0.62)', glassLine: 'rgba(255, 255, 255, 0.75)', scrim: 'rgba(16, 17, 22, 0.32)', scrimStrong: 'rgba(16, 17, 22, 0.62)',
   ok: '#1E6B45', okBg: '#E6F2EB', pending: '#7A6200', pendingBg: '#FFF5C7',
   error: '#8B2028', errorBg: '#FBE8EA', info: '#154C84', infoBg: '#E6EFF8',
 };
@@ -31,7 +31,7 @@ const dark: Palette = {
   brand: '#7FB2EA', brandStrong: '#A9CCF2', tint: '#1B2C40', onBrand: '#0E1319',
   accent: '#3CC6F5', accentSoft: 'rgba(60, 198, 245, 0.18)',
   glow1: 'rgba(21, 76, 132, 0.45)', glow2: 'rgba(60, 198, 245, 0.22)',
-  glass: 'rgba(24, 32, 42, 0.62)', glassLine: 'rgba(255, 255, 255, 0.08)', scrim: 'rgba(0, 0, 0, 0.5)',
+  glass: 'rgba(24, 32, 42, 0.62)', glassLine: 'rgba(255, 255, 255, 0.08)', scrim: 'rgba(0, 0, 0, 0.5)', scrimStrong: 'rgba(0, 0, 0, 0.72)',
   ok: '#5CC08A', okBg: '#13301F', pending: '#E3C04A', pendingBg: '#33290A',
   error: '#F08A8F', errorBg: '#3A1519', info: '#7FB2EA', infoBg: '#1B2C40',
 };

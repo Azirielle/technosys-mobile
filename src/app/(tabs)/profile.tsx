@@ -18,7 +18,8 @@ import { useFocusRefresh } from '../../lib/useFocusRefresh';
 import { jobTitle } from '../../lib/jobTitle';
 import { getDeviceName } from '../../lib/deviceId';
 import { loadHapticsSetting, saveHapticsSetting } from '../../lib/hapticsSetting';
-import { Card, ConfirmDialog, ListRow, SectionLabel, SkeletonRow, TAB_BAR_HEIGHT, Toggle, Txt, arrive, haptic, useReducedMotion, useTokens } from '../../ui';
+import { startTechyTour } from '../../components/tour/TechyTour';
+import { Card, ConfirmDialog, ListRow, SectionLabel, SkeletonRow, TAB_BAR_HEIGHT, Toggle, Txt, arrive, tourTarget, haptic, useReducedMotion, useTokens } from '../../ui';
 
 const AVATAR = 64;
 
@@ -112,7 +113,9 @@ export default function ProfileTab() {
             <ListRow look="settings" icon="bell" title={t('me.notifications')} value={notifValue}
               onPress={notif === 'undetermined' || notif === 'denied' ? onNotif : undefined} />
             <ListRow look="settings" icon="sun" title={t('me.appearance')} value={themeValue} onPress={() => router.push('/settings-choice?kind=appearance' as Href)} />
-            <ListRow look="settings" icon="globe" title={t('me.language')} value={language === 'tl' ? 'Filipino' : 'English'} onPress={() => router.push('/settings-choice?kind=language' as Href)} />
+            <View ref={tourTarget('profile-language')} collapsable={false}>
+              <ListRow look="settings" icon="globe" title={t('me.language')} value={language === 'tl' ? 'Filipino' : 'English'} onPress={() => router.push('/settings-choice?kind=language' as Href)} />
+            </View>
             <ListRow look="settings" icon="activity" title={t('profile.haptics')} subtitle={t('profile.hapticsSub')}
               right={<Toggle value={buzz} onChange={changeBuzz} label={t('profile.haptics')} />} />
           </Card>
@@ -122,6 +125,7 @@ export default function ProfileTab() {
             <ListRow look="settings" icon="book-open" title={t('me.handbook')} value={toRead > 0 ? t('me.toRead', { n: toRead }) : undefined}
               onPress={() => router.push('/handbook' as Href)} />
             {isFieldStaff && <ListRow look="settings" icon="smartphone" title={t('me.phone')} value={getDeviceName()} />}
+            {isFieldStaff && <View ref={tourTarget('profile-replay')} collapsable={false}><ListRow look="settings" icon="play-circle" title={t('tour.replay')} onPress={startTechyTour} /></View>}
           </Card>
 
           <Card padded={false} style={[group, { marginTop: 22 }]}>

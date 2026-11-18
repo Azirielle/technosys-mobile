@@ -14,6 +14,7 @@ import Glass from './Glass';
 import Txt from './Txt';
 import { haptic, useReducedMotion } from './motion';
 import { useTokens } from './useTokens';
+import { tourTarget } from './tourTargets';
 
 export const TAB_BAR_HEIGHT = 70;
 const SLIDE_MS = 200;
@@ -59,6 +60,7 @@ export default function TabBar({ state, descriptors, navigation, icons, badges }
             return (
               <TabButton
                 key={route.key}
+                target={`tab-${route.name}`}
                 label={label}
                 icon={icons[route.name] ?? 'circle'}
                 focused={focused}
@@ -82,7 +84,7 @@ export default function TabBar({ state, descriptors, navigation, icons, badges }
   );
 }
 
-function TabButton({ label, icon, focused, badge, onPress }: { label: string; icon: IconName; focused: boolean; badge: number; onPress: () => void }) {
+function TabButton({ label, icon, focused, badge, onPress, target }: { label: string; icon: IconName; focused: boolean; badge: number; onPress: () => void; target: string }) {
   const { c } = useTokens();
   const reduced = useReducedMotion();
   const grow = useSharedValue(focused ? 1 : 0);
@@ -91,6 +93,7 @@ function TabButton({ label, icon, focused, badge, onPress }: { label: string; ic
 
   return (
     <Pressable
+      ref={tourTarget(target)} // Techy's tour can point at this tab
       onPress={onPress}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}

@@ -549,5 +549,24 @@
     "finishedNote": "HR has finished this request. For something new, ask Techy or use the forms on Home.",
     "sending": "Sending…",
     "sent": "Sent · HR will reply here"
+  },
+  "tour": {
+    "replay": "Replay Techy's tour",
+    "skip": "Skip",
+    "next": "Next",
+    "showMe": "Show me around",
+    "done": "Let's go!",
+    "of": "{n} of {total}",
+    "hello1": "Hi, I'm Techy!",
+    "hello2": "I help you time in, see your jobs and get answers fast.",
+    "timeIn": "Tap Time in when you reach the site. I check you're at the right place, so your hours count.",
+    "inbox": "HR's answers and company news land here, so you never miss a reply.",
+    "techy": "Stuck? Tap me any time and ask about tools, safety or company rules.",
+    "action": "Your turn! Tap Jobs to see your schedule.",
+    "celebrate": "Nice work! You're all set.",
+    "gotIt": "Got it",
+    "inboxTip": "HR's replies, leave decisions and news land here. Tap one to open it: an HR reply opens your chat with HR.",
+    "languageTip": "Prefer Filipino? Change the app's language here, any time.",
+    "replayTip": "Want to see my tour again? Tap here and I'll show you around."
   }
 }
