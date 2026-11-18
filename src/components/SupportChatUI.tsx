@@ -21,6 +21,9 @@ const BRAND = {
   lightBg: '#F8FAFC',
 };
 
+// The AI chat is saved as a ticket with this title; the chat reopens only an unfinished one of these.
+const AI_CHAT_TITLE = 'Support Conversation';
+
 interface Message {
   id: string;
   role: 'user' | 'ai' | 'system';
@@ -247,6 +250,73 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
     };
   }, [ticketId]);
 
+  // Live updates for one ticket: HR taking over or changing the status, and new messages (HR replies, saved AI answers).
+  const listenToTicket = (ticketId: string) => {
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
+    // Unique name: removing the old channel finishes later, and reusing its name returned the running one
+    channelRef.current = supabase.channel(`mobile-chat-${ticketId}-${Date.now()}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${ticketId}` }, (payload) => {
+        setActiveTicket(payload.new);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${ticketId}` }, (payload) => {
+        const c = payload.new;
+        if (c.is_internal) return;
+        setMessages(prev => {
+          // Deduplication Check 1: Already exists with exact ID
+          if (prev.some(m => m.id === c.id)) return prev;
+
+          // Deduplication Check 2: Reconcile optimistic user message if content and role match
+          const optUserIdx = prev.findIndex(m => 
+            m.role === 'user' && 
+            m.text === c.content && 
+            m.id !== c.id &&
+            (/^\d+$/.test(m.id) || m.id.includes('_u'))
+          );
+          if (optUserIdx !== -1) {
+            const next = [...prev];
+            next[optUserIdx] = {
+              ...next[optUserIdx],
+              id: c.id,
+              attachment_url: c.attachment_url || next[optUserIdx].attachment_url,
+              attachment_type: c.attachment_type || next[optUserIdx].attachment_type,
+              sender_role: c.sender_role
+            };
+            return next;
+          }
+
+          // Deduplication Check 3: Reconcile optimistic AI message if text matches or currently streaming
+          const optAiIdx = prev.findIndex(m => 
+            m.role === 'ai' && 
+            (m.id === c.id || m.text.trim() === (c.content || '').trim() || m.isStreaming)
+          );
+          if (optAiIdx !== -1) {
+            const next = [...prev];
+            next[optAiIdx] = {
+              ...next[optAiIdx],
+              id: c.id,
+              text: c.content,
+              isStreaming: false,
+              sender_role: c.sender_role
+            };
+            return next;
+          }
+
+          // Otherwise genuine new message (e.g. from HR Admin)
+          return [...prev, {
+            id: c.id,
+            role: c.sender_role === 'system' ? 'system' : (c.sender_role === 'admin' || c.sender_role === 'ai') ? 'ai' : 'user',
+            text: c.content,
+            attachment_url: c.attachment_url,
+            attachment_type: c.attachment_type,
+            progressSteps: [],
+            isStreaming: false,
+            sender_role: c.sender_role
+          }];
+        });
+      })
+      .subscribe();
+  };
+
   const loadActiveTicket = async (forceNew = false, specificTicketId?: string) => {
     if (forceNew) {
       setActiveTicket(null);
@@ -266,6 +336,8 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
         .from('tickets')
         .select('*')
         .eq('employee_id', session.user.id)
+        .eq('title', AI_CHAT_TITLE) // only the AI chat, not a DTR, leave or equipment ticket
+        .in('status', ['open', 'in_progress']) // a finished chat isn't reopened: the next question starts a new one
         .order('created_at', { ascending: false })
         .limit(1);
       tickets = res.data;
@@ -315,71 +387,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
       }
       setMessages(history);
 
-      // Subscribe to new comments
-      // Also listen to ticket status changes
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
-      // Unique name: removing the old channel finishes later, and reusing its name returned the running one
-      channelRef.current = supabase.channel(`mobile-chat-${ticket.id}-${Date.now()}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${ticket.id}` }, (payload) => {
-          setActiveTicket(payload.new);
-        })
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${ticket.id}` }, (payload) => {
-          const c = payload.new;
-          if (c.is_internal) return;
-          setMessages(prev => {
-            // Deduplication Check 1: Already exists with exact ID
-            if (prev.some(m => m.id === c.id)) return prev;
-
-            // Deduplication Check 2: Reconcile optimistic user message if content and role match
-            const optUserIdx = prev.findIndex(m => 
-              m.role === 'user' && 
-              m.text === c.content && 
-              m.id !== c.id &&
-              (/^\d+$/.test(m.id) || m.id.includes('_u'))
-            );
-            if (optUserIdx !== -1) {
-              const next = [...prev];
-              next[optUserIdx] = {
-                ...next[optUserIdx],
-                id: c.id,
-                attachment_url: c.attachment_url || next[optUserIdx].attachment_url,
-                attachment_type: c.attachment_type || next[optUserIdx].attachment_type,
-                sender_role: c.sender_role
-              };
-              return next;
-            }
-
-            // Deduplication Check 3: Reconcile optimistic AI message if text matches or currently streaming
-            const optAiIdx = prev.findIndex(m => 
-              m.role === 'ai' && 
-              (m.id === c.id || m.text.trim() === (c.content || '').trim() || m.isStreaming)
-            );
-            if (optAiIdx !== -1) {
-              const next = [...prev];
-              next[optAiIdx] = {
-                ...next[optAiIdx],
-                id: c.id,
-                text: c.content,
-                isStreaming: false,
-                sender_role: c.sender_role
-              };
-              return next;
-            }
-
-            // Otherwise genuine new message (e.g. from HR Admin)
-            return [...prev, {
-              id: c.id,
-              role: c.sender_role === 'system' ? 'system' : (c.sender_role === 'admin' || c.sender_role === 'ai') ? 'ai' : 'user',
-              text: c.content,
-              attachment_url: c.attachment_url,
-              attachment_type: c.attachment_type,
-              progressSteps: [],
-              isStreaming: false,
-              sender_role: c.sender_role
-            }];
-          });
-        })
-        .subscribe();
+      listenToTicket(ticket.id);
         
     } else {
       setMessages([
@@ -723,7 +731,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
       if (!currentTicket) {
          const { data: newTicket } = await supabase.from('tickets').insert({
             employee_id: session.user.id,
-            title: 'Support Conversation',
+            title: AI_CHAT_TITLE,
             category: 'General Inquiry',
             description: textToSend || 'User initiated an AI support chat.',
             status: 'open',
@@ -736,6 +744,7 @@ export default function SupportChatUI({ onClose, initialQuery, ticketId, initial
             currentTicket = newTicket;
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             setActiveTicket(newTicket);
+            listenToTicket(newTicket.id); // so HR taking over and HR replies show at once
             sendRealtimeBroadcast('ticket_update', { ticket_id: newTicket.id });
          }
       }
