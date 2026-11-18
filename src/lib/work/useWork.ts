@@ -66,7 +66,7 @@ export function useWork() {
           distance: (r.distance_m as number) ?? null, lateMinutes: 0,
           place: r.place_lat != null ? { name: String(r.place_name), lat: Number(r.place_lat), lon: Number(r.place_lon), radius: Number(r.radius_m) } : null });
       case 'queued':
-        setSheet(closed); return setProblem({ open: true, kind: 'queued', gpsFound: !!here, inside: true });
+        setSheet(closed); return setProblem({ open: true, kind: 'queued', gpsFound: !!here, inside: false });
       case 'already': setSheet(closed); Alert.alert(t('work.alreadyTitle'), t('work.alreadyText', { time: timeText(r.time_in) })); return reload();
       case 'forgot_time_out': setSheet(closed); return reload();
       case 'too_early': setSheet(closed); return Alert.alert(t('work.earlyTitle'), t('work.earlyText', { time: timeText(r.opens_at) }));

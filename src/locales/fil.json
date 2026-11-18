@@ -415,6 +415,7 @@
     "gpsNone": "Lokasyon: hindi makita",
     "gpsInside": "Lokasyon: nasa lugar ng trabaho",
     "gpsOutside": "Lokasyon: nasa labas ng lugar ng trabaho",
+    "gpsSaved": "Lokasyon: naka-save, susuriin pagka-send",
     "selfieSaved": "Selfie: naka-save sa phone na ito",
     "willSend": "Ipapadala pag may signal na",
     "notSentYet": "Hindi pa naipapadala sa HR",

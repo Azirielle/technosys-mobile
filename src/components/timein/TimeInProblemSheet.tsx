@@ -38,7 +38,7 @@ export default function TimeInProblemSheet({ problem, sending, onRetry, onTellHr
         <Txt variant="body" color="ink2">{t(`timeIn.${problem.kind}Text`)}</Txt>
 
         <View style={{ backgroundColor: c.cardSoft, borderRadius: radius.control, padding: 12, gap: 8 }}>
-          <Line ok={problem.gpsFound} text={!problem.gpsFound ? t('timeIn.gpsNone') : problem.inside ? t('timeIn.gpsInside') : t('timeIn.gpsOutside')} />
+          <Line ok={problem.gpsFound} text={!problem.gpsFound ? t('timeIn.gpsNone') : problem.kind === 'queued' ? t('timeIn.gpsSaved') : problem.inside ? t('timeIn.gpsInside') : t('timeIn.gpsOutside')} />
           {selfie && <Line ok text={t('timeIn.selfieSaved')} />}
           <Line ok={false} warn={problem.kind === 'queued'} text={problem.kind === 'queued' ? t('timeIn.willSend') : t('timeIn.notSentYet')} />
         </View>

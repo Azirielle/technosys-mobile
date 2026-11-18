@@ -415,6 +415,7 @@
     "gpsNone": "Location: not found",
     "gpsInside": "Location: at the work site",
     "gpsOutside": "Location: outside the work site",
+    "gpsSaved": "Location: saved, checked when it's sent",
     "selfieSaved": "Selfie: saved on this phone",
     "willSend": "Will send when you have signal",
     "notSentYet": "Not sent to HR yet",
