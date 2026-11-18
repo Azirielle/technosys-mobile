@@ -26,7 +26,7 @@
       "phoneTitle": "Isang work phone, pribado",
       "phoneText": "Sa isang phone mo lang gagamitin ang app, para walang makapag-time in para sa iyo. Naka-scramble na code lang ng phone na ito ang tinatago ng app, hindi ang number, photos o files mo. HR at CEO lang ang nakakakita kung aling phone ang sa iyo. Hindi ito nagbabago kahit i-clear ang data ng app; ang bagong phone ay kailangan ng OK ng HR.",
       "aiTitle": "AI ang Support assistant",
-      "aiText": "Ang mga tanong mo rito ay sinasagot ng Gemini AI ng Google gamit ang mga patakaran ng kompanya. Huwag i-type dito ang PIN o password mo.",
+      "aiText": "Ang mga tanong mo rito ay sinasagot ng isang AI service (Groq, o Cloudflare bilang reserba) gamit ang mga patakaran ng kompanya. Hindi nila itinatago o pinag-aaralan ang mga mensahe mo. Huwag i-type dito ang PIN o password mo.",
       "readTerms": "Basahin ang buong Terms of use",
       "readPrivacy": "Basahin ang buong Privacy notice",
       "agree": "Nabasa ko ito at sumasang-ayon ako",

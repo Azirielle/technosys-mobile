@@ -26,7 +26,7 @@
       "phoneTitle": "One work phone, kept private",
       "phoneText": "You use the app on one phone, so nobody can time in for you. The app keeps a scrambled code of this phone, not your number, photos or files. Only HR and the CEO see which phone is yours. Clearing the app's data doesn't change it; a new phone needs HR's OK.",
       "aiTitle": "The Support assistant is an AI",
-      "aiText": "Your questions to it are answered by Google's Gemini AI using our company rules. Never type your PIN or passwords there.",
+      "aiText": "Your questions to it are answered by an AI service (Groq, or Cloudflare as backup) using our company rules. They don't keep or learn from your messages. Never type your PIN or passwords there.",
       "readTerms": "Read the full Terms of use",
       "readPrivacy": "Read the full Privacy notice",
       "agree": "I have read this and I agree",
