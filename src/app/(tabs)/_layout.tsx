@@ -3,11 +3,11 @@
 // All four tabs load at start so the first visit isn't slow.
 import React, { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Tabs, router, type Href } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { useT } from '../../lib/i18n';
-import { sendHomeAction } from '../../lib/homeActions';
 import { countUnread, onInboxRead, watchInbox } from '../../lib/inbox';
 import { TabBar, TechyDock } from '../../ui';
+import TechyChatLayer, { openTechyChat } from '../../components/assistant/TechyChatLayer';
 
 const ICONS = { index: 'home', jobs: 'briefcase', inbox: 'inbox', profile: 'user' } as const;
 
@@ -20,6 +20,7 @@ export default function TabsLayout() {
 
   return (
     <View style={{ flex: 1 }}>
+      <TechyChatLayer>
       <Tabs
         screenOptions={{ headerShown: false, animation: 'none', lazy: false }}
         screenListeners={{ state: recount }}
@@ -31,13 +32,9 @@ export default function TabsLayout() {
         <Tabs.Screen name="inbox" options={{ title: t('home.inbox') }} />
         <Tabs.Screen name="profile" options={{ title: t('tabs.profile') }} />
       </Tabs>
-      <TechyDock
-        onAsk={() => {
-          // Ask Techy still lives on Home (redesigned in its own phase)
-          router.navigate('/(tabs)' as Href);
-          setTimeout(() => sendHomeAction({ kind: 'support' }), 60);
-        }}
-      />
+      </TechyChatLayer>
+      {/* Tapping Techy opens its chat: Techy itself does the opening (components/assistant/useTechyOpening.ts) */}
+      <TechyDock onAsk={() => openTechyChat()} />
     </View>
   );
 }

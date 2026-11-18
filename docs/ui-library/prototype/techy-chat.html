@@ -1,0 +1,229 @@
+<!doctype html>
+<!-- Techy's chat entrance and exit: a motion-only prototype to agree on before it goes into the app (motion #15).
+     Techy reaches out with both arms, scoots to the other edge, pinches the screen and turns it over like a book page;
+     closing slides the chat down while Techy goes straight home.
+     Reference only, not app code. Open via the "techy-prototype" preview (port 5520) or straight from disk. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Techy chat motion</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --canvas:#F3F6F9; --card:#FFFFFF; --soft:#EEF2F6; --line:#E6EBF0; --ink:#16202B; --ink2:#5E6B78; --ink3:#8A96A3;
+          --brand:#154C84; --scrim:rgba(16,17,22,.32); }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; gap:28px; align-items:center; justify-content:center; flex-wrap:wrap;
+         padding:24px 16px; background:#DDE4EC; font-family:'Plus Jakarta Sans',system-ui,sans-serif; color:var(--ink); }
+  .phone { position:relative; width:360px; height:740px; border-radius:42px; overflow:hidden; background:#C9D3DE;
+           box-shadow:0 30px 60px rgba(16,17,22,.25), 0 0 0 10px #10151C; flex:none; perspective:1400px; }
+  .layer { position:absolute; inset:0; background:var(--canvas); backface-visibility:hidden; }
+  .status { height:28px; } .pad { padding:0 18px; }
+  #home h1 { margin:6px 0 2px; font-size:30px; } .muted { color:var(--ink2); font-size:14px; }
+  .cardx { background:var(--card); border-radius:20px; padding:16px; margin-top:14px; box-shadow:0 6px 14px rgba(16,17,22,.06); }
+  .bar { height:12px; border-radius:6px; background:var(--soft); margin:8px 0; }
+  .tabs { position:absolute; left:14px; right:14px; bottom:10px; height:64px; border-radius:24px; background:rgba(255,255,255,.85);
+          box-shadow:0 8px 20px rgba(16,17,22,.1); display:flex; justify-content:space-around; align-items:center; color:var(--ink3); font-size:12px; }
+  .shade { position:absolute; inset:0; background:var(--scrim); opacity:0; pointer-events:none; }
+  .head { display:flex; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); }
+  .seat { width:48px; height:48px; } .who { flex:1; margin-left:10px; } .who b { display:block; font-size:17px; } .who span { font-size:12px; color:var(--ink2); }
+  .end { padding:8px 16px; border-radius:999px; background:var(--soft); font-weight:600; font-size:13px; border:0; font-family:inherit; cursor:pointer; }
+  .msgs { padding:14px; display:flex; flex-direction:column; gap:8px; }
+  .b { max-width:80%; padding:10px 14px; border-radius:20px; font-size:15px; line-height:21px; }
+  .b.t { background:var(--card); border-bottom-left-radius:6px; } .b.m { background:var(--brand); color:#fff; align-self:flex-end; border-bottom-right-radius:6px; }
+  .input { position:absolute; left:0; right:0; bottom:0; padding:12px; border-top:1px solid var(--line); display:flex; gap:8px; }
+  .input div { flex:1; height:44px; border-radius:14px; border:1px solid var(--line); background:var(--card); color:var(--ink3); padding:11px 14px; font-size:15px; }
+  .input span { width:44px; height:44px; border-radius:999px; background:var(--brand); }
+  #techy { position:absolute; left:0; top:0; width:84px; height:77px; cursor:pointer; will-change:transform; z-index:5; }
+  #techy svg { width:84px; height:77px; overflow:visible; }
+  .panel { width:320px; background:#fff; border-radius:20px; padding:20px; box-shadow:0 10px 30px rgba(16,17,22,.12); }
+  .panel h2 { margin:0 0 4px; font-size:20px; } .panel p { margin:6px 0 14px; color:var(--ink2); font-size:14px; line-height:20px; }
+  .row { display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; }
+  .panel button.act { flex:1; padding:12px; border-radius:14px; border:0; background:var(--brand); color:#fff; font:600 15px inherit; font-family:inherit; cursor:pointer; }
+  .seg { display:flex; background:var(--soft); border-radius:12px; padding:3px; width:100%; }
+  .seg label { flex:1; text-align:center; padding:8px 4px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; }
+  .seg input { display:none; } .seg input:checked + span { background:#fff; box-shadow:0 2px 6px rgba(16,17,22,.1); display:block; border-radius:10px; padding:8px 4px; margin:-8px -4px; }
+  .steps { font-size:13px; color:var(--ink2); line-height:19px; padding-left:18px; margin:8px 0 0; } .steps li.on { color:var(--brand); font-weight:600; }
+  .small { font-size:12px; color:var(--ink3); }
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+  <!-- Underneath: Techy's chat. On top: the screen you were on, which Techy turns over like a page. -->
+  <div class="layer" id="chat"><div class="status"></div>
+    <div class="head"><div class="seat"></div><div class="who"><b>Techy</b><span>TechnoSys assistant</span></div><button class="end" id="endBtn">End</button></div>
+    <div class="msgs"><div class="b t">Hi! I'm Techy. Ask me about tools, safety, your DTR, leaves or company rules.</div>
+      <div class="b m">How do I file a leave?</div></div>
+    <div class="input"><div>Ask Techy…</div><span></span></div>
+    <div class="shade" id="chatDim"></div><!-- the chat is in the page's shadow until it's uncovered -->
+  </div>
+  <div class="layer" id="home"><div class="status"></div><div class="pad">
+    <div class="muted">Wednesday, Nov 18</div><h1>Today</h1>
+    <div class="cardx"><b>Timed in 8:02 AM</b><div class="bar" style="width:70%"></div><div class="bar" style="width:45%"></div></div>
+    <div class="cardx"><b>Your job today</b><div class="bar" style="width:85%"></div><div class="bar" style="width:60%"></div></div>
+  </div><div class="tabs"><span>Home</span><span>Jobs</span><span>Inbox</span><span>Profile</span></div>
+    <div class="shade" id="shade"></div></div>
+  <div id="techy" title="Tap Techy">
+    <svg viewBox="0 0 120 110"><g id="body">
+      <!-- Holding the page edge (both reach toward the edge Techy walks to). The far hand is Techy's own wrench arm, swung over
+           behind the body: the body covers about half of it, the hand still shows gripping the edge. -->
+      <g transform="translate(14 -6) rotate(-38 16 40)"><g id="farArm" style="transform-origin:16px 40px; transform:scale(0)">
+        <path d="M16 40 l-11 -12" stroke="#154C84" stroke-width="3" stroke-linecap="round"/><path d="M9 20 l-8 4 3 7 8 -3z" fill="#154C84"/></g></g>
+      <rect x="14" y="18" width="92" height="50" rx="18" fill="#fff" stroke="#154C84" stroke-width="3"/>
+      <path d="M26 56h68" stroke="#154C84" stroke-width="2.5" stroke-linecap="round" opacity=".45"/>
+      <g id="eyesOpen"><ellipse id="eL" cx="44" cy="37" rx="5" ry="5.5" fill="#16202B"/><ellipse id="eR" cx="76" cy="37" rx="5" ry="5.5" fill="#16202B"/></g>
+      <path id="eyesHappy" d="M38 39 q6 -6 12 0 M70 39 q6 -6 12 0" stroke="#16202B" stroke-width="3" fill="none" stroke-linecap="round" style="display:none"/>
+      <path id="mSmile" d="M51 45 q9 8 18 0" stroke="#16202B" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path id="mOpen" d="M49 44 q11 13 22 0 z" fill="#16202B" stroke="#16202B" stroke-width="3" stroke-linejoin="round" style="display:none"/>
+      <circle cx="34" cy="46" r="4.5" fill="#FBE8EA"/><circle cx="86" cy="46" r="4.5" fill="#FBE8EA"/>
+      <!-- the near hand: a second arm, the same design as Techy's own (mirrored), grown in front of the body -->
+      <g transform="translate(2 14) rotate(-46 16 40)"><g id="nearArm" style="transform-origin:16px 40px; transform:scale(0)">
+        <path d="M16 40 l-11 -12" stroke="#154C84" stroke-width="3" stroke-linecap="round"/><path d="M9 20 l-8 4 3 7 8 -3z" fill="#154C84"/></g></g>
+      <g id="arm" style="transform-origin:104px 40px"><path d="M104 40 l11 -12" stroke="#154C84" stroke-width="3" stroke-linecap="round"/><path d="M111 20 l8 4 -3 7 -8 -3z" fill="#154C84"/></g>
+    </g><path d="M34 74 q-3 8 1 14 M60 74 v15 M86 74 q3 8 -1 14" stroke="#22B8F0" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="4 6"/></svg>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Techy's chat motion</h2>
+  <p>Tap Techy on the phone (or the button) to open the chat; tap <b>End</b> or <b>Back</b> to close it. Slow motion helps to judge each step.</p>
+  <div class="row"><button class="act" id="introBtn">Open (tap Techy)</button><button class="act" id="outroBtn">Close (Back)</button></div>
+  <div class="row"><div class="seg">
+    <label><input type="radio" name="side" value="right" checked><span>Techy on the right</span></label>
+    <label><input type="radio" name="side" value="left"><span>Techy on the left</span></label></div></div>
+  <div class="row"><div class="seg">
+    <label><input type="radio" name="s" value="1" checked><span>Normal</span></label>
+    <label><input type="radio" name="s" value="0.25"><span>Slow ×4</span></label></div></div>
+  <div class="row"><label class="small"><input type="checkbox" id="reduced"> Phone's "Reduce motion" is on</label></div>
+  <ol class="steps" id="steps"></ol>
+  <p class="small" style="margin-top:12px">Each move is one smooth motion, and Techy holds still while moving (no breathing or waving on the way). Breathing comes back once it sits.</p>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const W = 360, H = 740, BIG = 84, SEAT = 48;
+let side = 'right', state = 'dock', running = false, speed = 1, breathe = true;
+const mx = (x) => (side === 'right' ? x : W - x);                     // mirrors x when Techy is docked on the left
+const FLOOR_Y = H - (10 + 64 + 14) - 77 / 2;                           // the dock's height: Techy moves along it
+const DOCK = () => ({ x: mx(W - 2 - BIG / 2), y: FLOOR_Y });
+const PINCH = () => ({ x: mx(46), y: FLOOR_Y - 40 });                   // the opposite edge, where Techy pinches the screen
+const SEATP = { x: 14 + SEAT / 2, y: 28 + 10 + SEAT / 2 };              // Techy's seat in the chat header (top-left)
+const T = { x: 0, y: FLOOR_Y, s: 1, rot: 0, sx: 1, sy: 1, tuck: 1, arm: 0, hands: 0 };
+
+const ease = { out: (t) => 1 - (1 - t) ** 3, inOut: (t) => (t < .5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2), in: (t) => t ** 3,
+  sine: (t) => -(Math.cos(Math.PI * t) - 1) / 2, back: (t) => { const c = 1.2; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; } };
+const lerp = (a, b, t) => a + (b - a) * t;
+const tween = (ms, fn, e = ease.out) => new Promise((done) => {
+  const start = performance.now(), len = ms / speed;
+  const step = (now) => { const t = Math.min(1, (now - start) / len); fn(e(t), t); draw(); t < 1 ? requestAnimationFrame(step) : done(); };
+  requestAnimationFrame(step);
+});
+const wait = (ms) => new Promise((r) => setTimeout(r, ms / speed));
+const all = (...p) => Promise.all(p);
+
+function face(f) { // smile | cheer | happy (eyes closed while busy)
+  $('eyesOpen').style.display = f === 'happy' ? 'none' : ''; $('eyesHappy').style.display = f === 'happy' ? '' : 'none';
+  $('mOpen').style.display = f === 'smile' ? 'none' : ''; $('mSmile').style.display = f === 'smile' ? '' : 'none';
+}
+function blink() { ['eL', 'eR'].forEach((id) => { $(id).setAttribute('ry', 0.6); setTimeout(() => $(id).setAttribute('ry', 5.5), 110 / speed); }); }
+
+const P = 1400, CX = W / 2, CY = H / 2; // the phone's perspective (CSS perspective, centred)
+/** The screen you were on turns over like a book page from the edge Techy pinched. deg 0 = flat, 95 = gone (just past
+ *  edge-on). The lifting page darkens as it tilts; the chat under it brightens as it's uncovered.
+ *  Returns where a point on the pinched edge (at Techy's height) appears, and how much nearer it is (k > 1). */
+function turnScreen(deg) {
+  const fromLeft = side === 'right'; // Techy pinches the edge opposite its dock
+  const rad = (deg * Math.PI) / 180;
+  $('home').style.transformOrigin = fromLeft ? 'right center' : 'left center';
+  $('home').style.transform = `rotateY(${(fromLeft ? 1 : -1) * deg}deg)`;
+  $('home').style.opacity = deg <= 82 ? 1 : Math.max(0, (95 - deg) / 13); // fades out just as it goes edge-on
+  $('shade').style.opacity = Math.min(1, deg / 80) * .75;
+  $('chatDim').style.opacity = Math.max(0, 1 - deg / 70) * .55;
+  const k = P / (P - W * Math.sin(rad));
+  const x3 = W - W * Math.cos(rad);                                       // measured from the pinched edge
+  return { x: mx(CX + (x3 - CX) * k), y: CY + (PINCH().y - CY) * k, k };
+}
+/** Closing: the chat slides down out of the way (p 0 in place, 1 gone), uncovering the screen underneath. */
+function slideChat(p) { $('chat').style.transform = `translateY(${p * H}px)`; }
+function draw() {
+  const float = breathe ? Math.sin(performance.now() / 510) * 2.5 : 0;
+  const dir = side === 'right' ? 1 : -1;
+  const facing = dir; // its hands are on the side it walks toward, so they reach the far edge
+  const tuckX = state === 'dock' ? dir * T.tuck * 48 : 0, tuckRot = state === 'dock' ? dir * T.tuck * -12 : 0;
+  $('techy').style.transform = `translate(${T.x - BIG / 2 + tuckX}px, ${T.y - 77 / 2 - float}px) rotate(${facing * T.rot + tuckRot}deg) scale(${facing * T.s * T.sx}, ${T.s * T.sy})`;
+  // holding: the wrench arm swings over to become the far hand, a second arm grows as the near hand
+  $('arm').style.transform = `rotate(${T.arm - T.hands * 40}deg) scale(${1 - T.hands})`;
+  $('farArm').style.transform = `scale(${T.hands})`; $('nearArm').style.transform = `scale(${T.hands})`;
+}
+(function idle() { if (breathe && !running) draw(); requestAnimationFrame(idle); })();
+function steps(list, on) { $('steps').innerHTML = list.map((s, i) => `<li class="${i === on ? 'on' : ''}">${s}</li>`).join(''); }
+const waveArm = (n = 1) => tween(300 * n, (_, t) => { T.arm = -16 * Math.sin(t * Math.PI * 2 * n); }, (t) => t);
+
+const INTRO = ['Tap: Techy squishes and smiles', 'Reaches out: its wrench arm swings over and a second arm grows, then it scoots across to the other edge',
+  'Pinches the edge of the screen', 'Pulls it toward you: the page lifts with Techy holding on, the chat shows underneath',
+  'Lets go: the page turns over by itself while Techy hops up into its seat (soft landing, blink, wave)'];
+const OUTRO = ['The chat slides smoothly down and away', 'At the same time Techy goes straight back to its dock and tucks in'];
+
+async function intro() {
+  if (running || state !== 'dock') return; running = true;
+  $('chat').style.zIndex = 1; $('home').style.zIndex = 2; slideChat(0);
+  if ($('reduced').checked) { turnScreen(95); Object.assign(T, { x: SEATP.x, y: SEATP.y, s: SEAT / BIG, tuck: 0 }); state = 'seat'; draw(); running = false; return; }
+  steps(INTRO, 0); face('cheer'); breathe = false;
+  await tween(240, (e, t) => { T.sx = 1 + .08 * Math.sin(t * Math.PI); T.sy = 1 - .1 * Math.sin(t * Math.PI); T.tuck = 1 - e; });
+  steps(INTRO, 1); state = 'walk';
+  const from = DOCK(), to = PINCH();
+  await all(tween(220, (e) => { T.hands = e; }, ease.back),                 // hands grow while it sets off: one motion
+    tween(620, (e, t) => {
+      T.x = lerp(from.x, to.x, e); T.y = lerp(from.y, to.y, e) - Math.sin(t * Math.PI) * 26; // a low, smooth hop across
+      T.rot = Math.sin(t * Math.PI) * -8;
+    }, ease.sine));
+  steps(INTRO, 2); state = 'pinch'; face('happy');
+  await tween(140, (e) => { T.sx = lerp(1, 1.1, e); T.sy = lerp(1, .88, e); });           // pinch: a squeeze
+  steps(INTRO, 3);
+  const dx = to.x - turnScreen(0).x, dy = to.y - turnScreen(0).y;                         // Techy's hands are on the edge
+  const LIFT = 34;                                                                         // how far Techy pulls before letting go
+  await tween(420, (e) => {                                                                // 1) pull: page and Techy as one
+    const edge = turnScreen(e * LIFT);
+    T.x = edge.x + dx * edge.k; T.y = edge.y + dy * edge.k; T.s = edge.k;                   // holds on: comes toward you with the edge
+    T.sx = lerp(1.1, 1, e); T.sy = lerp(.88, 1, e); T.rot = lerp(0, 12, e);                // leans back as it pulls
+  }, ease.inOut);
+  steps(INTRO, 4); face('cheer'); state = 'fly';
+  const at = { x: T.x, y: T.y, s: T.s };
+  await all(
+    tween(560, (e) => turnScreen(LIFT + e * (95 - LIFT)), ease.out),                        // 2) lets go: the page turns on by itself
+    tween(160, (e) => { T.hands = 1 - e; }),
+    wait(60).then(() => tween(480, (e, t) => { T.x = lerp(at.x, SEATP.x, e); T.y = lerp(at.y, SEATP.y, e) - Math.sin(t * Math.PI) * 30;
+      T.s = lerp(at.s, SEAT / BIG, e); T.rot = lerp(12, 0, e); }, ease.inOut)));             // and hops up to its seat
+  state = 'seat'; face('smile');
+  await tween(300, (e, t) => { T.sy = 1 - .14 * Math.sin(t * Math.PI); T.sx = 1 + .1 * Math.sin(t * Math.PI); }, (t) => t); // one soft landing
+  breathe = true; blink(); await wait(200); await waveArm(1);
+  running = false;
+}
+
+async function outro() {
+  if (running || state !== 'seat') return; running = true;
+  turnScreen(0); $('chatDim').style.opacity = 0;                                          // the screen waits flat under the chat
+  $('home').style.zIndex = 1; $('chat').style.zIndex = 2;
+  if ($('reduced').checked) { slideChat(1); Object.assign(T, { ...DOCK(), s: 1, tuck: 1, rot: 0 }); state = 'dock'; draw(); running = false; return; }
+  steps(OUTRO, 0); breathe = false; face('smile'); state = 'fly';
+  const from = { x: T.x, y: T.y }, to = DOCK();
+  await all(
+    tween(560, (e) => slideChat(e), ease.inOut),                                            // the chat slides down
+    tween(620, (e, t) => { T.x = lerp(from.x, to.x, e); T.y = lerp(from.y, to.y, e) - Math.sin(t * Math.PI) * 40;
+      T.s = lerp(SEAT / BIG, 1, e); T.rot = Math.sin(t * Math.PI) * 10; }, ease.inOut));    // Techy goes straight home
+  steps(OUTRO, 1); state = 'dock'; T.tuck = 0;
+  await tween(320, (e) => { T.tuck = e; }, ease.inOut);
+  breathe = true; running = false;
+}
+
+$('techy').onclick = intro; $('introBtn').onclick = intro;
+$('outroBtn').onclick = outro; $('endBtn').onclick = outro;
+document.querySelectorAll('[name=s]').forEach((r) => (r.onchange = () => (speed = Number(r.value))));
+document.querySelectorAll('[name=side]').forEach((r) => (r.onchange = () => { // move Techy to the other edge (only while docked)
+  if (running || state !== 'dock') { document.querySelector(`[name=side][value=${side}]`).checked = true; return; }
+  side = r.value; T.x = DOCK().x; draw();
+}));
+T.x = DOCK().x; turnScreen(0); face('smile'); draw(); steps(INTRO, -1);
+</script>
+</body>
+</html>

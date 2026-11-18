@@ -15,13 +15,18 @@ import type { Tone } from './Status';
 
 const SIZE = 84;
 const TUCK = 48; // how far it hides past the edge
-type Event = { kind: 'react'; mood: TechyMood; ms?: number } | { kind: 'say'; text: string; tone?: Tone; mood?: TechyMood; ms?: number };
+type Event = { kind: 'react'; mood: TechyMood; ms?: number } | { kind: 'say'; text: string; tone?: Tone; mood?: TechyMood; ms?: number } | { kind: 'away'; on: boolean };
 const listeners = new Set<(e: Event) => void>();
+
+/** Which edge Techy is docked on: Techy's chat opening starts from here (components/assistant/useTechyOpening.ts). */
+export const techyDock = { side: 'right' as 'left' | 'right' };
 
 /** Make Techy react or speak from anywhere (e.g. after a time-in). */
 export const techy = {
   react: (mood: TechyMood, ms?: number) => listeners.forEach((l) => l({ kind: 'react', mood, ms })),
   say: (text: string, opts: { tone?: Tone; mood?: TechyMood; ms?: number } = {}) => listeners.forEach((l) => l({ kind: 'say', text, ...opts })),
+  /** Techy's chat is open (Techy is sitting in it), so the dock is empty until it closes. */
+  away: (on: boolean) => listeners.forEach((l) => l({ kind: 'away', on })),
 };
 
 export default function TechyDock({ onAsk }: { onAsk: () => void }) {
@@ -31,11 +36,13 @@ export default function TechyDock({ onAsk }: { onAsk: () => void }) {
   const [side, setSide] = useState<'left' | 'right'>('right');
   const [mood, setMood] = useState<TechyMood>('ready');
   const [bubble, setBubble] = useState<{ text: string; tone?: Tone } | null>(null);
+  const [away, setAway] = useState(false);
   const out = useSharedValue(0);      // 0 tucked, 1 out
   const drag = useSharedValue(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => { AsyncStorage.getItem('techy_side').then((s) => { if (s === 'left' || s === 'right') setSide(s); }).catch(() => {}); }, []);
+  useEffect(() => { techyDock.side = side; }, [side]);
 
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
   const slideOut = useCallback((ms: number) => {
@@ -50,7 +57,8 @@ export default function TechyDock({ onAsk }: { onAsk: () => void }) {
 
   useEffect(() => {
     const listener = (e: Event) => {
-      if (e.kind === 'react') { setBubble(null); setMood(e.mood); slideOut(e.ms ?? 2600); }
+      if (e.kind === 'away') { setAway(e.on); setBubble(null); }
+      else if (e.kind === 'react') { setBubble(null); setMood(e.mood); slideOut(e.ms ?? 2600); }
       else { setMood(e.mood ?? 'wave'); setBubble({ text: e.text, tone: e.tone }); slideOut(e.ms ?? 4400); }
     };
     listeners.add(listener);
@@ -84,7 +92,7 @@ export default function TechyDock({ onAsk }: { onAsk: () => void }) {
 
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom, 10) + TAB_BAR_HEIGHT + 14 }}>
-      <Animated.View {...pan.panHandlers} style={[{ position: 'absolute', bottom: 0, width: SIZE, height: SIZE * 0.92, [side]: 2 }, shadow.raised, dock]}>
+      <Animated.View {...pan.panHandlers} style={[{ position: 'absolute', bottom: 0, width: SIZE, height: SIZE * 0.92, [side]: 2, opacity: away ? 0 : 1 }, shadow.raised, dock]}>
         <Pressable onPress={onAsk} accessibilityRole="button" accessibilityLabel="Techy, your helper. Tap to ask a question." accessibilityHint="Drag sideways to move it to the other edge">
           <View style={{ transform: [{ scaleX: side === 'left' ? -1 : 1 }] }}>
             <Techy mood={mood} size={SIZE} />

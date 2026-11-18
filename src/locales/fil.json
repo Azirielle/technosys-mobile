@@ -470,8 +470,8 @@
     "lateBy": "{m} minutong late",
     "alreadyTitle": "Naka-time in ka na",
     "alreadyText": "Nag-time in ka nang {time} ngayon.",
-    "earlyTitle": "Masyado pang maaga",
-    "earlyText": "Bubukas ang time-in nang {time}, isang oras bago magsimula ang trabaho mo.",
+    "earlyTitle": "Aalis ka na nang maaga?",
+    "earlyText": "Matatapos ang trabaho mo nang {end}. Kung magta-time out ka ngayon, {early} itong maaga at bibilangin bilang undertime.",
     "noJobTitle": "Walang trabaho ngayon",
     "noJobText": "Wala kang naka-schedule na trabaho ngayon. Mag-time in sa opisina para sa office duty?",
     "officeDuty": "Mag-time in sa opisina",
@@ -488,8 +488,6 @@
     "reason_indoors": "Mali ang GPS sa loob ng gusali",
     "reason_moved": "Inilipat kami ng kliyente sa ibang lugar",
     "reason_other": "Ibang dahilan",
-    "earlyTitle": "Aalis ka na nang maaga?",
-    "earlyText": "Matatapos ang trabaho mo nang {end}. Kung magta-time out ka ngayon, {early} itong maaga at bibilangin bilang undertime.",
     "earlyWhy": "Bakit ka aalis nang maaga?",
     "early_jobDone": "Maagang natapos ang trabaho",
     "early_sick": "Masama ang pakiramdam ko",
@@ -523,5 +521,25 @@
     "otSentText": "Aaprubahan o tatanggihan ito ng Coordinator. Makakatanggap ka ng notification.",
     "otAlready": "Nakahingi ka na ngayong araw. Hintayin ang sagot ng Coordinator.",
     "otNeedReason": "Sabihin kung bakit kailangan mo ng dagdag na oras."
+  },
+  "assistant": {
+    "name": "Techy",
+    "role": "Katuwang ng TechnoSys",
+    "hrAnswering": "Ang HR na ang sumasagot dito",
+    "hr": "HR",
+    "hello": "Hi! Ako si Techy. Magtanong ka tungkol sa mga gamit, kaligtasan, DTR, leave, o patakaran ng kompanya. Nababasa ng HR ang chat na ito.",
+    "placeholder": "Magtanong kay Techy…",
+    "placeholderHr": "Mag-message sa HR…",
+    "send": "Ipadala",
+    "end": "Tapusin",
+    "endHint": "Tapusin ang chat na ito. Bagong chat ang susunod mong tanong.",
+    "thinking": "Nag-iisip si Techy…",
+    "failed": "Hindi nakasagot si Techy ngayon. Subukan ulit pagkalipas ng isang minuto.",
+    "loadFailed": "Hindi ma-load ang chat mo. Tingnan ang signal mo.",
+    "shortcut": {
+      "dtr": "Magtanong sa HR tungkol sa isang araw sa DTR",
+      "leave": "Mag-file ng leave",
+      "tool": "Mag-report ng problema sa gamit"
+    }
   }
 }

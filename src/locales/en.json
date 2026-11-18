@@ -470,8 +470,8 @@
     "lateBy": "{m} minutes late",
     "alreadyTitle": "You're already timed in",
     "alreadyText": "You timed in at {time} today.",
-    "earlyTitle": "Too early to time in",
-    "earlyText": "Time-in opens at {time}, one hour before your job starts.",
+    "earlyTitle": "Leaving early?",
+    "earlyText": "Your job ends at {end}. Timing out now is {early} early, so it counts as undertime.",
     "noJobTitle": "No job today",
     "noJobText": "You have no job scheduled today. Time in at the office for office duty?",
     "officeDuty": "Time in at the office",
@@ -488,8 +488,6 @@
     "reason_indoors": "The GPS is wrong indoors",
     "reason_moved": "The client moved us to another spot",
     "reason_other": "Another reason",
-    "earlyTitle": "Leaving early?",
-    "earlyText": "Your job ends at {end}. Timing out now is {early} early, so it counts as undertime.",
     "earlyWhy": "Why are you leaving early?",
     "early_jobDone": "The job finished early",
     "early_sick": "I'm not feeling well",
@@ -523,5 +521,25 @@
     "otSentText": "The Coordinator will approve or decline it. You'll get a notification.",
     "otAlready": "You already asked today. Wait for the Coordinator's answer.",
     "otNeedReason": "Say why you need more time."
+  },
+  "assistant": {
+    "name": "Techy",
+    "role": "TechnoSys assistant",
+    "hrAnswering": "HR is answering here",
+    "hr": "HR",
+    "hello": "Hi! I'm Techy. Ask me about tools, safety, your DTR, leaves or company rules. HR can read this chat.",
+    "placeholder": "Ask Techy…",
+    "placeholderHr": "Message HR…",
+    "send": "Send",
+    "end": "End",
+    "endHint": "End this chat. Your next question starts a new one.",
+    "thinking": "Techy is thinking…",
+    "failed": "Techy couldn't answer just now. Try again in a minute.",
+    "loadFailed": "Couldn't load your chat. Check your signal.",
+    "shortcut": {
+      "dtr": "Ask HR about a DTR day",
+      "leave": "File a leave",
+      "tool": "Report a tool problem"
+    }
   }
 }

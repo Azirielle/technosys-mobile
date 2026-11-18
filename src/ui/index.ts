@@ -24,7 +24,7 @@ export { default as ConfirmDialog } from './ConfirmDialog';
 export { default as TextBox } from './TextBox';
 export { default as Techy, type TechyMood } from './Techy';
 export { default as TabBar, TAB_BAR_HEIGHT } from './TabBar';
-export { default as TechyDock, techy } from './TechyDock';
+export { default as TechyDock, techy, techyDock } from './TechyDock';
 export { useTokens } from './useTokens';
 export { arrive, leave, layout, usePressScale, haptic, setHapticsEnabled, useReducedMotion } from './motion';
 export * as tokens from './tokens';
