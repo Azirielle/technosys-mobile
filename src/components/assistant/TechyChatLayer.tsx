@@ -19,6 +19,9 @@ export default function TechyChatLayer({ children }: { children: React.ReactNode
   const [chat, setChat] = useState<{ ticketId?: string } | null>(null); // mounted while open
   const [onTop, setOnTop] = useState(false); // under the turning page while opening, on top once open
   const busy = useRef(false);
+  const opening = useRef(false);
+  const closeWhenOpen = useRef(false); // Back was pressed while it was still opening
+  const shutRef = useRef<() => void>(() => {});
   const { open, close } = motion;
 
   useEffect(() => {
@@ -27,9 +30,12 @@ export default function TechyChatLayer({ children }: { children: React.ReactNode
       busy.current = true;
       techy.away(true); // the dock is empty: this Techy is the one doing the opening
       setOnTop(false); setChat({ ticketId });
+      opening.current = true;
       await open();
+      opening.current = false;
       setOnTop(true);
       busy.current = false;
+      if (closeWhenOpen.current) { closeWhenOpen.current = false; shutRef.current(); }
     };
     listeners.add(listener);
     return () => { listeners.delete(listener); };
@@ -43,11 +49,16 @@ export default function TechyChatLayer({ children }: { children: React.ReactNode
     techy.away(false);
     busy.current = false;
   };
+  useEffect(() => { shutRef.current = shut; });
 
   // The phone's Back button closes the chat with the same motion as "End"
   useEffect(() => {
     if (!chat) return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => { shut(); return true; });
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (opening.current) closeWhenOpen.current = true; // still opening: close as soon as it's open
+      else shut();
+      return true;
+    });
     return () => sub.remove();
   });
 

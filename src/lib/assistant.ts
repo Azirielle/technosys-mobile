@@ -107,6 +107,7 @@ export async function askTechy(
     headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: question, history }),
     pollingInterval: 0, // one answer per question: never reconnect
+    timeout: 60000, // a stalled answer on weak signal gives up after a minute (then "Techy couldn't answer")
   });
   es.addEventListener('message', (e) => {
     if (!e.data) return;
