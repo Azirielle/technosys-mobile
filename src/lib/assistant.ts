@@ -37,8 +37,9 @@ export async function openConversation(ticketId?: string): Promise<{ ticket: Tic
     .select('id, sender_role, content, is_internal').eq('ticket_id', ticket.id).order('created_at', { ascending: true });
   if (rowsErr) throw rowsErr;
   const messages = (rows as Row[]).filter((r) => !r.is_internal).map(toMessage);
-  // A ticket filed from a form (DTR question, leave…) starts with its description, not a message
-  if (!messages.length && ticket.title !== AI_CHAT_TITLE && ticket.description) messages.push({ id: `desc_${ticket.id}`, from: 'me', text: ticket.description });
+  // A ticket filed from a form (DTR question, tool report) keeps your question only as its description: show it first,
+  // also after HR has replied. A Techy chat's first question is already a message.
+  if (ticket.title !== AI_CHAT_TITLE && ticket.description) messages.unshift({ id: `desc_${ticket.id}`, from: 'me', text: ticket.description });
   return { ticket, messages };
 }
 
