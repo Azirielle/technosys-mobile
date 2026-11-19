@@ -3,6 +3,7 @@
 //  - Everyone: email or username + password (Supabase Auth), then the phone check.
 // Signing in never registers the phone: that happens on purpose in setup ("Use this as my work phone").
 // Every result is turned into a plain message here, so screens never show raw errors.
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { getDeviceId, getDeviceName } from './deviceId';
 
@@ -13,6 +14,13 @@ export type SignInResult =
   | { ok: false; reason: 'message'; message: string };
 
 const NO_SIGNAL = "Can't reach the server. Check your signal and try again.";
+const SERVER_ERROR = 'Sign-in is having a problem on our side. Please try again in a minute.';
+
+/** What the number box keeps: digits only, at most 11, and a pasted +63 9… becomes 09… */
+export function toLocalNumber(input: string): string {
+  const d = input.replace(/\D/g, '');
+  return (d.startsWith('639') ? '0' + d.slice(2) : d).slice(0, 11);
+}
 
 /** 09171234567 / +639171234567 / 9171234567 → true */
 export function isPhMobile(input: string): boolean {
@@ -38,8 +46,8 @@ function pinMessage(data: { status?: string; tries_left?: number; minutes?: numb
       return 'This account is not active. Please contact HR.';
     case 'use_email':
       return 'Office accounts sign in with email. Tap "Sign in with email instead" below.';
-    default:
-      return NO_SIGNAL;
+    default: // 'error' or anything new from the server
+      return SERVER_ERROR;
   }
 }
 
@@ -48,8 +56,11 @@ export async function signInWithPin(mobile: string, pin: string, requestChange =
   try {
     const { data, error } = await supabase.functions.invoke('pin-login', {
       body: { mobile, pin, deviceId: await getDeviceId(), deviceName: getDeviceName(), requestChange },
+      timeout: 20000, // weak signal: stop the spinner and say so instead of waiting forever
     });
-    if (error || !data) return { ok: false, reason: 'message', message: NO_SIGNAL };
+    // The server answered with an error (it was reached), versus no answer at all
+    if (error) return { ok: false, reason: 'message', message: error instanceof FunctionsHttpError ? SERVER_ERROR : NO_SIGNAL };
+    if (!data) return { ok: false, reason: 'message', message: SERVER_ERROR };
 
     if (data.status === 'other_phone') return { ok: false, reason: 'other_phone' };
     if (data.status === 'change_requested') return { ok: false, reason: 'change_requested' };

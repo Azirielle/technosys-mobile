@@ -5,7 +5,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import PinBoxes, { PinBoxesHandle } from './PinBoxes';
 import { getLoginStyles } from './loginStyles';
-import { isPhMobile, signInWithPin, SignInResult } from '../../lib/signIn';
+import { isPhMobile, signInWithPin, SignInResult, toLocalNumber } from '../../lib/signIn';
 import { Button, Notice, useTokens } from '../../ui';
 
 type Props = {
@@ -70,7 +70,7 @@ export default function PhoneSignInForm({ onSignedIn, onOtherPhone, onUseEmail }
           placeholder="09XX XXX XXXX"
           placeholderTextColor={c.ink3}
           value={mobile}
-          onChangeText={(t) => { setMobile(t.replace(/[^\d+ ]/g, '')); if (error?.field === 'mobile') setError(null); }}
+          onChangeText={(t) => { setMobile(toLocalNumber(t)); if (error?.field === 'mobile') setError(null); }}
           onFocus={() => setFocus(true)}
           onBlur={() => setFocus(false)}
           keyboardType="phone-pad"
