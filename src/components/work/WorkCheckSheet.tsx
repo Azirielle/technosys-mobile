@@ -2,7 +2,7 @@
 // or, when the database couldn't confirm the site: why (outside / fake GPS / no location), the map with the
 // circle and Navigate, Try again, and a selfie with a reason (saved as "needs review").
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Pressable, ScrollView, View } from 'react-native';
 import RNModal from 'react-native-modal';
 import { Feather } from '@expo/vector-icons';
 import { useT } from '../../lib/i18n';
@@ -26,6 +26,7 @@ export default function WorkCheckSheet({ sheet, sending, onRetry, onSelfie, onCl
   return (
     <RNModal isVisible={sheet.open} useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
       onBackdropPress={sending ? undefined : onClose} onBackButtonPress={sending ? undefined : onClose} style={{ margin: 0, justifyContent: 'flex-end' }}>
+      <KeyboardAvoidingView behavior="padding">
       <View style={{ backgroundColor: c.card, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, padding: 20, paddingBottom: 32, maxHeight: '92%' }}>
         {sheet.step === 'checking' && (
           <View style={{ alignItems: 'center', paddingVertical: 32, gap: 14 }}>
@@ -80,6 +81,7 @@ export default function WorkCheckSheet({ sheet, sending, onRetry, onSelfie, onCl
           </ScrollView>
         )}
       </View>
+    </KeyboardAvoidingView>
     </RNModal>
   );
 }

@@ -21,6 +21,7 @@ export { default as SentScreen } from './SentScreen';
 export { default as DateField } from './DateField';
 export { default as Toggle } from './Toggle';
 export { default as ConfirmDialog } from './ConfirmDialog';
+export { appAlert, AlertHost } from './appAlert';
 export { default as TextBox } from './TextBox';
 export { default as Techy, type TechyMood } from './Techy';
 export { default as TabBar, TAB_BAR_HEIGHT } from './TabBar';

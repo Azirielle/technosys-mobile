@@ -1,12 +1,12 @@
 // File a leave (from Leave): type, first and last day, reason, and a photo of the medical certificate for sick
 // leave. Plain checks before sending; HR answers in Leave and the Inbox.
 import React, { useState } from 'react';
-import { Alert, Image, View } from 'react-native';
+import { Image, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { fileLeave, leaveDays, LeaveType } from '../lib/leaves';
-import { Button, ChoiceCard, DateField, Notice, PushedScreen, SectionLabel, SentScreen, TextBox, Txt, haptic, techy, useTokens } from '../ui';
+import { Button, ChoiceCard, DateField, Notice, PushedScreen, SectionLabel, SentScreen, TextBox, Txt, haptic, techy, useTokens, appAlert } from '../ui';
 
 const TYPES: { key: LeaveType; icon: 'sun' | 'thermometer' | 'alert-circle' | 'clock' }[] = [
   { key: 'vacation', icon: 'sun' }, { key: 'sick', icon: 'thermometer' }, { key: 'emergency', icon: 'alert-circle' }, { key: 'unpaid', icon: 'clock' },
@@ -33,7 +33,7 @@ export default function LeaveNewScreen() {
 
   const pickPhoto = (source: 'camera' | 'library') => async () => {
     const perm = source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert(t('leaveNew.certificate'), t('me.photoPermission')); return; }
+    if (!perm.granted) { appAlert(t('leaveNew.certificate'), t('me.photoPermission')); return; }
     const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.6 };
     const r = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
     if (!r.canceled && r.assets[0]?.uri) setPhoto(r.assets[0].uri);

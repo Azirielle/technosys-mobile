@@ -1,7 +1,9 @@
 // Updates from the office (from Home): company announcements, newest first. Each shows who posted it and when;
 // long ones open fully with "Read more". "Important" in words when the office marked it urgent or required.
+// From the Inbox (?id=…) it shows just that announcement, fully open.
 import React, { useCallback, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { getUpdates, Update } from '../lib/updates';
 import { useFocusRefresh } from '../lib/useFocusRefresh';
@@ -15,6 +17,7 @@ export default function UpdatesScreen() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const { id } = useLocalSearchParams<{ id?: string }>();
   const load = useCallback(async () => { try { setUpdates(await getUpdates()); setFailed(false); } catch { setFailed(true); } }, []);
   useFocusRefresh(load);
 
@@ -30,9 +33,9 @@ export default function UpdatesScreen() {
             <Txt variant="body" color="ink2" center>{t('updates.none')}</Txt>
           </View>
         )}
-        {updates?.map((u) => {
-          const long = u.content.length > 160;
-          const isOpen = !!open[u.id];
+        {(id && updates?.some((u) => u.id === id) ? updates.filter((u) => u.id === id) : updates)?.map((u) => {
+          const long = !id && u.content.length > 160;
+          const isOpen = !!id || !!open[u.id];
           return (
             <Card key={u.id} style={{ gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

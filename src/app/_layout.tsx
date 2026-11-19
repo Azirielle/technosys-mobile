@@ -3,12 +3,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CopilotProvider } from 'react-native-copilot';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { BackHandler, Alert, LogBox, Platform } from 'react-native';
+import { BackHandler, LogBox, Platform } from 'react-native';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { PlusJakartaSans_400Regular, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 import { loadHapticsSetting } from '../lib/hapticsSetting';
+import { AlertHost, appAlert } from '../ui';
 
 SplashScreen.preventAutoHideAsync();
 LogBox.ignoreLogs(['Accessing element.ref was removed']);
@@ -53,7 +54,7 @@ export default function RootLayout() {
         return false;
       } else {
         // At root (Home or Login)
-        Alert.alert('Exit App', 'Are you sure you want to exit TechnoCycle?', [
+        appAlert('Exit App', 'Are you sure you want to exit TechnoCycle?', [
           {
             text: 'Cancel',
             onPress: () => null,
@@ -86,6 +87,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
             <Stack.Screen name="setup" options={{ animation: 'fade' }} />
           </Stack>
+          <AlertHost />
         </CopilotProvider>
       </SafeAreaProvider>
     </ThemeProvider>

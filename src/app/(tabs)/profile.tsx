@@ -3,7 +3,7 @@
 // value before each arrow; Appearance and Language open their own screen; Vibrate on tap is a switch.
 // Nothing from Home is repeated here.
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, AppState, Image, Pressable, ScrollView, View } from 'react-native';
+import { AppState, Image, Pressable, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { router, useNavigation, type Href } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +20,7 @@ import { getDeviceName } from '../../lib/deviceId';
 import { loadHapticsSetting, saveHapticsSetting } from '../../lib/hapticsSetting';
 import { startTechyTour } from '../../components/tour/TechyTour';
 import { biometricAvailable, biometricOn, getRemembered, turnBiometricOff } from '../../lib/quickSignIn';
-import { Card, ConfirmDialog, ListRow, SectionLabel, SkeletonRow, TAB_BAR_HEIGHT, Toggle, Txt, arrive, tourTarget, haptic, useReducedMotion, useTokens } from '../../ui';
+import { Card, ConfirmDialog, ListRow, SectionLabel, SkeletonRow, TAB_BAR_HEIGHT, Toggle, Txt, arrive, tourTarget, haptic, useReducedMotion, useTokens, appAlert } from '../../ui';
 
 const AVATAR = 64;
 
@@ -57,7 +57,7 @@ export default function ProfileTab() {
     return () => sub.remove();
   }, [refreshNotif]);
 
-  const pickPhoto = () => Alert.alert(t('me.photoTitle'), undefined, [
+  const pickPhoto = () => appAlert(t('me.photoTitle'), undefined, [
     { text: t('me.photoCamera'), onPress: () => savePhoto('camera') },
     { text: t('me.photoLibrary'), onPress: () => savePhoto('library') },
     { text: t('common.cancel'), style: 'cancel' },
@@ -67,8 +67,8 @@ export default function ProfileTab() {
     const r = await changeAvatar(source);
     setSavingPhoto(false);
     if (r.ok) { haptic.success(); setProfile((p) => (p ? { ...p, avatar_url: r.url } : p)); }
-    else if (r.reason === 'permission') Alert.alert(t('me.photoTitle'), t('me.photoPermission'));
-    else if (r.reason === 'failed') Alert.alert(t('me.photoTitle'), t('common.noSignal'));
+    else if (r.reason === 'permission') appAlert(t('me.photoTitle'), t('me.photoPermission'));
+    else if (r.reason === 'failed') appAlert(t('me.photoTitle'), t('common.noSignal'));
   };
 
   const notifValue = notif === 'granted' ? t('me.notifOn') : notif === 'unavailable' ? t('profile.notifApk') : t('profile.notifOff');

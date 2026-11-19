@@ -518,7 +518,7 @@
     "progressNotIn": "Mag-time in muna.",
     "askOvertime": "Humingi ng overtime",
     "otTitle": "Humingi ng overtime",
-    "otText": "Bibilangin lang ang dagdag na oras pagkatapos ng trabaho kung aprubado ng Coordinator.",
+    "otText": "Ang oras pagkatapos ng trabaho ay bibilangin hanggang mag-time out ka, kapag inaprubahan ng Coordinator. Sabihin lang kung bakit.",
     "otHours": "Oras",
     "otPlaceholder": "Tinatapos ang duct work",
     "otSend": "Ipadala sa Coordinator",

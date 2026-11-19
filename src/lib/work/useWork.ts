@@ -5,7 +5,7 @@
 //   driver away from HQ → bring the vehicle back, or call the Coordinator
 //   time out early (15+ min before the end) → say why; the Coordinator checks it
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router, type Href } from 'expo-router';
 import { supabase } from '../supabase';
@@ -15,7 +15,7 @@ import { loadHandbook } from '../handbook';
 import { locateMe, tellHrCouldntTimeIn, type Spot } from '../timeIn';
 import { getMyDays, reportLeftAt, uploadWorkSelfie, workTimeIn, workTimeOut, type WorkDay, type WorkResult } from './workApi';
 import type { Problem } from '../useTimeIn';
-import { techy } from '../../ui';
+import { techy, appAlert } from '../../ui';
 
 export type OutsideState = {
   open: boolean; step: 'checking' | 'done' | 'outside'; here: Spot | null; why: 'outside' | 'fake_gps' | 'no_location';
@@ -47,7 +47,7 @@ export function useWork() {
   const remindRules = async () => {
     try {
       const { toRead } = await loadHandbook();
-      if (toRead.length) Alert.alert(t('timeIn.rulesTitle'), t('timeIn.rulesText', { n: toRead.length }), [
+      if (toRead.length) appAlert(t('timeIn.rulesTitle'), t('timeIn.rulesText', { n: toRead.length }), [
         { text: t('timeIn.later'), style: 'cancel' }, { text: t('timeIn.rulesOpen'), onPress: () => router.push('/handbook' as Href) },
       ]);
     } catch { /* no reminder without signal */ }
@@ -67,13 +67,13 @@ export function useWork() {
           place: r.place_lat != null ? { name: String(r.place_name), lat: Number(r.place_lat), lon: Number(r.place_lon), radius: Number(r.radius_m) } : null });
       case 'queued':
         setSheet(closed); return setProblem({ open: true, kind: 'queued', gpsFound: !!here, inside: false });
-      case 'already': setSheet(closed); Alert.alert(t('work.alreadyTitle'), t('work.alreadyText', { time: timeText(r.time_in) })); return reload();
+      case 'already': setSheet(closed); appAlert(t('work.alreadyTitle'), t('work.alreadyText', { time: timeText(r.time_in) })); return reload();
       case 'forgot_time_out': setSheet(closed); return reload();
-      case 'too_early': setSheet(closed); return Alert.alert(t('work.earlyTitle'), t('work.earlyText', { time: timeText(r.opens_at) }));
-      case 'other_phone': setSheet(closed); return Alert.alert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
+      case 'too_early': setSheet(closed); return appAlert(t('work.earlyTitle'), t('work.earlyText', { time: timeText(r.opens_at) }));
+      case 'other_phone': setSheet(closed); return appAlert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
       case 'no_job':
         setSheet(closed);
-        return Alert.alert(t('work.noJobTitle'), t('work.noJobText'), [
+        return appAlert(t('work.noJobTitle'), t('work.noJobText'), [
           { text: t('common.cancel'), style: 'cancel' },
           { text: t('work.officeDuty'), onPress: () => startTimeIn(true) },
         ]);
@@ -87,7 +87,7 @@ export function useWork() {
     setSheet({ ...closed, open: true, officeDuty });
     const found = await locateMe().catch(() => 'no_gps' as const);
     if (found === 'no_permission') {
-      Alert.alert(t('timeIn.needLocationTitle'), t('timeIn.needLocationText'), [
+      appAlert(t('timeIn.needLocationTitle'), t('timeIn.needLocationText'), [
         { text: t('work.openSettings'), onPress: () => Linking.openSettings() }, { text: t('timeIn.ok') },
       ]);
     }
@@ -101,7 +101,7 @@ export function useWork() {
     let uri = again ? selfie?.uri : undefined;
     if (!uri) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') return Alert.alert(t('timeIn.cameraTitle'), t('timeIn.cameraText'));
+      if (status !== 'granted') return appAlert(t('timeIn.cameraTitle'), t('timeIn.cameraText'));
       const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.3, cameraType: ImagePicker.CameraType.front });
       if (shot.canceled || !shot.assets[0]?.uri) return;
       uri = shot.assets[0].uri;
@@ -113,7 +113,7 @@ export function useWork() {
       setProblem((p) => ({ ...p, open: false }));
       await handleIn(await workTimeIn(sheet.here, { selfiePath: path, reason, officeDuty: sheet.officeDuty }), sheet.here, sheet.officeDuty);
     } catch {
-      if (again) Alert.alert(t('timeIn.stillTitle'), t('timeIn.stillText'));
+      if (again) appAlert(t('timeIn.stillTitle'), t('timeIn.stillText'));
       setProblem({ open: true, kind: 'selfie', gpsFound: !!sheet.here, inside: false });
     } finally {
       setSending(null);
@@ -125,15 +125,15 @@ export function useWork() {
     setSending('hr');
     const ok = await tellHrCouldntTimeIn(me, sheet.here);
     setSending(null);
-    if (ok) { setProblem((p) => ({ ...p, open: false })); setSheet(closed); Alert.alert(t('timeIn.hrToldTitle'), t('timeIn.hrToldText')); }
-    else Alert.alert(t('timeIn.hrFailTitle'), t('timeIn.hrFailText'));
+    if (ok) { setProblem((p) => ({ ...p, open: false })); setSheet(closed); appAlert(t('timeIn.hrToldTitle'), t('timeIn.hrToldText')); }
+    else appAlert(t('timeIn.hrFailTitle'), t('timeIn.hrFailText'));
   }
 
   function timeOut() {
     const day = days.today;
     if (!day) return;
     const mins = Math.max(0, Math.floor((Date.now() - Date.parse(day.time_in)) / 60000));
-    Alert.alert(t('timeIn.outTitle'), t('timeIn.outText', { time: timeText(day.time_in), h: Math.floor(mins / 60), m: mins % 60 }), [
+    appAlert(t('timeIn.outTitle'), t('timeIn.outText', { time: timeText(day.time_in), h: Math.floor(mins / 60), m: mins % 60 }), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('timeIn.outYes'), style: 'destructive', onPress: () => sendTimeOut() },
     ]);
@@ -147,11 +147,11 @@ export function useWork() {
     setBusy(false);
     if (r.status === 'early') return setEarly({ endsAt: String(r.ends_at), minutes: Number(r.minutes_early) });
     setEarly(null);
-    if (r.status === 'timed_out') { techy.react('wave'); Alert.alert(t('timeIn.outDoneTitle'), t('timeIn.outDoneText', { hours: Number(r.hours) })); }
-    else if (r.status === 'queued') Alert.alert(t('timeIn.queuedTitle'), t('work.outQueued'));
-    else if (r.status === 'bring_vehicle_back') Alert.alert(t('work.vehicleTitle'), t('work.vehicleText', { office: String(r.office_name) }));
-    else if (r.status === 'other_phone') Alert.alert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
-    else if (r.status !== 'forgot_time_out') Alert.alert(t('timeIn.outFailTitle'), t('common.noSignal'));
+    if (r.status === 'timed_out') { techy.react('wave'); appAlert(t('timeIn.outDoneTitle'), t('timeIn.outDoneText', { hours: Number(r.hours) })); }
+    else if (r.status === 'queued') appAlert(t('timeIn.queuedTitle'), t('work.outQueued'));
+    else if (r.status === 'bring_vehicle_back') appAlert(t('work.vehicleTitle'), t('work.vehicleText', { office: String(r.office_name) }));
+    else if (r.status === 'other_phone') appAlert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
+    else if (r.status !== 'forgot_time_out') appAlert(t('timeIn.outFailTitle'), t('common.noSignal'));
     reload();
   }
 
@@ -159,8 +159,8 @@ export function useWork() {
   async function saveLeftAt(leftAt: Date): Promise<boolean> {
     if (!days.forgotten) return false;
     const r = await reportLeftAt(days.forgotten.id, leftAt);
-    if (r.status !== 'saved') { Alert.alert(t('timeIn.outFailTitle'), t(r.status === 'bad_time' ? 'work.badLeftAt' : 'common.noSignal')); return false; }
-    Alert.alert(t('forgotten.savedTitle'), t('work.leftAtSaved', { hours: Number(r.hours) }));
+    if (r.status !== 'saved') { appAlert(t('timeIn.outFailTitle'), t(r.status === 'bad_time' ? 'work.badLeftAt' : 'common.noSignal')); return false; }
+    appAlert(t('forgotten.savedTitle'), t('work.leftAtSaved', { hours: Number(r.hours) }));
     await reload();
     return true;
   }

@@ -8,12 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
-  Alert,
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAppTheme } from '../hooks/use-theme';
+import { appAlert } from '../ui';
 
 const BRAND = {
   blue: '#1E3A8A',
@@ -276,7 +276,7 @@ export default function PolicyReaderModal({
         if (Platform.OS === 'web') {
           window.alert(`Signed\n\nThanks! HR can see you've read ${policy.title}.`);
         } else {
-          Alert.alert('Signed', `Thanks! HR can see you've read ${policy.title}.`);
+          appAlert('Signed', `Thanks! HR can see you've read ${policy.title}.`);
         }
         onClose();
       }
@@ -285,7 +285,7 @@ export default function PolicyReaderModal({
       if (Platform.OS === 'web') {
         window.alert(`Error\n\n${msg}`);
       } else {
-        Alert.alert("Not saved", msg);
+        appAlert("Not saved", msg);
       }
     } finally {
       setSubmitting(false);

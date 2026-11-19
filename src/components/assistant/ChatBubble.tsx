@@ -41,7 +41,8 @@ function Formatted({ text, color }: { text: string; color: 'ink' | 'onBrand' }) 
   );
 }
 
-export default function ChatBubble({ message }: { message: ChatMessage }) {
+/** onLeave: in Techy's chat, a shortcut first closes the chat, so Back from the form returns to your screen. */
+export default function ChatBubble({ message, onLeave }: { message: ChatMessage; onLeave?: () => void }) {
   const t = useT();
   const router = useRouter();
   const { c, radius } = useTokens();
@@ -66,7 +67,7 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
       {wantsForm && !message.pending && (
         <Card padded={false} style={{ marginTop: 8, width: '86%' }}>
           {SHORTCUTS.map((s, i) => (
-            <ListRow key={s.key} icon={s.icon} title={t(`assistant.shortcut.${s.key}`)} onPress={() => router.push(s.to as Href)}
+            <ListRow key={s.key} icon={s.icon} title={t(`assistant.shortcut.${s.key}`)} onPress={() => { onLeave?.(); router.push(s.to as Href); }}
               last={i === SHORTCUTS.length - 1} />
           ))}
         </Card>

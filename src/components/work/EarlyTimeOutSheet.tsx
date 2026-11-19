@@ -1,7 +1,7 @@
 // EarlyTimeOutSheet (Work v2): shown when the database says a time-out is early (15+ min before the job's end).
 // Says when the job ends and how early this is, asks why, then times out with that reason. The Coordinator checks it.
 import React, { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, View } from 'react-native';
 import RNModal from 'react-native-modal';
 import { Feather } from '@expo/vector-icons';
 import { useT } from '../../lib/i18n';
@@ -21,6 +21,7 @@ export default function EarlyTimeOutSheet({ early, busy, onTimeOut, onClose }: P
   return (
     <RNModal isVisible={!!early} useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating
       onBackdropPress={busy ? undefined : onClose} onBackButtonPress={busy ? undefined : onClose} style={{ margin: 0, justifyContent: 'flex-end' }}>
+      <KeyboardAvoidingView behavior="padding">
       <View style={{ backgroundColor: c.card, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, padding: 20, paddingBottom: 32, maxHeight: '92%' }}>
         <ScrollView contentContainerStyle={{ gap: 12 }} keyboardShouldPersistTaps="handled">
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -40,6 +41,7 @@ export default function EarlyTimeOutSheet({ early, busy, onTimeOut, onClose }: P
           <Txt variant="caption" color="ink2" center>{t('work.earlyNote')}</Txt>
         </ScrollView>
       </View>
+    </KeyboardAvoidingView>
     </RNModal>
   );
 }

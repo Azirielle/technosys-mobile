@@ -518,7 +518,7 @@
     "progressNotIn": "Time in first.",
     "askOvertime": "Ask for overtime",
     "otTitle": "Ask for overtime",
-    "otText": "Extra time after the end counts only when the Coordinator approves it.",
+    "otText": "Extra time after the job's end counts until you time out, once the Coordinator approves it. Just say why.",
     "otHours": "Hours",
     "otPlaceholder": "Finishing the duct work",
     "otSend": "Send to the Coordinator",

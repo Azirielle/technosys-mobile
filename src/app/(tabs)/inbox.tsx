@@ -1,14 +1,14 @@
 // Inbox tab: HR's replies, leave decisions and written warnings, and the office's announcements, newest first.
 // A reply opens the conversation with HR on that ticket (app/ticket/[id].tsx); an announcement opens Updates. "Mark all as read" clears the dots.
 import React, { useCallback, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, type Href } from 'expo-router';
 import { useT } from '../../lib/i18n';
 import { getInbox, markRead, InboxItem } from '../../lib/inbox';
 import { useFocusRefresh } from '../../lib/useFocusRefresh';
 import { ago } from '../../components/jobs/jobWords';
-import { Card, ListRow, Notice, SkeletonCard, StatusText, TAB_BAR_HEIGHT, Techy, Txt, tourTarget, useTokens } from '../../ui';
+import { Card, ListRow, Notice, SkeletonCard, StatusText, TAB_BAR_HEIGHT, Techy, Txt, tourTarget, useTokens, appAlert } from '../../ui';
 
 export default function InboxScreen() {
   const t = useT();
@@ -25,9 +25,9 @@ export default function InboxScreen() {
 
   const open = async (item: InboxItem) => {
     if (!item.read) await markRead([item.id]);
-    if (item.kind === 'announcement') { router.push('/updates' as Href); return; }
+    if (item.kind === 'announcement') { router.push(`/updates?id=${item.id.replace(/^ann_/, '')}` as Href); return; } // that one, not the whole list
     if (item.kind === 'leave') { router.push('/leave' as Href); return; }
-    if (item.kind === 'warning') { Alert.alert(item.title, `${item.text}\n\n${t('inbox.warningNote')}`); return; }
+    if (item.kind === 'warning') { appAlert(item.title, `${item.text}\n\n${t('inbox.warningNote')}`); return; }
     router.push(`/ticket/${item.ticketId}` as Href);
   };
 

@@ -6,12 +6,12 @@ import { useRouter, type Href } from 'expo-router';
 import Animated from 'react-native-reanimated';
 import * as SplashScreen from 'expo-splash-screen';
 import {
-  StyleSheet, Text, View, TouchableOpacity, Alert, Image, KeyboardAvoidingView, ScrollView,
+  StyleSheet, Text, View, TouchableOpacity, Image, KeyboardAvoidingView, ScrollView,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-import { GlowScreen, Techy, arrive, useReducedMotion, useTokens, tokens } from '../ui';
+import { GlowScreen, Techy, arrive, useReducedMotion, useTokens, tokens, appAlert } from '../ui';
 import PolicyReaderModal, { CompanyPolicy } from '../components/PolicyReaderModal';
 import PhoneSignInForm from '../components/login/PhoneSignInForm';
 import EmailSignInForm from '../components/login/EmailSignInForm';
@@ -77,7 +77,7 @@ export default function SignInPage() {
       if (error || !data) throw new Error('not found');
       setLegalPolicy(data as CompanyPolicy);
     } catch {
-      Alert.alert('Not available', "Couldn't open this page. Check your signal and try again.");
+      appAlert('Not available', "Couldn't open this page. Check your signal and try again.");
     }
   };
 
