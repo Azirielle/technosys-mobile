@@ -16,10 +16,12 @@ export type SignInResult =
 const NO_SIGNAL = "Can't reach the server. Check your signal and try again.";
 const SERVER_ERROR = 'Sign-in is having a problem on our side. Please try again in a minute.';
 
-/** What the number box keeps: digits only, at most 11, and a pasted +63 9… becomes 09… */
+/** What the number box keeps: always 09 + up to 9 digits (every PH mobile starts with 09); a pasted +63 9… becomes 09… */
 export function toLocalNumber(input: string): string {
-  const d = input.replace(/\D/g, '');
-  return (d.startsWith('639') ? '0' + d.slice(2) : d).slice(0, 11);
+  let d = input.replace(/\D/g, '');
+  if (d.startsWith('639')) d = '0' + d.slice(2);
+  if (!d.startsWith('09')) d = '09' + d.replace(/^0?9?/, '');
+  return d.slice(0, 11);
 }
 
 /** 09171234567 / +639171234567 / 9171234567 → true */

@@ -18,7 +18,7 @@ type Props = {
 export default function PhoneSignInForm({ onSignedIn, onOtherPhone, onUseEmail }: Props) {
   const { c, isDark } = useTokens();
   const styles = useMemo(() => getLoginStyles(c, isDark), [c, isDark]);
-  const [mobile, setMobile] = useState('');
+  const [mobile, setMobile] = useState('09');
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [focus, setFocus] = useState(false);
