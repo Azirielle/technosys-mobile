@@ -49,3 +49,7 @@ google-services.json
 
 # local tools
 .playwright-cli/
+
+# Signing key downloaded from EAS for local builds (never commit)
+credentials.json
+credentials/

@@ -1,8 +1,9 @@
 // WorkHome (Work v2): Home when WORK_V2 is on. Today's job (or the next) from the new jobs, time in/out through
 // the database (lib/work/useWork), the check / problem / "When did you leave?" dialogs, and Arrived / Done /
 // overtime while timed in on a job. The shared parts (Support chat, push, offline sending) stay on the Home tab.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWork } from '../../lib/work/useWork';
+import { onPunchRequest } from '../../lib/work/punchRequest';
 import { getMyWorkJobs, type MyJob } from '../../lib/work/workApi';
 import { manilaDay, type Job } from '../../lib/jobs';
 import { previewLeftAt } from '../../lib/forgottenShift';
@@ -38,6 +39,10 @@ function pickJob(jobs: MyJob[], timedInJobId?: string | null): { card: Job | nul
 
 export default function WorkHome() {
   const work = useWork();
+  // "Time in" / "Time out" on a reminder push: run it here once Home has loaded today's day
+  const latest = useRef(work);
+  useEffect(() => { latest.current = work; });
+  useEffect(() => onPunchRequest((p) => setTimeout(() => (p === 'in' ? latest.current.startTimeIn() : latest.current.timeOut()), 800)), []);
   const [jobs, setJobs] = useState<MyJob[]>([]);
   const [hideForgotten, setHideForgotten] = useState(false);
   const loadJobs = useCallback(() => { getMyWorkJobs().then(setJobs).catch(() => {}); }, []);
