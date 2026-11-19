@@ -3,7 +3,7 @@
 // "End"; Techy itself sits in the empty seat at the top-left (drawn by the layer). Once HR takes over, Techy stays
 // quiet and your messages go to HR. (HR replies in the Inbox open app/ticket/[id].tsx instead.)
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, View, type ViewStyle } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Pressable, View, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { type AnimatedStyle } from 'react-native-reanimated';
 import { useT } from '../../lib/i18n';
@@ -114,7 +114,7 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
             </Pressable>
           </View>
 
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" /* Android draws edge-to-edge and no longer resizes for the keyboard */>
             <FlatList
               ref={list}
               data={shown}

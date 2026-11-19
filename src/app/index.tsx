@@ -6,7 +6,7 @@ import { useRouter, type Href } from 'expo-router';
 import Animated from 'react-native-reanimated';
 import * as SplashScreen from 'expo-splash-screen';
 import {
-  StyleSheet, Text, View, TouchableOpacity, Alert, Image, KeyboardAvoidingView, ScrollView, Platform,
+  StyleSheet, Text, View, TouchableOpacity, Alert, Image, KeyboardAvoidingView, ScrollView,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -99,7 +99,7 @@ export default function SignInPage() {
   return (
     <GlowScreen>
       <SafeAreaView style={{ flex: 1 }}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" /* Android draws edge-to-edge and no longer resizes for the keyboard */>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <Image source={require('../../assets/logo.png')} style={styles.logo} />
             <Text style={styles.title}>TechnoCycle</Text>

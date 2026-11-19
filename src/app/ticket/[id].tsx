@@ -1,7 +1,7 @@
 // Conversation with HR about one ticket (opened from an HR reply in the Inbox): your question, HR's replies, and a box
 // to answer HR. Techy isn't part of it (Techy's chat is opened by tapping Techy). Updates live when HR writes.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useT } from '../../lib/i18n';
@@ -70,7 +70,7 @@ export default function TicketChatScreen() {
         {/* Full-color status, a step larger than list pills: easy to read for weaker eyes too (Andrew, 19 Nov) */}
         {!!ticket && <View style={{ marginTop: 6 }}><StatusPill large tone={finished ? 'ok' : 'info'} label={t(finished ? 'hrChat.finished' : 'hrChat.open')} /></View>}
       </View>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" /* Android draws edge-to-edge and no longer resizes for the keyboard */>
         {loading ? (
           <View style={{ padding: space.lg, gap: 10 }}><SkeletonRow /><SkeletonRow /></View>
         ) : (

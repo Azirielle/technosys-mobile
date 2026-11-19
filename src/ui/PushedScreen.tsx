@@ -2,7 +2,7 @@
 // Ask HR…): back arrow, big title, optional line under it, scrolling content, and an optional button pinned at
 // the bottom. It slides in from the right and Back slides it away (root stack), so all of them move the same.
 import React from 'react';
-import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BackHeader from './BackHeader';
 import Txt from './Txt';
@@ -23,7 +23,7 @@ export default function PushedScreen({ title, subtitle, backLabel, children, foo
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }} edges={['top', 'bottom']}>
       <BackHeader label={backLabel} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" /* Android draws edge-to-edge and no longer resizes for the keyboard */>
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 32 }}
           keyboardShouldPersistTaps="handled"
