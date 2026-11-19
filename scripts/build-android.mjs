@@ -25,7 +25,7 @@ const sign = [
   `-Pandroid.injected.signing.key.password=${creds.keyPassword}`,
 ];
 try {
-  run(process.platform === 'win32' ? 'gradlew.bat' : './gradlew', ['assembleRelease', 'bundleRelease', ...sign], resolve(root, 'android'));
+  run(resolve(root, 'android', process.platform === 'win32' ? 'gradlew.bat' : 'gradlew'), ['assembleRelease', 'bundleRelease', ...sign], resolve(root, 'android'));
 } catch {
   // Never let the error repeat the command line: it holds the key passwords
   console.error('\nThe Gradle build failed: the reason is in the lines above ("What went wrong").');
