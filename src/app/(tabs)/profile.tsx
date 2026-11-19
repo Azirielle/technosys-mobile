@@ -19,6 +19,7 @@ import { jobTitle } from '../../lib/jobTitle';
 import { getDeviceName } from '../../lib/deviceId';
 import { loadHapticsSetting, saveHapticsSetting } from '../../lib/hapticsSetting';
 import { startTechyTour } from '../../components/tour/TechyTour';
+import { biometricAvailable, biometricOn, getRemembered, turnBiometricOff } from '../../lib/quickSignIn';
 import { Card, ConfirmDialog, ListRow, SectionLabel, SkeletonRow, TAB_BAR_HEIGHT, Toggle, Txt, arrive, tourTarget, haptic, useReducedMotion, useTokens } from '../../ui';
 
 const AVATAR = 64;
@@ -36,6 +37,10 @@ export default function ProfileTab() {
   const [buzz, setBuzz] = useState(true);
   useEffect(() => { loadHapticsSetting().then(setBuzz); }, []);
   const changeBuzz = (on: boolean) => { setBuzz(on); saveHapticsSetting(on).then(() => { if (on) haptic.tap(); }); };
+  // Fingerprint sign-in: only for PIN sign-ins on a phone that has a fingerprint or face set up
+  const [bio, setBio] = useState({ can: false, on: false });
+  const refreshBio = () => { Promise.all([biometricAvailable(), biometricOn(), getRemembered()]).then(([a, on, who]) => setBio({ can: a && !!who, on })); };
+  const changeBio = (on: boolean) => { if (on) router.push('/change-pin?fingerprint=1' as Href); else turnBiometricOff().then(refreshBio); };
 
   const refreshNotif = useCallback(() => { getPermissionStates().then((s) => setNotif(s.notifications)).catch(() => {}); }, []);
   useFocusRefresh(() => {
@@ -45,6 +50,7 @@ export default function ProfileTab() {
       setToRead(await countPoliciesToRead(p.id).catch(() => 0));
     }).catch(() => {});
     refreshNotif();
+    refreshBio();
   });
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') refreshNotif(); });
@@ -125,6 +131,9 @@ export default function ProfileTab() {
             <ListRow look="settings" icon="book-open" title={t('me.handbook')} value={toRead > 0 ? t('me.toRead', { n: toRead }) : undefined}
               onPress={() => router.push('/handbook' as Href)} />
             {isFieldStaff && <ListRow look="settings" icon="smartphone" title={t('me.phone')} value={getDeviceName()} />}
+            {isFieldStaff && <ListRow look="settings" icon="lock" title={t('pin.changeTitle')} onPress={() => router.push('/change-pin' as Href)} />}
+            {isFieldStaff && bio.can && <ListRow look="settings" icon="unlock" title={t('pin.bioTitle')}
+              right={<Toggle value={bio.on} onChange={changeBio} label={t('pin.bioTitle')} />} />}
             {isFieldStaff && <View ref={tourTarget('profile-replay')} collapsable={false}><ListRow look="settings" icon="play-circle" title={t('tour.replay')} onPress={startTechyTour} /></View>}
           </Card>
 

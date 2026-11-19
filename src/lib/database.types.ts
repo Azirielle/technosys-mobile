@@ -2170,6 +2170,8 @@ export type Database = {
         Args: { p_approve: boolean; p_request_id: string }
         Returns: undefined
       }
+      my_pin_is_own: { Args: never; Returns: boolean }
+      set_my_pin: { Args: { p_current?: string; p_new: string }; Returns: Json }
       decide_review: {
         Args: { p_approve: boolean; p_note?: string; p_review_id: string }
         Returns: Json

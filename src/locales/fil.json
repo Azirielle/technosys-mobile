@@ -63,6 +63,10 @@
       "finish": "Tapos na",
       "finishAnyway": "Tapusin muna",
       "notificationsLater": "Gumagana ang notifications sa naka-install na app, hindi sa Expo Go."
+    },
+    "pin": {
+      "title": "Gumawa ng sariling PIN",
+      "subtitle": "Pang-unang sign-in lang ang PIN mula sa HR. Pumili ng 4 na numero na ikaw lang ang nakakaalam."
     }
   },
   "tabs": {
@@ -569,5 +573,31 @@
     "inboxTip": "Dito dumarating ang sagot ng HR, desisyon sa leave, at balita. I-tap para buksan: ang sagot ng HR ay magbubukas ng usapan ninyo.",
     "languageTip": "Mas gusto ang English o Filipino? Palitan dito ang wika ng app kahit kailan.",
     "replayTip": "Gusto mong makita ulit ang tour ko? I-tap dito at ipapakita ko ulit."
+  },
+  "pin": {
+    "currentTitle": "Ilagay ang kasalukuyang PIN",
+    "newTitle": "Pumili ng bagong 4-digit PIN",
+    "newHint": "Ikaw lang dapat ang nakakaalam. Huwag 1111 o 1234.",
+    "repeatTitle": "Ulitin ang PIN",
+    "otherHint": "Gamitin ang mga numero.",
+    "weak": "Masyadong madaling hulaan. Pumili ng iba.",
+    "mismatch": "Hindi nagtugma. Pumili ulit ng PIN.",
+    "wrongCurrent": "Hindi iyan ang kasalukuyang PIN mo.",
+    "saved": "Na-save na ang PIN mo",
+    "bioOffer": "Mag-sign in gamit ang fingerprint o mukha sa susunod, sa halip na i-type ang PIN?",
+    "bioUse": "Gamitin ang fingerprint",
+    "bioLater": "Hindi muna",
+    "bioPrompt": "Mag-sign in sa TechnoSys",
+    "bioFailed": "Hindi gumana ang fingerprint. Subukan ulit, o piliin ang Hindi muna.",
+    "changeTitle": "Palitan ang PIN",
+    "bioTitle": "Fingerprint sign-in"
+  },
+  "login": {
+    "welcome": "Maligayang pagbabalik, {name}",
+    "there": "kaibigan",
+    "pinOnly": "Ilagay ang PIN para mag-sign in.",
+    "useFingerprint": "Gamitin ang fingerprint",
+    "notYou": "Hindi si {name}?",
+    "useAnother": "Ibang numero"
   }
 }

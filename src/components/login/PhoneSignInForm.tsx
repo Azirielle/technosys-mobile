@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import PinBoxes, { PinBoxesHandle } from './PinBoxes';
 import { getLoginStyles } from './loginStyles';
 import { isPhMobile, signInWithPin, SignInResult, toLocalNumber } from '../../lib/signIn';
+import { remember } from '../../lib/quickSignIn';
 import { Button, Notice, useTokens } from '../../ui';
 
 type Props = {
@@ -42,7 +43,7 @@ export default function PhoneSignInForm({ onSignedIn, onOtherPhone, onUseEmail }
     const result: SignInResult = await signInWithPin(mobile, pinValue);
     setBusy(false);
 
-    if (result.ok) return onSignedIn();
+    if (result.ok) { await remember(mobile); return onSignedIn(); } // next time: "Welcome back", PIN only
     if (result.reason === 'other_phone') return onOtherPhone(mobile, pinValue);
     if (result.reason === 'message') {
       const aboutNumber = /number/i.test(result.message);

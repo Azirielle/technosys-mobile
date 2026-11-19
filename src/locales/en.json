@@ -63,6 +63,10 @@
       "finish": "Finish",
       "finishAnyway": "Finish for now",
       "notificationsLater": "Notifications work in the installed app, not in Expo Go."
+    },
+    "pin": {
+      "title": "Make your own PIN",
+      "subtitle": "HR's PIN was only for your first sign-in. Pick 4 numbers only you know."
     }
   },
   "tabs": {
@@ -569,5 +573,31 @@
     "inboxTip": "HR's replies, leave decisions and news land here. Tap one to open it: an HR reply opens your chat with HR.",
     "languageTip": "Prefer Filipino? Change the app's language here, any time.",
     "replayTip": "Want to see my tour again? Tap here and I'll show you around."
+  },
+  "pin": {
+    "currentTitle": "Enter your current PIN",
+    "newTitle": "Pick a new 4-digit PIN",
+    "newHint": "Only you should know it. Not 1111 or 1234.",
+    "repeatTitle": "Type it again",
+    "otherHint": "Use the number keys.",
+    "weak": "Too easy to guess. Pick another one.",
+    "mismatch": "They didn't match. Pick your PIN again.",
+    "wrongCurrent": "That isn't your current PIN.",
+    "saved": "Your PIN is saved",
+    "bioOffer": "Sign in with your fingerprint or face next time, instead of typing your PIN?",
+    "bioUse": "Use fingerprint",
+    "bioLater": "Not now",
+    "bioPrompt": "Sign in to TechnoSys",
+    "bioFailed": "Fingerprint didn't work. Try again, or choose Not now.",
+    "changeTitle": "Change PIN",
+    "bioTitle": "Fingerprint sign-in"
+  },
+  "login": {
+    "welcome": "Welcome back, {name}",
+    "there": "there",
+    "pinOnly": "Enter your PIN to sign in.",
+    "useFingerprint": "Use fingerprint",
+    "notYou": "Not {name}?",
+    "useAnother": "Use another number"
   }
 }

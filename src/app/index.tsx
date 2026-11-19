@@ -15,11 +15,14 @@ import { GlowScreen, Techy, arrive, useReducedMotion, useTokens, tokens } from '
 import PolicyReaderModal, { CompanyPolicy } from '../components/PolicyReaderModal';
 import PhoneSignInForm from '../components/login/PhoneSignInForm';
 import EmailSignInForm from '../components/login/EmailSignInForm';
+import WelcomeBackForm from '../components/login/WelcomeBackForm';
 import OtherPhoneNotice from '../components/login/OtherPhoneNotice';
 import { checkThisPhone, signInWithPin, requestPhoneChangeAndSignOut } from '../lib/signIn';
 import { loadPendingSteps, stepRoute } from '../lib/setup';
+import { forget, getRemembered, type Remembered } from '../lib/quickSignIn';
 
 type Screen =
+  | { name: 'welcome'; who: Remembered }
   | { name: 'phone' }
   | { name: 'email' }
   | { name: 'other_phone'; via: 'pin'; mobile: string; pin: string }
@@ -51,6 +54,9 @@ export default function SignInPage() {
         const phone = await checkThisPhone();
         if (phone !== 'other_phone') return openApp();
         setScreen({ name: 'other_phone', via: 'email' }); // keeps the session so they can ask HR
+      } else {
+        const who = await getRemembered(); // this phone's technician signed out before: PIN only
+        if (who) setScreen({ name: 'welcome', who });
       }
       setCheckingSession(false);
       SplashScreen.hideAsync().catch(() => {});
@@ -107,6 +113,14 @@ export default function SignInPage() {
 
             {/* Each form fades in and rises a little when you switch (motion #4) */}
             <Animated.View key={screen.name} entering={arrive(0, reduced)} style={{ width: '100%' }}>
+            {screen.name === 'welcome' && (
+              <WelcomeBackForm
+                who={screen.who}
+                onSignedIn={openApp}
+                onOtherPhone={(mobile, pin) => setScreen({ name: 'other_phone', via: 'pin', mobile, pin })}
+                onNotYou={async () => { await forget(); setScreen({ name: 'phone' }); }}
+              />
+            )}
             {screen.name === 'phone' && (
               <PhoneSignInForm
                 onSignedIn={openApp}

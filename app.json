@@ -2,7 +2,7 @@
   "expo": {
     "name": "TechnoCycle",
     "slug": "technosys-app",
-    "version": "0.8.0",
+    "version": "0.9.0",
     "orientation": "portrait",
     "icon": "./assets/images/technosys_mobile.png",
     "scheme": "hrismobile",
@@ -69,7 +69,13 @@
       "expo-sharing",
       "expo-asset",
       "expo-notifications",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "TechnoSys uses Face ID so you can sign in without typing your PIN."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
