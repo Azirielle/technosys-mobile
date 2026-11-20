@@ -1,0 +1,25 @@
+Google Play store listing for TechnoSys (copy-paste into Play Console → Grow users → Store presence → Main store listing)
+
+App name (max 30):
+TechnoSys
+
+Short description (max 80):
+Time in, jobs, tools and leave for Technocycle's field technicians.
+
+Full description (max 4000):
+TechnoSys is the work app for Technocycle Corp.'s aircon installation and cleaning crews.
+
+• Time in and out at the job site. The app checks you're at the site; if you're outside it, a selfie and a reason go to the office for review. No signal? It saves your time and sends it later.
+• See today's job and your schedule: where, when, who is on your crew, and directions.
+• Get reminders before your job starts and when it's time to time out.
+• My tools: see the tools lent to you and report a broken or lost one.
+• File a leave, ask HR about a day in your DTR, and read HR's replies in your Inbox.
+• Techy, the app's assistant, answers questions about tools, safety and company rules in English or Filipino.
+• Sign in with your mobile number and your own PIN, or your fingerprint.
+
+For Technocycle employees only: sign-in needs an account from HR.
+
+Images (in this folder):
+- App icon 512 x 512: icon-512.png
+- Feature graphic 1024 x 500: feature-1024x500.png
+- Phone screenshots: take 2 to 8 on a phone (Home, Techy, My tools, DTR) and upload them.

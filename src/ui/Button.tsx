@@ -38,7 +38,8 @@ export default function Button({ label, onPress, kind = 'primary', size = 'lg', 
       accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       style={[
         {
-          height: size === 'lg' ? 54 : 44,
+          minHeight: size === 'lg' ? 54 : 44, // min, so a two-line label (side-by-side buttons) still fits
+          paddingVertical: 8,
           borderRadius: radius.control,
           backgroundColor: looks.bg,
           borderWidth: kind === 'secondary' ? 1 : 0,
@@ -54,9 +55,9 @@ export default function Button({ label, onPress, kind = 'primary', size = 'lg', 
       {loading ? (
         <ActivityIndicator color={looks.fg} />
       ) : (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, maxWidth: '100%' }}>
           {icon && <Feather name={icon} size={18} color={looks.fg} />}
-          <Txt variant={size === 'lg' ? 'heading' : 'label'} style={{ color: looks.fg }}>{label}</Txt>
+          <Txt variant={size === 'lg' ? 'heading' : 'label'} style={{ color: looks.fg, textAlign: 'center', flexShrink: 1 }}>{label}</Txt>
         </View>
       )}
     </PressableScale>

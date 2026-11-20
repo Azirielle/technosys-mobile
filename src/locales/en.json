@@ -4,7 +4,10 @@
     "back": "Back",
     "stepOf": "Step {step} of {total}",
     "noSignal": "Can't reach the server. Check your signal and try again.",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "exitTitle": "Exit Technocycle?",
+    "exitText": "You'll stay signed in.",
+    "exit": "Exit"
   },
   "setup": {
     "language": {
@@ -299,7 +302,8 @@
       "sick": "Sick",
       "emergency": "Emergency",
       "unpaid": "Unpaid"
-    }
+    },
+    "notYetLate": "Not timed in · late"
   },
   "profile": {
     "notifOff": "Off",
@@ -307,8 +311,8 @@
     "systemSub": "Follows your phone's light or dark setting",
     "languageEnSub": "The app's words in English",
     "languageTlSub": "Ang mga salita ng app sa Filipino",
-    "haptics": "Vibrate on tap",
-    "hapticsSub": "A light buzz on buttons and tabs"
+    "haptics": "Haptic feedback",
+    "hapticsSub": "A light vibration on buttons and tabs"
   },
   "tools": {
     "title": "My tools",
@@ -537,6 +541,7 @@
     "placeholderHr": "Message HR…",
     "send": "Send",
     "end": "End",
+    "closedNote": "HR closed this chat. Tap End, then ask Techy to start a new one.",
     "endHint": "End this chat. Your next question starts a new one.",
     "thinking": "Techy is thinking…",
     "failed": "Techy couldn't answer just now. Try again in a minute.",
@@ -593,6 +598,7 @@
     "bioTitle": "Fingerprint sign-in"
   },
   "login": {
+    "firstPinHint": "First time? Use the PIN HR gave you. You'll make your own next.",
     "welcome": "Welcome back, {name}",
     "there": "there",
     "pinOnly": "Enter your PIN to sign in.",

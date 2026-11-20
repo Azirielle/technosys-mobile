@@ -739,6 +739,12 @@ export type Database = {
           },
         ]
       }
+      inbox_reads: {
+        Row: { item_id: string; read_at: string; user_id: string }
+        Insert: { item_id: string; read_at?: string; user_id: string }
+        Update: { item_id?: string; read_at?: string; user_id?: string }
+        Relationships: []
+      }
       jobs: {
         Row: {
           address: string

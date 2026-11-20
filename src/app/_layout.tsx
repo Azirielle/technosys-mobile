@@ -10,6 +10,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useAppTheme } from '../context/ThemeContext';
 import { loadHapticsSetting } from '../lib/hapticsSetting';
 import { AlertHost, appAlert } from '../ui';
+import { useT } from '../lib/i18n';
 
 SplashScreen.preventAutoHideAsync();
 LogBox.ignoreLogs(['Accessing element.ref was removed']);
@@ -17,13 +18,31 @@ LogBox.ignoreLogs(['Accessing element.ref was removed']);
 /** How full screens slide in and out (see the comment on <Stack> below). */
 const PUSH_ANIMATION = Platform.OS === 'android' ? ('slide_from_right' as const) : ('ios_from_right' as const);
 
+/** The phone's Back button: the stack itself goes back (with its slide). Only on the first screen (Home or sign-in)
+ *  do we ask before closing the app, in the same look and words as Profile's Sign out pop-up. */
+function ExitOnBack() {
+  const router = useRouter();
+  const t = useT();
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (router.canGoBack()) return false;
+      appAlert(t('common.exitTitle'), t('common.exitText'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.exit'), style: 'destructive', onPress: () => BackHandler.exitApp() },
+      ]);
+      return true;
+    });
+    return () => sub.remove();
+  }, [router, t]);
+  return null;
+}
+
 function RootStatusBar() {
   const { isDark } = useAppTheme();
   return <StatusBar style={isDark ? 'light' : 'dark'} />;
 }
 
 export default function RootLayout() {
-  const router = useRouter();
 
   const [fontsLoaded, fontError] = useFonts({
     'DMSans-Regular': DMSans_400Regular,
@@ -35,7 +54,7 @@ export default function RootLayout() {
     'Jakarta-Bold': PlusJakartaSans_700Bold,
   });
 
-  // "Vibrate on tap" (Profile) is read before any button can buzz
+  // "Haptic feedback" (Profile) is read before any button can buzz
   useEffect(() => { loadHapticsSetting(); }, []);
 
   // Safety fallback timeout to ensure native splash never freezes
@@ -46,30 +65,6 @@ export default function RootLayout() {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    // The phone's Back button: the stack itself goes back (with its slide). Only on the first screen
-    // (Home or sign-in) do we step in and ask before closing the app.
-    const onBackPress = () => {
-      if (router.canGoBack()) {
-        return false;
-      } else {
-        // At root (Home or Login)
-        appAlert('Exit App', 'Are you sure you want to exit TechnoCycle?', [
-          {
-            text: 'Cancel',
-            onPress: () => null,
-            style: 'cancel',
-          },
-          { text: 'YES', onPress: () => BackHandler.exitApp() },
-        ]);
-        return true;
-      }
-    };
-
-    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => subscription.remove();
-  }, [router]);
-
   if (!fontsLoaded && !fontError) {
     return null;
   }
@@ -78,6 +73,7 @@ export default function RootLayout() {
     <ThemeProvider>
       <SafeAreaProvider>
         <RootStatusBar />
+        <ExitOnBack />
         <CopilotProvider tooltipStyle={{ backgroundColor: '#ffffff', borderRadius: 16 }} stepNumberComponent={() => null}>
           {/* A real stack: screens opened from a tab (handbook, a DTR day) slide in on top, and Back returns to that tab.
               Android uses its own full slide (both screens move together, about 400 ms). Its 'ios_from_right' copy is

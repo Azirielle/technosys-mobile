@@ -17,8 +17,11 @@ const TICKET_FIELDS = 'id, title, status, handling_mode, description';
 const FROM: Record<string, ChatMessage['from']> = { ai: 'techy', admin: 'hr', system: 'note' };
 const toMessage = (r: Row): ChatMessage => ({ id: r.id, from: FROM[r.sender_role ?? ''] ?? 'me', text: r.content });
 
-/** Techy answers only in a Techy chat that HR hasn't taken over. */
-export const techyAnswers = (t: Ticket | null) => !t || (t.title === AI_CHAT_TITLE && t.handling_mode !== 'ADMIN');
+/** HR resolved or closed it: nothing more can be sent. */
+export const isFinished = (t: Ticket | null) => !!t && ['resolved', 'closed'].includes(t.status);
+
+/** Techy answers only in an open Techy chat that HR hasn't taken over. */
+export const techyAnswers = (t: Ticket | null) => !t || (t.title === AI_CHAT_TITLE && t.handling_mode !== 'ADMIN' && !isFinished(t));
 
 /** The conversation to show: the ticket asked for (from the Inbox), else your unfinished Techy chat, else none yet. */
 export async function openConversation(ticketId?: string): Promise<{ ticket: Ticket | null; messages: ChatMessage[] }> {

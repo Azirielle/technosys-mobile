@@ -40,6 +40,8 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut }: Props) 
   const progress = Math.min(1, workedMs / SHIFT_MS);
   const bar = useAnimatedStyle(() => ({ width: withTiming(`${progress * 100}%`, { duration: reduced ? 0 : 600 }) }), [progress, reduced]);
   const h = Math.floor(workedMs / 3600000), m = Math.floor((workedMs % 3600000) / 60000);
+  const start = shift.kind === 'off' && shift.shiftStart ? new Date(shift.shiftStart) : new Date(new Date(now).setHours(8, 0, 0, 0));
+  const late = shift.kind === 'off' && now > start;
 
   const view = shift.kind === 'working'
     ? { tone: 'ok' as const, pill: t('home.working', { time: clock(new Date(shift.startedAt)) }), big: t('home.elapsed', { h, m }),
@@ -47,11 +49,13 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut }: Props) 
     : shift.kind === 'done'
     ? { tone: 'ok' as const, pill: t('home.doneToday'), big: shift.hours != null ? `${shift.hours.toFixed(1)} h` : '—',
         sub: `${clock(new Date(shift.timeIn))} – ${shift.timeOut ? clock(new Date(shift.timeOut)) : '…'} · ${t('home.sentToHr')}` }
-    : { tone: 'info' as const, pill: t('home.notYet'), big: clock(now),
-        sub: shift.shiftStart ? t('home.shiftStarts', { time: clock(new Date(shift.shiftStart)) }) : t('home.shiftStarts', { time: '8:00 AM' }) };
+    : { tone: late ? 'error' as const : 'pending' as const, pill: t(late ? 'home.notYetLate' : 'home.notYet'), big: clock(now),
+        sub: t('home.shiftStarts', { time: clock(start) }) };
+  // Not timed in: amber before the start, red once it has started, so it never looks like a switched-off card
+  const edge = shift.kind === 'off' ? { borderColor: late ? c.error : c.pending, borderWidth: 2 } : null;
 
   return (
-    <Glass style={{ padding: 18, gap: 6 }} radius={radius.card}>
+    <Glass style={[{ padding: 18, gap: 6 }, edge]} radius={radius.card}>
       <StatusPill tone={view.tone} label={view.pill} />
       <Txt variant="display" style={{ fontSize: 40, lineHeight: 48, marginTop: 4 }} accessibilityLiveRegion="polite">{view.big}</Txt>
       <Txt variant="caption" color="ink2">{view.sub}</Txt>

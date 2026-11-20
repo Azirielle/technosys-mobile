@@ -4,7 +4,10 @@
     "back": "Bumalik",
     "stepOf": "Hakbang {step} sa {total}",
     "noSignal": "Hindi maabot ang server. I-check ang signal mo at subukan ulit.",
-    "cancel": "Kanselahin"
+    "cancel": "Kanselahin",
+    "exitTitle": "Lumabas sa Technocycle?",
+    "exitText": "Mananatili kang naka-sign in.",
+    "exit": "Lumabas"
   },
   "setup": {
     "language": {
@@ -299,7 +302,8 @@
       "sick": "Sick",
       "emergency": "Emergency",
       "unpaid": "Walang bayad"
-    }
+    },
+    "notYetLate": "Hindi pa naka-time in · late"
   },
   "profile": {
     "notifOff": "Naka-off",
@@ -307,8 +311,8 @@
     "systemSub": "Sumusunod sa light o dark ng phone mo",
     "languageEnSub": "Ang mga salita ng app sa English",
     "languageTlSub": "Ang mga salita ng app sa Filipino",
-    "haptics": "Mag-vibrate kapag pinindot",
-    "hapticsSub": "Mahinang vibrate sa mga button at tab"
+    "haptics": "Haptic feedback",
+    "hapticsSub": "Mahinang vibration sa mga button at tab"
   },
   "tools": {
     "title": "Mga tool ko",
@@ -537,6 +541,7 @@
     "placeholderHr": "Mag-message sa HR…",
     "send": "Ipadala",
     "end": "Tapusin",
+    "closedNote": "Isinara ng HR ang chat na ito. I-tap ang Tapusin, tapos magtanong ulit kay Techy para sa bago.",
     "endHint": "Tapusin ang chat na ito. Bagong chat ang susunod mong tanong.",
     "thinking": "Nag-iisip si Techy…",
     "failed": "Hindi nakasagot si Techy ngayon. Subukan ulit pagkalipas ng isang minuto.",
@@ -593,6 +598,7 @@
     "bioTitle": "Fingerprint sign-in"
   },
   "login": {
+    "firstPinHint": "Unang beses? Gamitin ang PIN na binigay ng HR. Gagawa ka ng sarili mo pagkatapos.",
     "welcome": "Maligayang pagbabalik, {name}",
     "there": "kaibigan",
     "pinOnly": "Ilagay ang PIN para mag-sign in.",

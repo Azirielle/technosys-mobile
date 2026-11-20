@@ -1,14 +1,16 @@
 // TechyChat: Techy's chat window. Ask Techy (the AI assistant) about tools, safety, your DTR, leaves or company rules.
 // Shown by TechyChatLayer when you tap Techy: your unfinished Techy chat, or a new one. The only button at the top is
-// "End"; Techy itself sits in the empty seat at the top-left (drawn by the layer). Once HR takes over, Techy stays
-// quiet and your messages go to HR. (HR replies in the Inbox open app/ticket/[id].tsx instead.)
+// "End"; Techy itself sits in the empty seat at the top-left (drawn by the layer) and is the Back button: it closes
+// the window and keeps the chat for later. Once HR takes over, Techy stays quiet and your messages go to HR. When HR
+// closes it, the chat shows that at once (live) and you can't send more. (HR replies in the Inbox open app/ticket/[id].tsx instead.)
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Pressable, View, type ViewStyle } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { type AnimatedStyle } from 'react-native-reanimated';
 import { useT } from '../../lib/i18n';
 import {
-  type ChatMessage, type Ticket, askTechy, endConversation, listenToConversation, mergeMessage, openConversation,
+  type ChatMessage, type Ticket, askTechy, endConversation, isFinished, listenToConversation, mergeMessage, openConversation,
   saveTechyAnswer, sendMine, startChat, techyAnswers,
 } from '../../lib/assistant';
 import ChatBubble from './ChatBubble';
@@ -95,7 +97,8 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
   };
 
   const hrHasIt = ticket?.handling_mode === 'ADMIN';
-  const subtitle = hrHasIt ? t('assistant.hrAnswering') : ticket && !techyAnswers(ticket) ? ticket.title : t('assistant.role');
+  const finished = isFinished(ticket);
+  const subtitle = finished ? t('hrChat.finished') : hrHasIt ? t('assistant.hrAnswering') : ticket && !techyAnswers(ticket) ? ticket.title : t('assistant.role');
   const shown = messages.length || loading ? messages : [{ id: 'hello', from: 'techy' as const, text: t('assistant.hello') }];
   const thinking = asking && !messages.find((m) => m.id === STREAM_ID)?.text;
 
@@ -103,7 +106,11 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
     <View style={{ flex: 1, backgroundColor: c.canvas }}>
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: SEAT_TOP, paddingLeft: SEAT_LEFT, paddingRight: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: c.line }}>
-            <View style={{ width: SEAT, height: SEAT }} />{/* Techy's seat: Techy lands here (drawn on top) */}
+            {/* Techy's seat (Techy lands here, drawn on top) is the Back button: closes the window, keeps the chat */}
+            <Pressable onPress={() => { haptic.tap(); onEnd(); }} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('common.back')}
+              style={{ width: SEAT, height: SEAT, justifyContent: 'center' }}>
+              <Feather name="chevron-left" size={14} color={c.ink2} style={{ position: 'absolute', left: -SEAT_LEFT }} />
+            </Pressable>
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Txt variant="heading" accessibilityRole="header">{t('assistant.name')}</Txt>
               <Txt variant="caption" color={hrHasIt ? 'brand' : 'ink2'} numberOfLines={1}>{subtitle}</Txt>
@@ -126,8 +133,12 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
               ListFooterComponent={thinking ? <Txt variant="caption" color="ink2" style={{ marginTop: 4 }}>{t('assistant.thinking')}</Txt> : null}
             />
             {problem && <View style={{ paddingHorizontal: 14 }}><Notice tone="error" text={t(problem === 'load' ? 'assistant.loadFailed' : 'common.noSignal')} /></View>}
-            <ChatComposer value={input} onChangeText={setInput} onSend={send} busy={asking} sendLabel={t('assistant.send')}
-              placeholder={hrHasIt || !techyAnswers(ticket) ? t('assistant.placeholderHr') : t('assistant.placeholder')} />
+            {finished ? (
+              <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: c.line }}><Notice tone="ok" text={t('assistant.closedNote')} /></View>
+            ) : (
+              <ChatComposer value={input} onChangeText={setInput} onSend={send} busy={asking} sendLabel={t('assistant.send')}
+                placeholder={hrHasIt || !techyAnswers(ticket) ? t('assistant.placeholderHr') : t('assistant.placeholder')} />
+            )}
           </KeyboardAvoidingView>
         </SafeAreaView>
         {/* in the page's shadow until the page has turned away */}

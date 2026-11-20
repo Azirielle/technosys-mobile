@@ -81,9 +81,15 @@ export default function SignInPage() {
     }
   };
 
+  // Back from email / another-phone notice: the "Welcome back" (fingerprint) screen if this phone remembers someone
+  const toSignIn = async () => {
+    const who = await getRemembered();
+    setScreen(who ? { name: 'welcome', who } : { name: 'phone' });
+  };
+
   const backToSignIn = async () => {
     if (screen.name === 'other_phone' && screen.via === 'email') await supabase.auth.signOut().catch(() => {});
-    setScreen({ name: 'phone' });
+    await toSignIn();
   };
 
   const requestChange = async (): Promise<boolean> => {
@@ -108,7 +114,7 @@ export default function SignInPage() {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" /* Android draws edge-to-edge and no longer resizes for the keyboard */>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <Image source={require('../../assets/logo.png')} style={styles.logo} />
-            <Text style={styles.title}>TechnoCycle</Text>
+            <Text style={styles.title}>Technocycle</Text>
             <Text style={styles.subtitle}>Field Service Operations</Text>
 
             {/* Each form fades in and rises a little when you switch (motion #4) */}
@@ -132,7 +138,7 @@ export default function SignInPage() {
               <EmailSignInForm
                 onSignedIn={openApp}
                 onOtherPhone={() => setScreen({ name: 'other_phone', via: 'email' })}
-                onUsePhone={() => setScreen({ name: 'phone' })}
+                onUsePhone={toSignIn}
               />
             )}
             {screen.name === 'other_phone' && (

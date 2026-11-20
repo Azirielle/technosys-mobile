@@ -62,7 +62,7 @@ export default function InboxScreen() {
               subtitle={`${item.text ? `${item.text.slice(0, 90)} · ` : ''}${ago(item.at, t)}`}
               right={item.kind === 'warning' ? <StatusText tone="error" label={t('inbox.warning')} /> : item.important ? <StatusText tone="error" label={t('updates.important')} /> : item.decision
                 ? <StatusText tone={item.decision === 'Approved' ? 'ok' : item.decision === 'Refused' ? 'error' : 'info'} label={item.decision === 'Approved' ? t('inbox.approved') : item.decision === 'Refused' ? t('inbox.refused') : item.decision} />
-                : !item.read ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: c.brand }} accessibilityLabel={t('inbox.new')} /> : undefined}
+                : <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: item.read ? c.ink3 : c.error }} accessibilityLabel={item.read ? undefined : t('inbox.new')} />}
               onPress={() => open(item)}
               last={i === items.length - 1}
             />

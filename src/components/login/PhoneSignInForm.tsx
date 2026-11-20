@@ -8,6 +8,7 @@ import { getLoginStyles } from './loginStyles';
 import { isPhMobile, signInWithPin, SignInResult, toLocalNumber } from '../../lib/signIn';
 import { remember } from '../../lib/quickSignIn';
 import { Button, Notice, useTokens } from '../../ui';
+import { useT } from '../../lib/i18n';
 
 type Props = {
   onSignedIn: () => void;
@@ -18,6 +19,7 @@ type Props = {
 
 export default function PhoneSignInForm({ onSignedIn, onOtherPhone, onUseEmail }: Props) {
   const { c, isDark } = useTokens();
+  const t = useT();
   const styles = useMemo(() => getLoginStyles(c, isDark), [c, isDark]);
   const [mobile, setMobile] = useState('09');
   const [pin, setPin] = useState('');
@@ -94,6 +96,8 @@ export default function PhoneSignInForm({ onSignedIn, onOtherPhone, onUseEmail }
         hasError={error?.field === 'pin'}
         disabled={busy}
       />
+      {/* First sign-in: HR's temporary PIN; the app then asks them to make their own (setup) */}
+      <Text style={[styles.switchHint, { textAlign: 'center', marginBottom: 14 }]}>{t('login.firstPinHint')}</Text>
 
       <Button label="Sign in" onPress={() => submit()} loading={busy} />
 

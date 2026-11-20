@@ -28,8 +28,17 @@ const readKey = (userId: string) => `READ_NOTIFS_${userId}`;
 const readListeners = new Set<() => void>();
 export function onInboxRead(cb: () => void): () => void { readListeners.add(cb); return () => { readListeners.delete(cb); }; }
 
+// What you've opened is kept in the database (inbox_reads), so a reinstall or a new phone remembers it; the phone's own
+// copy covers no signal, and anything only the phone knows (from before the database kept it) is sent up once.
 async function readIds(userId: string): Promise<Set<string>> {
-  try { return new Set(JSON.parse((await AsyncStorage.getItem(readKey(userId))) ?? '[]')); } catch { return new Set(); }
+  let local: string[] = [];
+  try { local = JSON.parse((await AsyncStorage.getItem(readKey(userId))) ?? '[]'); } catch { /* none yet */ }
+  const { data, error } = await supabase.from('inbox_reads').select('item_id').eq('user_id', userId);
+  if (error) return new Set(local);
+  const server = new Set((data ?? []).map((r) => r.item_id));
+  const onlyHere = local.filter((id) => !server.has(id));
+  if (onlyHere.length) supabase.from('inbox_reads').upsert(onlyHere.map((item_id) => ({ user_id: userId, item_id })), { ignoreDuplicates: true }).then(() => {});
+  return new Set([...server, ...local]);
 }
 
 export async function getInbox(): Promise<InboxItem[]> {
@@ -99,6 +108,7 @@ export async function markRead(ids: string[]): Promise<void> {
   const read = await readIds(user.id);
   ids.forEach((id) => read.add(id));
   await AsyncStorage.setItem(readKey(user.id), JSON.stringify([...read])).catch(() => {});
+  await supabase.from('inbox_reads').upsert(ids.map((item_id) => ({ user_id: user.id, item_id })), { ignoreDuplicates: true });
   readListeners.forEach((cb) => cb());
 }
 
@@ -113,7 +123,7 @@ export function watchInbox(onChange: () => void): () => void {
       try {
         // Not available in Expo Go on Android (see lib/notifications); skipped there.
         getNotifications()?.scheduleNotificationAsync({
-          content: { title: 'TechnoCycle HR', body: (reply.content || '').replace(/\[DECISION:.*?\]\s*/i, '').slice(0, 100), data: { ticketId: reply.ticket_id } },
+          content: { title: 'Technocycle HR', body: (reply.content || '').replace(/\[DECISION:.*?\]\s*/i, '').slice(0, 100), data: { ticketId: reply.ticket_id } },
           trigger: null,
         });
       } catch {
