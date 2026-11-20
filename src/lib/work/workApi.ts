@@ -17,7 +17,7 @@ export type WorkDay = {
 export type MyJob = {
   id: string; client_name: string; address: string; project_name: string | null; notes: string | null;
   site_lat: number; site_lon: number; site_radius_m: number; start_date: string; end_date: string;
-  start_time: string; end_time: string; work_type: string; report_to: 'site' | 'hq'; status: string; cancel_reason: string | null;
+  start_time: string; end_time: string; work_type: string; report_to: 'site' | 'hq'; status: string; cancel_reason: string | null; is_vip: boolean;
   role: string; vehicle: string | null;
 };
 
@@ -88,7 +88,7 @@ export async function getMyWorkJobs(): Promise<MyJob[]> {
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const { data, error } = await supabase.from('jobs')
     .select(`id, client_name, address, project_name, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time,
-      work_type, report_to, status, cancel_reason, job_members ( person_id, role, removed_at, vehicle:vehicles ( name, plate ) )`)
+      work_type, report_to, status, cancel_reason, is_vip, job_members ( person_id, role, removed_at, vehicle:vehicles ( name, plate ) )`)
     .gte('end_date', since).order('start_date').order('start_time');
   if (error) throw error;
   return (data ?? []).map(({ job_members, ...j }) => {

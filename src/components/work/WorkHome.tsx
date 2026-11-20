@@ -32,7 +32,7 @@ function pickJob(jobs: MyJob[], timedInJobId?: string | null): { card: Job | nul
     card: {
       id: job.id, technician_id: null, client_name: job.client_name, location: job.address, start_time: at(job.start_time),
       end_time: at(job.end_time), status: job.status, assignment_type: ASSIGNMENT[job.work_type] ?? 'on_site',
-      geofence_lat: job.site_lat, geofence_lon: job.site_lon, is_vip_hook: false, cancellation_reason: job.cancel_reason,
+      geofence_lat: job.site_lat, geofence_lon: job.site_lon, is_vip_hook: job.is_vip, cancellation_reason: job.cancel_reason,
     },
   };
 }

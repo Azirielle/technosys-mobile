@@ -747,6 +747,8 @@ export type Database = {
       }
       jobs: {
         Row: {
+          is_vip: boolean
+          vip_note: string | null
           address: string
           cancel_reason: string | null
           client_name: string
@@ -770,6 +772,8 @@ export type Database = {
           work_type: string
         }
         Insert: {
+          is_vip?: boolean
+          vip_note?: string | null
           address: string
           cancel_reason?: string | null
           client_name: string
@@ -793,6 +797,8 @@ export type Database = {
           work_type?: string
         }
         Update: {
+          is_vip?: boolean
+          vip_note?: string | null
           address?: string
           cancel_reason?: string | null
           client_name?: string
