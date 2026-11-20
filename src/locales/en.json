@@ -265,6 +265,7 @@
   "home": {
     "dtrSub": "Days and hours",
     "today": "Today",
+    "todayDate": "Today, {date}",
     "inbox": "Inbox",
     "notYet": "Not timed in yet",
     "working": "Working · since {time}",

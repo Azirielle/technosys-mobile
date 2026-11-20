@@ -265,6 +265,7 @@
   "home": {
     "dtrSub": "Mga araw at oras",
     "today": "Ngayon",
+    "todayDate": "Ngayon, {date}",
     "inbox": "Inbox",
     "notYet": "Hindi pa naka-time in",
     "working": "Nagtatrabaho · mula {time}",

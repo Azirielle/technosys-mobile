@@ -55,7 +55,7 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut }: Props) 
   const edge = shift.kind === 'off' ? { borderColor: late ? c.error : c.pending, borderWidth: 2 } : null;
 
   return (
-    <Glass style={[{ padding: 18, gap: 6 }, edge]} radius={radius.card}>
+    <Glass style={[{ padding: 18, gap: 6 }, edge]} radius={radius.card} tint={c.accentSoft}>
       <StatusPill tone={view.tone} label={view.pill} />
       <Txt variant="display" style={{ fontSize: 40, lineHeight: 48, marginTop: 4 }} accessibilityLiveRegion="polite">{view.big}</Txt>
       <Txt variant="caption" color="ink2">{view.sub}</Txt>

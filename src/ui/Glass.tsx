@@ -7,9 +7,10 @@ import { BlurView } from 'expo-blur';
 import { useGlowTarget } from './Glow';
 import { useTokens } from './useTokens';
 
-type Props = { children: React.ReactNode; style?: StyleProp<ViewStyle>; radius?: number; intensity?: number };
+/** tint: a see-through colour token laid over the glass (e.g. the time-in card's light blue) */
+type Props = { children: React.ReactNode; style?: StyleProp<ViewStyle>; radius?: number; intensity?: number; tint?: string };
 
-export default function Glass({ children, style, radius, intensity = 40 }: Props) {
+export default function Glass({ children, style, radius, intensity = 40, tint }: Props) {
   const { c, isDark, radius: r } = useTokens();
   const target = useGlowTarget();
   const corner = radius ?? r.card;
@@ -24,6 +25,7 @@ export default function Glass({ children, style, radius, intensity = 40 }: Props
       />
       {/* Without blur behind it (Android, no glow) plain glass is too see-through over text: use near-solid card */}
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: !target && Platform.OS === 'android' ? c.card : c.glass, opacity: !target && Platform.OS === 'android' ? 0.96 : 1 }} />
+      {tint && <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: tint }} />}
       {children}
     </View>
   );
