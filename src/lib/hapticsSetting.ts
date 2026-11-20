@@ -1,4 +1,4 @@
-// The "Vibrate on tap" setting (Profile → General), saved on the phone. Loaded once when the app starts.
+// The "Haptic feedback" setting (Profile → General), saved on the phone. Loaded once when the app starts.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setHapticsEnabled } from '../ui/motion';
 
