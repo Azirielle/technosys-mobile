@@ -99,8 +99,9 @@ export async function getMyJobs(): Promise<MyJobs> {
   const upcomingAll = live.filter((j) => manilaDay(j.start_time) > today);
   const older = live.filter((j) => manilaDay(j.start_time) < today);
 
-  // The job you're on now, or the next one today: not finished and not already over
-  const current = todays.find((j) => j.status !== 'completed' && (!j.end_time || Date.parse(j.end_time) > Date.now())) ?? null;
+  // The job you're on now, or the next one today: not finished and not already over. An urgent (VIP) job comes first.
+  const open = todays.filter((j) => j.status !== 'completed' && (!j.end_time || Date.parse(j.end_time) > Date.now()));
+  const current = open.find((j) => j.is_vip_hook) ?? open[0] ?? null;
   const rest = todays.filter((j) => j !== current);
   const laterToday = rest.filter((j) => j.status !== 'completed' && Date.parse(j.start_time) > Date.now());
   const doneToday = rest.filter((j) => !laterToday.includes(j));

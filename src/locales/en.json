@@ -143,7 +143,7 @@
     "laterToday": "Later today",
     "showEarlier": "Show earlier jobs ({n})",
     "hideEarlier": "Hide earlier jobs",
-    "vip": "VIP squeeze-in",
+    "vip": "Urgent job",
     "moved": "Moved",
     "movedFrom": "Moved from {date}",
     "movedTo": "Moved to {date}, {time}",

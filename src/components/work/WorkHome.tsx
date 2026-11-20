@@ -19,11 +19,11 @@ import JobProgressCard from './JobProgressCard';
 
 const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty' };
 
-/** The job you timed in on, else today's job, else the next one; shaped like the Home card expects (one day of it). */
+/** The job you timed in on, else today's urgent (VIP) job, else today's job, else the next one; shaped like the Home card expects (one day of it). */
 function pickJob(jobs: MyJob[], timedInJobId?: string | null): { card: Job | null; job: MyJob | null } {
   const today = manilaDay(new Date());
   const live = jobs.filter((j) => j.status !== 'cancelled' && j.end_date >= today);
-  const job = live.find((j) => j.id === timedInJobId) ?? live.find((j) => j.start_date <= today) ?? live[0] ?? null;
+  const job = live.find((j) => j.id === timedInJobId) ?? live.find((j) => j.is_vip && j.start_date <= today) ?? live.find((j) => j.start_date <= today) ?? live[0] ?? null;
   if (!job) return { card: null, job: null };
   const day = job.start_date <= today ? today : job.start_date;
   const at = (time: string) => new Date(`${day}T${time.slice(0, 8)}+08:00`).toISOString();
