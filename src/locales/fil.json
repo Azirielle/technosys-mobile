@@ -266,6 +266,8 @@
     "dtrSub": "Mga araw at oras",
     "today": "Ngayon",
     "todayDate": "Ngayon, {date}",
+    "bell": "Mga balita mula sa opisina",
+    "bellUnread": "Mga balita mula sa opisina, {n} bago",
     "inbox": "Inbox",
     "notYet": "Hindi pa naka-time in",
     "working": "Nagtatrabaho · mula {time}",

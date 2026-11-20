@@ -6,6 +6,7 @@ import { Pressable, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { getUpdates, Update } from '../lib/updates';
+import { markRead } from '../lib/inbox';
 import { useFocusRefresh } from '../lib/useFocusRefresh';
 import { ago } from '../components/jobs/jobWords';
 import { Card, Notice, PushedScreen, SkeletonCard, StatusText, Techy, Txt, useTokens } from '../ui';
@@ -18,7 +19,13 @@ export default function UpdatesScreen() {
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const load = useCallback(async () => { try { setUpdates(await getUpdates()); setFailed(false); } catch { setFailed(true); } }, []);
+  const load = useCallback(async () => {
+    try {
+      const u = await getUpdates();
+      setUpdates(u); setFailed(false);
+      markRead(u.map((x) => `ann_${x.id}`)).catch(() => {}); // seen here: the bell on Home clears
+    } catch { setFailed(true); }
+  }, []);
   useFocusRefresh(load);
 
   return (

@@ -266,6 +266,8 @@
     "dtrSub": "Days and hours",
     "today": "Today",
     "todayDate": "Today, {date}",
+    "bell": "Updates from the office",
+    "bellUnread": "Updates from the office, {n} new",
     "inbox": "Inbox",
     "notYet": "Not timed in yet",
     "working": "Working · since {time}",

@@ -1,5 +1,5 @@
-// The Inbox: every answer from HR (replies on your tickets, leave approved / declined) and the office's
-// announcements, newest first. Which ones you've
+// The Inbox: every answer from HR (replies on your tickets, leave approved / declined), newest first. The office's
+// announcements are in Updates (the bell on Home), not here. Which ones you've
 // opened is remembered on this phone. HR replies also show as a phone notification while the app is open.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
@@ -89,17 +89,19 @@ export async function getInbox(): Promise<InboxItem[]> {
     items.push({ id, kind: 'warning', title: w.subject, text: w.details ?? '', at: w.created_at as string, read: read.has(id) });
   }
 
-  const { data: news } = await supabase.from('announcements').select('id, title, content, created_at, priority').order('created_at', { ascending: false }).limit(10);
-  for (const a of news ?? []) {
-    const p = sanitizeNotification(a.title, a.content || '', 'admin', 'Announcement');
-    const id = `ann_${a.id}`;
-    items.push({ id, kind: 'announcement', title: p.title, text: p.summary, at: a.created_at as string, read: read.has(id), important: a.priority === 'important' || a.priority === 'urgent' });
-  }
   return items.sort((x, y) => Date.parse(y.at) - Date.parse(x.at));
 }
 
 export async function countUnread(): Promise<number> {
   return (await getInbox()).filter((i) => !i.read).length;
+}
+
+/** Announcements not opened yet, for the bell on Home. Opening Updates marks them read (`ann_<id>`). */
+export async function countUnreadUpdates(): Promise<number> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 0;
+  const [read, { data }] = await Promise.all([readIds(user.id), supabase.from('announcements').select('id').order('created_at', { ascending: false }).limit(10)]);
+  return (data ?? []).filter((a) => !read.has(`ann_${a.id}`)).length;
 }
 
 export async function markRead(ids: string[]): Promise<void> {
