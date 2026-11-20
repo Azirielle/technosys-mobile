@@ -1,7 +1,7 @@
 // useWork: time in and out with Work v2. The database decides (lib/work/workApi); this hook turns each answer
 // into the next step, so no failure leaves the person stuck (plan: docs/job-workflow-sketch.html):
 //   no location / no GPS / outside / fake GPS → the outside sheet: map, Try again, or selfie + reason
-//   no signal → saved on the phone · too early → when it opens · no job → office duty? · other phone · forgot
+//   no signal → the phone's own check (lib/work/offlineCheck), then saved on the phone, selfie too · too early → when it opens · no job → office duty? · other phone · forgot
 //   driver away from HQ → bring the vehicle back, or call the Coordinator
 //   time out early (15+ min before the end) → say why; the Coordinator checks it
 import { useCallback, useEffect, useState } from 'react';
@@ -15,6 +15,7 @@ import { loadHandbook } from '../handbook';
 import { locateMe, tellHrCouldntTimeIn, type Spot } from '../timeIn';
 import { getMyDays, reportLeftAt, uploadWorkSelfie, workTimeIn, workTimeOut, type WorkDay, type WorkResult } from './workApi';
 import type { Problem } from '../useTimeIn';
+import { keepSelfie } from './offlineResult';
 import { techy, appAlert } from '../../ui';
 
 export type OutsideState = {
@@ -109,9 +110,13 @@ export function useWork() {
     setSelfie({ uri, reason });
     setSending('selfie');
     try {
-      const path = await uploadWorkSelfie(me.id, uri);
+      const path = await uploadWorkSelfie(me.id, uri).catch((e) => {
+        if (!/fetch|network|timeout/i.test(String(e?.message ?? e))) throw e;
+        return null; // no signal: the selfie is kept on the phone and goes with the saved time-in
+      });
       setProblem((p) => ({ ...p, open: false }));
-      await handleIn(await workTimeIn(sheet.here, { selfiePath: path, reason, officeDuty: sheet.officeDuty }), sheet.here, sheet.officeDuty);
+      const extra = path ? { selfiePath: path } : { selfieUri: keepSelfie(uri) };
+      await handleIn(await workTimeIn(sheet.here, { ...extra, reason, officeDuty: sheet.officeDuty }), sheet.here, sheet.officeDuty);
     } catch {
       if (again) appAlert(t('timeIn.stillTitle'), t('timeIn.stillText'));
       setProblem({ open: true, kind: 'selfie', gpsFound: !!sheet.here, inside: false });

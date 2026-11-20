@@ -3,6 +3,8 @@ import * as Device from 'expo-device';
 import * as ExpoCrypto from 'expo-crypto';
 import { supabase } from './supabase';
 import { getDeviceId } from './deviceId';
+import { uploadPhoto } from './photoUpload';
+import { dropSelfie, tellIfRefused } from './work/offlineResult';
 
 const QUEUE_KEY = 'OFFLINE_TRANSACTION_QUEUE';
 
@@ -205,9 +207,22 @@ export const syncQueue = {
           } else if (item.type === 'work_time_in' || item.type === 'work_time_out') {
             // The server decides (and refuses a time older than 12 h / 24 h); a refusal isn't retried
             // addToQueue adds an `id` to every payload; the database functions take only their own inputs
-            const { id: _id, ...args } = item.payload;
-            const { error: err } = await supabase.rpc(item.type === 'work_time_in' ? 'time_in' : 'time_out', args);
+            const { id: _id, selfie_uri, ...args } = item.payload;
+            if (selfie_uri) {
+              // A selfie taken with no signal: upload it first (a failure here leaves the punch queued)
+              const { data: { session } } = await supabase.auth.getSession();
+              args.p_selfie_path = `${session?.user.id}-${Date.now()}.jpg`;
+              await uploadPhoto('dtr-selfies', args.p_selfie_path, selfie_uri).catch((e) => {
+                if (/fetch|network|timeout/i.test(String(e?.message ?? e))) throw e;
+                args.p_selfie_path = null; // the photo is gone: sent without it, HR checks the place
+              });
+            }
+            const { data, error: err } = await supabase.rpc(item.type === 'work_time_in' ? 'time_in' : 'time_out', args);
             error = err;
+            if (!err) {
+              if (selfie_uri) dropSelfie(selfie_uri);
+              await tellIfRefused(item.type, data as { status?: string } | null, args.p_queued_at);
+            }
           } else if (item.type === 'leave_request') {
             const leaveId = item.payload.id || item.id;
             const { error: err } = await supabase.from('leaves').upsert({

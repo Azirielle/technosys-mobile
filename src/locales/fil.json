@@ -608,5 +608,14 @@
     "useFingerprint": "Gamitin ang fingerprint",
     "notYou": "Hindi si {name}?",
     "useAnother": "Ibang numero"
+  },
+  "offline": {
+    "inRefusedTitle": "Hindi tinanggap ang time-in",
+    "outRefusedTitle": "Hindi tinanggap ang time-out",
+    "refusedText": "Ang na-save mo nang {time} habang walang signal ay hindi tinanggap: {why}. Buksan ang app para subukan ulit o sabihan ang HR.",
+    "whyNoJob": "wala kang trabaho sa araw na iyon",
+    "whyEarly": "masyadong maaga",
+    "whyPhone": "hindi sa iyo naka-rehistro ang phone na ito",
+    "whyOther": "hindi ito makumpirma ng opisina"
   }
 }

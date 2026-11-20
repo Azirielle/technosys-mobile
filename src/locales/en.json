@@ -608,5 +608,14 @@
     "useFingerprint": "Use fingerprint",
     "notYou": "Not {name}?",
     "useAnother": "Use another number"
+  },
+  "offline": {
+    "inRefusedTitle": "Time-in not accepted",
+    "outRefusedTitle": "Time-out not accepted",
+    "refusedText": "The one you saved at {time} with no signal was not accepted: {why}. Open the app to try again or tell HR.",
+    "whyNoJob": "you had no job that day",
+    "whyEarly": "it was too early",
+    "whyPhone": "this phone isn't registered to you",
+    "whyOther": "the office couldn't confirm it"
   }
 }

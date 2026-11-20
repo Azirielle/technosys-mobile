@@ -3,7 +3,9 @@
 // database's plain status; lib/work/workMessages.ts turns it into words.
 import { supabase } from '../supabase';
 import { getDeviceId } from '../deviceId';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncQueue } from '../syncQueue';
+import { offlineCheck } from './offlineCheck';
 import { uploadPhoto } from '../photoUpload';
 import type { Spot } from '../timeIn';
 
@@ -19,27 +21,49 @@ export type MyJob = {
   site_lat: number; site_lon: number; site_radius_m: number; start_date: string; end_date: string;
   start_time: string; end_time: string; work_type: string; report_to: 'site' | 'hq'; status: string; cancel_reason: string | null; is_vip: boolean;
   role: string; vehicle: string | null;
+  /** You're still on this job's crew (not taken off it) */
+  mine: boolean;
 };
 
 const isNetwork = (e: unknown) => /fetch|network|timeout/i.test(String((e as { message?: string })?.message ?? e));
 
-async function call(fn: 'time_in' | 'time_out', args: Record<string, unknown>): Promise<WorkResult> {
+const JOBS_KEY = 'MY_WORK_JOBS'; // your jobs as last loaded, for the no-signal check before a time-in
+
+/** No signal: first the phone's own check (time-in), then kept on the phone and sent later with the time it was taken */
+async function saveForLater(fn: 'time_in' | 'time_out', args: Record<string, unknown>, check?: () => Promise<WorkResult | null>): Promise<WorkResult> {
+  const stop = await check?.();
+  if (stop) return stop;
+  await syncQueue.addToQueue(fn === 'time_in' ? 'work_time_in' : 'work_time_out', { ...args, p_queued_at: new Date().toISOString() });
+  return { status: 'queued' };
+}
+
+async function call(fn: 'time_in' | 'time_out', args: Record<string, unknown>, check?: () => Promise<WorkResult | null>): Promise<WorkResult> {
   const { data, error } = await supabase.rpc(fn, args as never);
   if (error) {
     if (!isNetwork(error)) return { status: error.message.includes('Not signed in') ? 'signed_out' : 'error' };
-    // No signal: kept on the phone and sent later with the time it was taken
-    await syncQueue.addToQueue(fn === 'time_in' ? 'work_time_in' : 'work_time_out', { ...args, p_queued_at: new Date().toISOString() });
-    return { status: 'queued' };
+    return saveForLater(fn, args, check);
   }
   return (data ?? { status: 'error' }) as WorkResult;
 }
 
+/** Your jobs as loaded in the last 24 h, or null (never loaded, or too old to trust: then nothing is stopped). */
+async function savedJobs(): Promise<MyJob[] | null> {
+  try {
+    const saved = JSON.parse((await AsyncStorage.getItem(JOBS_KEY)) ?? 'null') as { at: number; jobs: MyJob[] } | null;
+    return saved && Date.now() - saved.at < 86400000 ? saved.jobs : null;
+  } catch { return null; }
+}
+
 /** Time in. Without a selfie the server answers outside / fake_gps / need_selfie when it can't confirm the site. */
-export async function workTimeIn(here: Spot | null, extra: { selfiePath?: string; reason?: string; officeDuty?: boolean } = {}) {
-  return call('time_in', {
+/** With `selfieUri` (a selfie taken with no signal, see lib/work/offlineResult) it's saved for later straight away. */
+export async function workTimeIn(here: Spot | null, extra: { selfiePath?: string; selfieUri?: string; reason?: string; officeDuty?: boolean } = {}) {
+  const args = {
     p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_accuracy_m: here?.accuracy ?? null, p_mocked: here?.isMocked ?? false,
     p_device_id: await getDeviceId(), p_selfie_path: extra.selfiePath ?? null, p_reason: extra.reason ?? null, p_office_duty: extra.officeDuty ?? false,
-  });
+  };
+  const check = async () => { const jobs = await savedJobs(); return jobs && offlineCheck(jobs, here, !!extra.officeDuty, !!(extra.selfiePath || extra.selfieUri)); };
+  if (extra.selfieUri) return saveForLater('time_in', { ...args, selfie_uri: extra.selfieUri }, check);
+  return call('time_in', args, check);
 }
 
 /** Time out. More than 15 min before the end the server answers "early" until a reason is sent. */
@@ -91,9 +115,11 @@ export async function getMyWorkJobs(): Promise<MyJob[]> {
       work_type, report_to, status, cancel_reason, is_vip, job_members ( person_id, role, removed_at, vehicle:vehicles ( name, plate ) )`)
     .gte('end_date', since).order('start_date').order('start_time');
   if (error) throw error;
-  return (data ?? []).map(({ job_members, ...j }) => {
+  const jobs = (data ?? []).map(({ job_members, ...j }) => {
     const me = (job_members ?? []).find((m) => m.person_id === user.id && !m.removed_at);
     const v = me?.vehicle as { name?: string; plate?: string } | null;
-    return { ...(j as Omit<MyJob, 'role' | 'vehicle'>), role: me?.role ?? 'crew', vehicle: v ? `${v.name} · ${v.plate}` : null };
+    return { ...(j as Omit<MyJob, 'role' | 'vehicle' | 'mine'>), role: me?.role ?? 'crew', vehicle: v ? `${v.name} · ${v.plate}` : null, mine: !!me };
   });
+  AsyncStorage.setItem(JOBS_KEY, JSON.stringify({ at: Date.now(), jobs })).catch(() => {});
+  return jobs;
 }
