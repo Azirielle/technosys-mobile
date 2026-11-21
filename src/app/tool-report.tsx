@@ -2,9 +2,10 @@
 // Equipment ticket for the office; the answer comes back in your Inbox.
 import React, { useState } from 'react';
 import { View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { getLoadedTool, reportToolProblem } from '../lib/tools';
+import { openTechyChat } from '../components/assistant/TechyChatLayer';
 import { Button, ChoiceCard, Notice, PushedScreen, SentScreen, TextBox, haptic, techy } from '../ui';
 
 const PROBLEMS = [
@@ -27,7 +28,19 @@ export default function ToolReportScreen() {
   const [failed, setFailed] = useState(false);
   const needsNote = problem === 'other' && note.trim().length < 5;
 
-  if (sent) return <SentScreen title={t('toolReport.sentTitle')} text={t('toolReport.sentText')} doneLabel={t('dtrAsk.done')} onDone={() => router.back()} />;
+  if (sent) {
+    return (
+      <SentScreen
+        title={t('toolReport.sentTitle')}
+        text={t('toolReport.sentText')}
+        doneLabel={t('dtrAsk.done')}
+        onDone={() => {
+          router.replace('/(tabs)/tools' as Href);
+          setTimeout(() => openTechyChat(), 60);
+        }}
+      />
+    );
+  }
 
   const send = async () => {
     if (!tool || !problem || needsNote) return;

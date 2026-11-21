@@ -37,15 +37,19 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
   const list = useRef<FlatList<ChatMessage>>(null);
 
   const setTicket = useCallback((next: Ticket) => { ticketRef.current = next; setTicketState(next); }, []);
-  const listen = useCallback((id: string) => {
+  const listen = useCallback((id: string, childId?: string | null) => {
     stopListening.current?.();
-    stopListening.current = listenToConversation(id, setTicket, (m) => setMessages((all) => mergeMessage(all, m)));
+    stopListening.current = listenToConversation(id, setTicket, (m) => setMessages((all) => mergeMessage(all, m)), childId);
   }, [setTicket]);
 
   useEffect(() => {
     let gone = false; // closed before it finished loading: don't start listening
     openConversation()
-      .then(({ ticket: found, messages: shown }) => { if (gone) return; if (found) { setTicket(found); listen(found.id); } setMessages(shown); })
+      .then(({ ticket: found, messages: shown }) => {
+        if (gone) return;
+        if (found) { setTicket(found); listen(found.id, found.childTicketId); }
+        setMessages(shown);
+      })
       .catch(() => { if (!gone) setProblem('load'); })
       .finally(() => { if (!gone) setLoading(false); });
     return () => { gone = true; stopListening.current?.(); stopAsking.current?.(); };
@@ -63,9 +67,10 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
     let current = ticketRef.current;
     if (!current) {
       current = await startChat(text);
-      if (current) { setTicket(current); listen(current.id); }
+      if (current) { setTicket(current); listen(current.id, current.childTicketId); }
     }
-    const savedId = current ? await sendMine(current.id, text) : null;
+    const targetId = current?.childTicketId ?? current?.id;
+    const savedId = targetId ? await sendMine(targetId, text) : null;
     if (!current || !savedId) {
       setMessages((all) => all.filter((m) => m.id !== pendingId));
       setInput(text); setProblem('send'); haptic.error();

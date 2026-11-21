@@ -247,6 +247,13 @@ export type Database = {
             referencedRelation: "attendance_logs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "attendance_corrections_work_day_id_fkey"
+            columns: ["work_day_id"]
+            isOneToOne: false
+            referencedRelation: "work_days"
+            referencedColumns: ["id"]
+          },
         ]
       }
       attendance_logs: {
@@ -337,6 +344,35 @@ export type Database = {
           {
             foreignKeyName: "attendance_logs_technician_id_fkey"
             columns: ["technician_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_reminders: {
+        Row: {
+          kind: string
+          person_id: string
+          sent_at: string
+          work_date: string
+        }
+        Insert: {
+          kind: string
+          person_id: string
+          sent_at?: string
+          work_date: string
+        }
+        Update: {
+          kind?: string
+          person_id?: string
+          sent_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_reminders_person_id_fkey"
+            columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -603,6 +639,32 @@ export type Database = {
         }
         Relationships: []
       }
+      inbox_reads: {
+        Row: {
+          item_id: string
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          item_id: string
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          item_id?: string
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_reads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_events: {
         Row: {
           at: string
@@ -739,16 +801,8 @@ export type Database = {
           },
         ]
       }
-      inbox_reads: {
-        Row: { item_id: string; read_at: string; user_id: string }
-        Insert: { item_id: string; read_at?: string; user_id: string }
-        Update: { item_id?: string; read_at?: string; user_id?: string }
-        Relationships: []
-      }
       jobs: {
         Row: {
-          is_vip: boolean
-          vip_note: string | null
           address: string
           cancel_reason: string | null
           client_name: string
@@ -758,6 +812,7 @@ export type Database = {
           end_time: string
           hq_office_id: string | null
           id: string
+          is_vip: boolean
           legacy_schedule_id: string | null
           notes: string | null
           project_name: string | null
@@ -769,11 +824,10 @@ export type Database = {
           start_time: string
           status: string
           updated_at: string
+          vip_note: string | null
           work_type: string
         }
         Insert: {
-          is_vip?: boolean
-          vip_note?: string | null
           address: string
           cancel_reason?: string | null
           client_name: string
@@ -783,6 +837,7 @@ export type Database = {
           end_time: string
           hq_office_id?: string | null
           id?: string
+          is_vip?: boolean
           legacy_schedule_id?: string | null
           notes?: string | null
           project_name?: string | null
@@ -794,11 +849,10 @@ export type Database = {
           start_time: string
           status?: string
           updated_at?: string
+          vip_note?: string | null
           work_type?: string
         }
         Update: {
-          is_vip?: boolean
-          vip_note?: string | null
           address?: string
           cancel_reason?: string | null
           client_name?: string
@@ -808,6 +862,7 @@ export type Database = {
           end_time?: string
           hq_office_id?: string | null
           id?: string
+          is_vip?: boolean
           legacy_schedule_id?: string | null
           notes?: string | null
           project_name?: string | null
@@ -819,6 +874,7 @@ export type Database = {
           start_time?: string
           status?: string
           updated_at?: string
+          vip_note?: string | null
           work_type?: string
         }
         Relationships: [
@@ -1783,6 +1839,7 @@ export type Database = {
           created_at: string | null
           description: string
           employee_id: string
+          from_ticket_id: string | null
           handling_mode: string | null
           id: string
           idempotency_key: string | null
@@ -1801,6 +1858,7 @@ export type Database = {
           created_at?: string | null
           description: string
           employee_id: string
+          from_ticket_id?: string | null
           handling_mode?: string | null
           id?: string
           idempotency_key?: string | null
@@ -1819,6 +1877,7 @@ export type Database = {
           created_at?: string | null
           description?: string
           employee_id?: string
+          from_ticket_id?: string | null
           handling_mode?: string | null
           id?: string
           idempotency_key?: string | null
@@ -1841,6 +1900,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_from_ticket_id_fkey"
+            columns: ["from_ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
             referencedColumns: ["id"]
           },
         ]
@@ -2158,14 +2224,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      hr_correct_work_day: {
+      check_in_tool: {
         Args: {
-          p_date: string
-          p_person_id: string
-          p_reason: string
-          p_time_in: string
-          p_time_out: string
-          p_work_day_id: string
+          p_borrowing_id: string
+          p_condition: string
+          p_notes?: string
+          p_received_by?: string
+          p_status: string
         }
         Returns: Json
       }
@@ -2174,6 +2239,7 @@ export type Database = {
         Args: { p_reason: string; p_time_out: string; p_work_day_id: string }
         Returns: Json
       }
+      copy_legacy_to_work_v2: { Args: { p_replace?: boolean }; Returns: Json }
       decide_overtime: {
         Args: { p_approve: boolean; p_request_id: string }
         Returns: Json
@@ -2182,8 +2248,6 @@ export type Database = {
         Args: { p_approve: boolean; p_request_id: string }
         Returns: undefined
       }
-      my_pin_is_own: { Args: never; Returns: boolean }
-      set_my_pin: { Args: { p_current?: string; p_new: string }; Returns: Json }
       decide_review: {
         Args: { p_approve: boolean; p_note?: string; p_review_id: string }
         Returns: Json
@@ -2198,6 +2262,17 @@ export type Database = {
       }
       get_email_from_contact: { Args: { p_contact: string }; Returns: string }
       get_server_time: { Args: never; Returns: string }
+      hr_correct_work_day: {
+        Args: {
+          p_date: string
+          p_person_id: string
+          p_reason: string
+          p_time_in: string
+          p_time_out: string
+          p_work_day_id: string
+        }
+        Returns: Json
+      }
       is_ceo_or_hr: { Args: never; Returns: boolean }
       is_my_phone: { Args: { p_device_id: string }; Returns: boolean }
       is_office_staff: { Args: never; Returns: boolean }
@@ -2256,6 +2331,7 @@ export type Database = {
         Args: { lat1: number; lat2: number; lon1: number; lon2: number }
         Returns: number
       }
+      my_pin_is_own: { Args: never; Returns: boolean }
       my_role: { Args: never; Returns: string }
       normalize_ph_mobile: { Args: { p: string }; Returns: string }
       office_day_end: { Args: never; Returns: string }
@@ -2274,6 +2350,7 @@ export type Database = {
         }
         Returns: Json
       }
+      recount_legacy_work_days: { Args: never; Returns: number }
       register_my_phone: {
         Args: { p_device_id: string; p_device_name: string }
         Returns: string
@@ -2294,6 +2371,7 @@ export type Database = {
         Args: { p_profile_id: string }
         Returns: undefined
       }
+      send_attendance_reminders: { Args: never; Returns: number }
       set_acting_lead: {
         Args: { p_job_id: string; p_person_id: string }
         Returns: Json
@@ -2302,6 +2380,7 @@ export type Database = {
         Args: { p_pin: string; p_profile_id: string }
         Returns: undefined
       }
+      set_my_pin: { Args: { p_current?: string; p_new: string }; Returns: Json }
       time_in: {
         Args: {
           p_accuracy_m: number

@@ -56,13 +56,31 @@ export const daysWithYou = (tool: MyTool) =>
 export async function reportToolProblem(tool: MyTool, problem: string, note: string): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
-  const { error } = await supabase.from('tickets').insert({
+
+  const { data: activeChats } = await supabase.from('tickets')
+    .select('id').eq('employee_id', user.id).eq('title', 'Support Conversation')
+    .in('status', ['open', 'in_progress']).order('created_at', { ascending: false }).limit(1);
+  const parentId = activeChats?.[0]?.id ?? null;
+
+  const { data: created, error } = await supabase.from('tickets').insert({
     employee_id: user.id,
     category: 'Equipment / Tools',
     title: `Tool problem: ${tool.name}`,
     description: [`Tool: ${tool.name}${tool.serial ? ` (SN ${tool.serial})` : ''}`, `Problem: ${problem}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
     status: 'open',
-  });
-  return !error;
+    from_ticket_id: parentId,
+  }).select('id').single();
+  if (error || !created) return false;
+
+  if (parentId) {
+    const ref = `#${created.id.slice(0, 8).toUpperCase()}`;
+    await supabase.from('ticket_comments').insert({
+      ticket_id: parentId,
+      author_id: user.id,
+      content: `Your tool report is sent (ticket ${ref}). The office will reply here.`,
+      sender_role: 'technician',
+    });
+  }
+  return true;
 }

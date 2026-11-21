@@ -1,10 +1,11 @@
 // "Ask HR about this day": pick what looks wrong, add a note, send. It becomes a DTR concern in the admin's
-// Tickets, and HR's answer comes back in your Inbox. Scope has no payroll, so this is about the DTR only.
+// Tickets, and HR's answer comes back in Techy's chat or your Inbox. Scope has no payroll, so this is about the DTR only.
 import React, { useState } from 'react';
 import { View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { askHrAboutDay, dayLabel } from '../lib/dtr';
+import { openTechyChat } from '../components/assistant/TechyChatLayer';
 import { Button, ChoiceCard, Notice, PushedScreen, SentScreen, TextBox, haptic, techy } from '../ui';
 
 const REASONS = [
@@ -28,7 +29,19 @@ export default function DtrAskScreen() {
   const label = date ? dayLabel(date) : '';
   const needsNote = reason === 'other' && note.trim().length < 5;
 
-  if (sent) return <SentScreen title={t('dtrAsk.sentTitle')} text={t('dtrAsk.sentText')} doneLabel={t('dtrAsk.done')} onDone={() => router.back()} />;
+  if (sent) {
+    return (
+      <SentScreen
+        title={t('dtrAsk.sentTitle')}
+        text={t('dtrAsk.sentText')}
+        doneLabel={t('dtrAsk.done')}
+        onDone={() => {
+          router.replace('/(tabs)/dtr' as Href);
+          setTimeout(() => openTechyChat(), 60);
+        }}
+      />
+    );
+  }
 
   const send = async () => {
     if (!date || !reason || needsNote) return;
