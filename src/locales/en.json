@@ -650,5 +650,19 @@
     "send": "Send to the office",
     "sentTitle": "Sent to the office",
     "sentText": "Your report is ticket {ref}. The office will reply in your chat with Techy and in your Inbox. If it's an emergency, also call the office."
+  },
+  "toolRequest": {
+    "title": "Request a tool",
+    "subtitle": "Ask the Coordinator for a tool you need for a job.",
+    "which": "Which tool?",
+    "inStock": "{n} in the warehouse",
+    "noneLeft": "None in the warehouse right now",
+    "howMany": "How many?",
+    "when": "When do you need it?",
+    "why": "Why (optional)",
+    "whyPlaceholder": "Example: for the chiller job at Insular on Thursday.",
+    "send": "Send to the Coordinator",
+    "sentTitle": "Request sent",
+    "sentText": "Your request is ticket {ref}. The Coordinator will reply in your chat with Techy. Once it's lent, it shows under My tools."
   }
 }

@@ -63,3 +63,23 @@ export async function reportToolProblem(tool: MyTool, problem: string, note: str
   }, (r) => `Your tool report is sent (ticket ${r}). The office will reply here.`);
   return ref !== null;
 }
+
+/** A tool in the warehouse you can ask for (tool requests, prof 20 Nov: "everything needs to be documented"). */
+export type CatalogTool = { id: string; name: string; category: string; available: number };
+
+export async function getToolCatalog(): Promise<CatalogTool[]> {
+  const { data, error } = await supabase.from('tools').select('id, name, category, available_stock, status').order('name');
+  if (error) throw error;
+  return (data ?? []).filter((x) => x.status !== 'retired').map((x) => ({ id: x.id, name: x.name, category: x.category, available: x.available_stock ?? 0 }));
+}
+
+/** Asks the Coordinator for a tool: a "Tool request" ticket (the Coordinator lends it, or says why not). */
+export async function requestTool(tool: CatalogTool, howMany: number, neededOn: string, why: string): Promise<string | null> {
+  return fileTicket({
+    category: 'Tool request',
+    title: `Tool request: ${tool.name}`,
+    description: [`Tool: ${tool.name}`, `How many: ${howMany}`, `Needed on: ${neededOn}`, why.trim() ? `Why: ${why.trim()}` : null].filter(Boolean).join('\n'),
+    priority: 'medium',
+  }, (r) => `I asked for a tool: ${tool.name} (ticket ${r}). The Coordinator will reply here.`);
+}
+

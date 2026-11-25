@@ -6,7 +6,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { daysWithYou, getLoadedTools, getMyTools, MyTool, MyToolLists } from '../lib/tools';
 import { useFocusRefresh } from '../lib/useFocusRefresh';
-import { Card, IconChip, ListRow, Notice, PushedScreen, SectionLabel, SkeletonRow, StatusText, Techy, Txt, useTokens } from '../ui';
+import { Button, Card, IconChip, ListRow, Notice, PushedScreen, SectionLabel, SkeletonRow, StatusText, Techy, Txt, useTokens } from '../ui';
 
 
 export default function ToolsScreen() {
@@ -29,6 +29,7 @@ export default function ToolsScreen() {
 
   return (
     <PushedScreen title={t('tools.title')} subtitle={t('tools.subtitle')} backLabel={t('common.back')}
+      footer={<Button label={t('toolRequest.title')} icon="plus" onPress={() => router.push('/tool-request' as Href)} />}
       onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} refreshing={refreshing}>
       {failed && <Notice tone="error" text={t('common.noSignal')} />}
       {!lists && !failed && <Card padded={false}><SkeletonRow /><SkeletonRow /></Card>}

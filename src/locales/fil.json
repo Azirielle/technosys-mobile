@@ -650,5 +650,19 @@
     "send": "Ipadala sa opisina",
     "sentTitle": "Naipadala sa opisina",
     "sentText": "Ticket {ref} ang report mo. Sasagot ang opisina sa chat mo kay Techy at sa Inbox. Kung emergency, tawagan din ang opisina."
+  },
+  "toolRequest": {
+    "title": "Humiling ng tool",
+    "subtitle": "Humingi sa Coordinator ng tool na kailangan mo sa trabaho.",
+    "which": "Aling tool?",
+    "inStock": "{n} sa bodega",
+    "noneLeft": "Wala sa bodega ngayon",
+    "howMany": "Ilan?",
+    "when": "Kailan mo ito kailangan?",
+    "why": "Bakit (hindi kailangan)",
+    "whyPlaceholder": "Halimbawa: para sa chiller job sa Insular sa Huwebes.",
+    "send": "Ipadala sa Coordinator",
+    "sentTitle": "Naipadala ang hiling",
+    "sentText": "Ticket {ref} ang hiling mo. Sasagot ang Coordinator sa chat mo kay Techy. Kapag naipahiram na, makikita ito sa My tools."
   }
 }
