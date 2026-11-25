@@ -619,5 +619,14 @@
     "whyEarly": "it was too early",
     "whyPhone": "this phone isn't registered to you",
     "whyOther": "the office couldn't confirm it"
+  },
+  "face": {
+    "look": "Look at the camera",
+    "enrollLook": "Look at the camera. Hold still for 3 photos.",
+    "enrollNote": "First time: your face is saved once. Every time-in after this is compared with it.",
+    "turnLeft": "Now turn your head a little to the left",
+    "turnRight": "Now turn your head a little to the right",
+    "checking": "Checking…",
+    "why": "This proves it's you at the site. It never stops your time-in."
   }
 }

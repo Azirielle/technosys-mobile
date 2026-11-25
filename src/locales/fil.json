@@ -619,5 +619,14 @@
     "whyEarly": "masyadong maaga",
     "whyPhone": "hindi sa iyo naka-rehistro ang phone na ito",
     "whyOther": "hindi ito makumpirma ng opisina"
+  },
+  "face": {
+    "look": "Tumingin sa camera",
+    "enrollLook": "Tumingin sa camera. Huwag gumalaw para sa 3 litrato.",
+    "enrollNote": "Unang beses: isang beses lang ise-save ang mukha mo. Ihahambing dito ang bawat time-in pagkatapos.",
+    "turnLeft": "Ngayon, ibaling nang kaunti ang ulo pakaliwa",
+    "turnRight": "Ngayon, ibaling nang kaunti ang ulo pakanan",
+    "checking": "Sinusuri…",
+    "why": "Patunay ito na ikaw ang nasa site. Hindi nito pipigilan ang time-in mo."
   }
 }

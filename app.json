@@ -2,7 +2,7 @@
   "expo": {
     "name": "Technocycle",
     "slug": "technosys-app",
-    "version": "0.9.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/technosys_mobile.png",
     "scheme": "hrismobile",
@@ -40,7 +40,7 @@
       "blockedPermissions": [
         "android.permission.ACCESS_BACKGROUND_LOCATION"
       ],
-      "versionCode": 9
+      "versionCode": 10
     },
     "web": {
       "output": "static",

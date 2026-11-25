@@ -16,6 +16,7 @@ import ForgottenShiftSheet from '../timein/ForgottenShiftSheet';
 import WorkCheckSheet from './WorkCheckSheet';
 import EarlyTimeOutSheet from './EarlyTimeOutSheet';
 import JobProgressCard from './JobProgressCard';
+import FaceCheckSheet from '../face/FaceCheckSheet';
 
 const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty' };
 
@@ -87,6 +88,7 @@ export default function WorkHome() {
         onRetry={work.retry} onSelfie={(reason) => work.sendSelfie(reason)} onClose={work.closeSheet} />
       <TimeInProblemSheet problem={work.problem} sending={work.sending}
         onRetry={() => work.selfie && work.sendSelfie(work.selfie.reason, true)} onTellHr={work.tellHr} onClose={work.closeProblem} />
+      {work.face && <FaceCheckSheet enrolled={work.face.enrolled} onEnrolled={work.enrollFace} onDone={work.faceDone} />}
       <EarlyTimeOutSheet early={work.early} busy={work.busy} onTimeOut={(reason) => work.sendTimeOut(reason)} onClose={work.closeEarly} />
       <ForgottenShiftSheet shift={forgotten}
         // Checked, not `forgotten!.`: the React Compiler reads that path on every render, which crashed Home when it was null

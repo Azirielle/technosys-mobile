@@ -33,8 +33,9 @@ const JOBS_KEY = 'MY_WORK_JOBS'; // your jobs as last loaded, for the no-signal 
 async function saveForLater(fn: 'time_in' | 'time_out', args: Record<string, unknown>, check?: () => Promise<WorkResult | null>): Promise<WorkResult> {
   const stop = await check?.();
   if (stop) return stop;
-  await syncQueue.addToQueue(fn === 'time_in' ? 'work_time_in' : 'work_time_out', { ...args, p_queued_at: new Date().toISOString() });
-  return { status: 'queued' };
+  const at = new Date().toISOString();
+  await syncQueue.addToQueue(fn === 'time_in' ? 'work_time_in' : 'work_time_out', { ...args, p_queued_at: at });
+  return { status: 'queued', queued_at: at };
 }
 
 async function call(fn: 'time_in' | 'time_out', args: Record<string, unknown>, check?: () => Promise<WorkResult | null>): Promise<WorkResult> {

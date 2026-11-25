@@ -5,6 +5,7 @@ import { supabase } from './supabase';
 import { getDeviceId } from './deviceId';
 import { uploadPhoto } from './photoUpload';
 import { dropSelfie, tellIfRefused } from './work/offlineResult';
+import { sendKeptFace } from './face/faceCheck';
 
 const QUEUE_KEY = 'OFFLINE_TRANSACTION_QUEUE';
 
@@ -222,6 +223,8 @@ export const syncQueue = {
             if (!err) {
               if (selfie_uri) dropSelfie(selfie_uri);
               await tellIfRefused(item.type, data as { status?: string } | null, args.p_queued_at);
+              const day = (data as { status?: string; work_day_id?: string } | null);
+              if (item.type === 'work_time_in' && day?.status === 'timed_in' && day.work_day_id) await sendKeptFace(args.p_queued_at, day.work_day_id);
             }
           } else if (item.type === 'leave_request') {
             const leaveId = item.payload.id || item.id;

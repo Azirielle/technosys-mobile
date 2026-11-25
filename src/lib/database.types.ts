@@ -639,6 +639,12 @@ export type Database = {
         }
         Relationships: []
       }
+      face_enrollments: {
+        Row: { embedding: number[]; enrolled_at: string; person_id: string; photo_path: string }
+        Insert: { embedding: number[]; enrolled_at?: string; person_id: string; photo_path: string }
+        Update: { embedding?: number[]; enrolled_at?: string; person_id?: string; photo_path?: string }
+        Relationships: []
+      }
       inbox_reads: {
         Row: {
           item_id: string
@@ -2119,6 +2125,8 @@ export type Database = {
       }
       work_days: {
         Row: {
+          face_check: string | null
+          face_score: number | null
           counted_from: string
           created_at: string
           device_id: string | null
@@ -2148,6 +2156,8 @@ export type Database = {
           work_date: string
         }
         Insert: {
+          face_check?: string | null
+          face_score?: number | null
           counted_from: string
           created_at?: string
           device_id?: string | null
@@ -2177,6 +2187,8 @@ export type Database = {
           work_date: string
         }
         Update: {
+          face_check?: string | null
+          face_score?: number | null
           counted_from?: string
           created_at?: string
           device_id?: string | null
@@ -2227,6 +2239,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      record_face_check: {
+        Args: { p_live: boolean; p_score: number; p_selfie_path: string; p_work_day_id: string }
+        Returns: Json
+      }
       check_in_tool: {
         Args: {
           p_borrowing_id: string
