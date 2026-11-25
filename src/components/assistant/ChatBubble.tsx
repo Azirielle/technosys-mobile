@@ -12,6 +12,7 @@ const SHORTCUTS = [
   { key: 'dtr', icon: 'calendar', to: '/dtr' },
   { key: 'leave', icon: 'sun', to: '/leave-new' },
   { key: 'tool', icon: 'tool', to: '/tools' },
+  { key: 'other', icon: 'alert-circle', to: '/report-issue' },
 ] as const;
 
 /** "**bold** text" → pieces of plain and bold text. */

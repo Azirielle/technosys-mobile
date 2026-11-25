@@ -555,7 +555,8 @@
     "shortcut": {
       "dtr": "Ask HR about a DTR day",
       "leave": "File a leave",
-      "tool": "Report a tool problem"
+      "tool": "Report a tool problem",
+      "other": "Report a problem (accident, vehicle…)"
     }
   },
   "hrChat": {
@@ -629,5 +630,25 @@
     "turnRight": "Now turn your head a little to the right",
     "checking": "Checking…",
     "why": "This proves it's you at the site. It never stops your time-in."
+  },
+  "issue": {
+    "title": "Report a problem",
+    "subtitle": "An accident, a vehicle problem or anything else the office should know.",
+    "accident": "Accident or injury",
+    "vehicle": "Vehicle problem",
+    "site": "Problem at the site or with the client",
+    "other": "Something else",
+    "priority": "How urgent is it?",
+    "level": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "what": "What happened?",
+    "placeholder": "Example: the van's tire is flat on the way to Alabang.",
+    "send": "Send to the office",
+    "sentTitle": "Sent to the office",
+    "sentText": "Your report is ticket {ref}. The office will reply in your chat with Techy and in your Inbox. If it's an emergency, also call the office."
   }
 }

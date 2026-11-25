@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../../lib/i18n';
 import { getHomeSummary, AttentionItem, HomeSummary } from '../../lib/homeSummary';
 import { manilaDay, type Job } from '../../lib/jobs';
-import { SectionLabel, TAB_BAR_HEIGHT, arrive, tourTarget, useReducedMotion, useTokens } from '../../ui';
+import { Card, ListRow, SectionLabel, TAB_BAR_HEIGHT, arrive, tourTarget, useReducedMotion, useTokens } from '../../ui';
 import { dateOf } from '../jobs/jobWords';
 import HomeHeader from './HomeHeader';
 import TimeInCard, { ShiftState } from './TimeInCard';
@@ -69,6 +69,10 @@ export default function HomeBody(p: Props) {
 
         <SectionLabel>{t('home.shortcuts')}</SectionLabel>
         <QuickActions toolsWithYou={summary?.toolsWithYou ?? 0} onTools={() => go('/tools')} onLeave={() => go('/leave')} onDtr={() => go('/dtr')} />
+        {/* Accidents, vehicle problems and anything else for the office (prof, 20 Nov) */}
+        <Card padded={false} style={{ marginTop: 10 }}>
+          <ListRow icon="alert-circle" title={t('issue.title')} subtitle={t('issue.subtitle')} onPress={() => go('/report-issue')} last />
+        </Card>
 
         <SectionLabel>{t('home.attention')}</SectionLabel>
         {summary && <AttentionList items={summary.attention} onOpen={openItem} />}

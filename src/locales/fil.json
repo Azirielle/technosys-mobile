@@ -555,7 +555,8 @@
     "shortcut": {
       "dtr": "Magtanong sa HR tungkol sa isang araw sa DTR",
       "leave": "Mag-file ng leave",
-      "tool": "Mag-report ng problema sa gamit"
+      "tool": "Mag-report ng problema sa gamit",
+      "other": "Mag-report ng problema (aksidente, sasakyan…)"
     }
   },
   "hrChat": {
@@ -629,5 +630,25 @@
     "turnRight": "Ngayon, ibaling nang kaunti ang ulo pakanan",
     "checking": "Sinusuri…",
     "why": "Patunay ito na ikaw ang nasa site. Hindi nito pipigilan ang time-in mo."
+  },
+  "issue": {
+    "title": "Mag-report ng problema",
+    "subtitle": "Aksidente, problema sa sasakyan o anumang dapat malaman ng opisina.",
+    "accident": "Aksidente o pinsala",
+    "vehicle": "Problema sa sasakyan",
+    "site": "Problema sa site o sa kliyente",
+    "other": "Iba pa",
+    "priority": "Gaano ito kaapura?",
+    "level": {
+      "low": "Mababa",
+      "medium": "Katamtaman",
+      "high": "Mataas",
+      "urgent": "Apura"
+    },
+    "what": "Ano ang nangyari?",
+    "placeholder": "Halimbawa: na-flat ang gulong ng van papuntang Alabang.",
+    "send": "Ipadala sa opisina",
+    "sentTitle": "Naipadala sa opisina",
+    "sentText": "Ticket {ref} ang report mo. Sasagot ang opisina sa chat mo kay Techy at sa Inbox. Kung emergency, tawagan din ang opisina."
   }
 }

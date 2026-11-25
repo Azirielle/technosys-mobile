@@ -1,6 +1,7 @@
 // My tools: what the warehouse lent you (tool_borrowings + the tools catalog), and reporting a problem with
 // one, which files an Equipment ticket the coordinator sees in Tickets.
 import { supabase } from './supabase';
+import { fileTicket } from './fileTicket';
 
 export type MyTool = {
   id: string;
@@ -54,33 +55,11 @@ export const daysWithYou = (tool: MyTool) =>
   tool.handedOverAt ? Math.max(0, Math.floor((Date.now() - Date.parse(tool.handedOverAt)) / 86400000)) : 0;
 
 export async function reportToolProblem(tool: MyTool, problem: string, note: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const { data: activeChats } = await supabase.from('tickets')
-    .select('id').eq('employee_id', user.id).eq('title', 'Support Conversation')
-    .in('status', ['open', 'in_progress']).order('created_at', { ascending: false }).limit(1);
-  const parentId = activeChats?.[0]?.id ?? null;
-
-  const { data: created, error } = await supabase.from('tickets').insert({
-    employee_id: user.id,
+  const ref = await fileTicket({
     category: 'Equipment / Tools',
     title: `Tool problem: ${tool.name}`,
     description: [`Tool: ${tool.name}${tool.serial ? ` (SN ${tool.serial})` : ''}`, `Problem: ${problem}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-    status: 'open',
-    from_ticket_id: parentId,
-  }).select('id').single();
-  if (error || !created) return false;
-
-  if (parentId) {
-    const ref = `#${created.id.slice(0, 8).toUpperCase()}`;
-    await supabase.from('ticket_comments').insert({
-      ticket_id: parentId,
-      author_id: user.id,
-      content: `Your tool report is sent (ticket ${ref}). The office will reply here.`,
-      sender_role: 'technician',
-    });
-  }
-  return true;
+  }, (r) => `Your tool report is sent (ticket ${r}). The office will reply here.`);
+  return ref !== null;
 }
