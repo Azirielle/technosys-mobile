@@ -6,7 +6,7 @@ import type { Job } from './jobs';
 import { WORK_V2 } from './work/workApi';
 import { getWorkJob } from './work/workJobs';
 
-export type JobDetails = Job & { reporting_instruction: string | null; project_name: string | null; geofence_radius: number | null };
+export type JobDetails = Job & { reporting_instruction: string | null; project_name: string | null; geofence_radius: number | null; scope?: string | null };
 
 export async function getJob(id: string): Promise<JobDetails | null> {
   if (WORK_V2) return getWorkJob(id);

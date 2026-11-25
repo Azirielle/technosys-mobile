@@ -392,6 +392,8 @@
     "loadFailed": "Hindi ma-load ang trabahong ito. Bumalik at subukan ulit.",
     "away": "Mga {km} km mula sa iyo",
     "project": "Project: {name}",
+    "scope": "Gagawin: {name}",
+    "scopes": {"repair": "Pag-aayos (repair)", "cleaning": "Paglilinis (cleaning)", "installation": "Pagkakabit (installation)", "troubleshooting": "Pag-troubleshoot", "inspection": "Inspeksyon"},
     "circle": "Gumagana ang time in sa loob ng asul na bilog ({m} m).",
     "team": "Team",
     "you": "ikaw",

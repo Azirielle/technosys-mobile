@@ -57,7 +57,8 @@ export default function JobDetailsScreen() {
                 {km != null && <Txt variant="caption" color="ink2">{t('job.away', { km: km < 1 ? km.toFixed(1) : Math.round(km) })}</Txt>}
               </View>
             </View>
-            {!!job.project_name && <Txt variant="caption" color="ink2">{t('job.project', { name: job.project_name })}</Txt>}
+            {job.scope ? <Txt variant="caption" color="ink2">{t('job.scope', { name: t(`job.scopes.${job.scope}`) })}</Txt>
+              : !!job.project_name && <Txt variant="caption" color="ink2">{t('job.project', { name: job.project_name })}</Txt>}
           </Card>
           {!!job.reporting_instruction && <View style={{ marginTop: 10 }}><Notice tone="info" text={job.reporting_instruction} /></View>}
 

@@ -392,6 +392,8 @@
     "loadFailed": "Couldn't load this job. Go back and try again.",
     "away": "About {km} km from you",
     "project": "Project: {name}",
+    "scope": "Scope: {name}",
+    "scopes": {"repair": "Repair", "cleaning": "Cleaning", "installation": "Installation", "troubleshooting": "Troubleshooting", "inspection": "Inspection"},
     "circle": "Time in works inside the blue circle ({m} m).",
     "team": "Team",
     "you": "you",

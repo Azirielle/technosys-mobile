@@ -46,14 +46,14 @@ export async function loadWorkJobs(): Promise<{ jobs: Job[]; changes: JobChange[
 /** One job for the job details screen. */
 export async function getWorkJob(id: string): Promise<JobDetails | null> {
   const { data, error } = await supabase.from('jobs')
-    .select('id, client_name, address, project_name, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time, work_type, report_to, status, cancel_reason, is_vip')
+    .select('id, client_name, address, project_name, scope, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time, work_type, report_to, status, cancel_reason, is_vip')
     .eq('id', id).maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const job = asJob({ ...data, role: 'crew', vehicle: null } as MyJob);
+  const job = asJob({ ...data, role: 'crew', vehicle: null, mine: true } as MyJob);
   const where = data.report_to === 'hq' ? 'Report to the office first, then ride to the site together.' : 'Go straight to the site.';
   const days = data.start_date === data.end_date ? '' : ` This job runs ${data.start_date} to ${data.end_date}.`;
-  return { ...job, project_name: data.project_name, geofence_radius: data.site_radius_m, reporting_instruction: `${where}${days}${data.notes ? ` ${data.notes}` : ''}` };
+  return { ...job, project_name: data.project_name, scope: data.scope, geofence_radius: data.site_radius_m, reporting_instruction: `${where}${days}${data.notes ? ` ${data.notes}` : ''}` };
 }
 
 const ROLE: Record<string, string> = { lead: 'Lead', crew: 'Crew', driver: 'Driver', helper: 'Helper' };
