@@ -32,6 +32,8 @@ export type JobChange = {
   from?: string;
   to?: string;
   crew?: string;
+  is_vip_hook?: boolean | null;
+  priority?: string;
 };
 export type MyJobs = {
   now: Job | null;          // the job you're on or the next one today; if none today, the next job at all
@@ -66,11 +68,20 @@ async function getChanges(jobs: Job[]): Promise<JobChange[]> {
     .order('created_at', { ascending: false });
   if (error) throw error;
   const name = (id: string) => jobs.find((j) => j.id === id)?.client_name ?? '';
+  const job = (id: string) => jobs.find((j) => j.id === id);
   const out: JobChange[] = [];
   for (const h of data ?? []) {
     const prev = (h.previous_payload ?? {}) as Record<string, string>;
     const next = (h.new_payload ?? {}) as Record<string, string>;
-    const base = { jobId: h.schedule_id, jobName: name(h.schedule_id), at: h.created_at, reason: h.reason };
+    const j = job(h.schedule_id);
+    const base = {
+      jobId: h.schedule_id,
+      jobName: name(h.schedule_id),
+      at: h.created_at,
+      reason: h.reason,
+      is_vip_hook: j?.is_vip_hook,
+      priority: j?.priority,
+    };
     if (h.action_type === 'rescheduled') out.push({ ...base, kind: 'moved', from: prev.start_time, to: next.start_time });
     else if (h.action_type === 'cancelled') out.push({ ...base, kind: 'cancelled' });
     else if (h.action_type === 'crew_added') out.push({ ...base, kind: 'crew', crew: next.crew });

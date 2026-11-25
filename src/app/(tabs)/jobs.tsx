@@ -8,14 +8,14 @@ import { useFocusRefresh } from '../../lib/useFocusRefresh';
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../../lib/i18n';
-import { getMyJobs, manilaDay, watchMyJobs, Job, MyJobs } from '../../lib/jobs';
+import { getMyJobs, manilaDay, watchMyJobs, Job, JobChange, MyJobs } from '../../lib/jobs';
 import { supabase } from '../../lib/supabase';
 import JobCard from '../../components/jobs/JobCard';
 import JobHero from '../../components/jobs/JobHero';
 import JobChanges from '../../components/jobs/JobChanges';
 import PastJobs from '../../components/jobs/PastJobs';
 import { dateOf } from '../../components/jobs/jobWords';
-import { Notice, SectionLabel, SkeletonCard, TAB_BAR_HEIGHT, Techy, Txt, arrive, techy, useReducedMotion, useShowSkeleton, useTokens } from '../../ui';
+import { Notice, SectionLabel, Segmented, SkeletonCard, TAB_BAR_HEIGHT, Techy, Txt, arrive, techy, useReducedMotion, useShowSkeleton, useTokens } from '../../ui';
 
 /** Coming-up jobs grouped by Manila day, in order. */
 const byDay = (jobs: Job[]) => jobs.reduce<{ day: string; jobs: Job[] }[]>((groups, j) => {
@@ -31,6 +31,7 @@ export default function JobsTab() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const [jobs, setJobs] = useState<MyJobs | null>(null);
+  const [filter, setFilter] = useState<'all' | 'urgent'>('all');
   const [myId, setMyId] = useState<string>();
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,6 +57,20 @@ export default function JobsTab() {
 
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
   const empty = jobs && !jobs.now && !jobs.laterToday.length && !jobs.upcoming.length && !jobs.past.length && !jobs.changes.length;
+
+  const isUrgent = (j: Job) => Boolean(j.is_vip_hook || j.priority === 'high');
+
+  const isChangeUrgent = (ch: JobChange) => Boolean(ch.is_vip_hook || ch.priority === 'high');
+
+  const now = filter === 'urgent' ? (jobs?.now && isUrgent(jobs.now) ? jobs.now : null) : jobs?.now;
+  const nowIsToday = Boolean(filter === 'urgent' ? (now && jobs?.nowIsToday) : jobs?.nowIsToday);
+  const laterToday = filter === 'urgent' ? (jobs?.laterToday.filter(isUrgent) ?? []) : (jobs?.laterToday ?? []);
+  const upcoming = filter === 'urgent' ? (jobs?.upcoming.filter(isUrgent) ?? []) : (jobs?.upcoming ?? []);
+  const past = filter === 'urgent' ? (jobs?.past.filter(isUrgent) ?? []) : (jobs?.past ?? []);
+  const changes = filter === 'urgent' ? (jobs?.changes.filter(isChangeUrgent) ?? []) : (jobs?.changes ?? []);
+
+  const hasMatches = Boolean(now || laterToday.length > 0 || upcoming.length > 0 || past.length > 0 || changes.length > 0);
+
   const list = (items: Job[]) => (
     <View style={{ gap: 10 }}>
       {items.map((j) => <JobCard key={j.id} job={j} change={jobs?.changeFor[j.id]} />)}
@@ -80,31 +95,51 @@ export default function JobsTab() {
         )}
         {jobs && !empty && (
           <Animated.View entering={arrive(0, reduced)}>
-            {jobs.now
-              ? <JobHero job={jobs.now} isToday={jobs.nowIsToday} change={jobs.changeFor[jobs.now.id]} myId={myId} />
-              : <Notice tone="info" text={t('jobs.nothingNext')} />}
-            {!jobs.nowIsToday && jobs.now && <Txt variant="caption" color="ink2" style={{ marginTop: 8 }}>{t('jobs.noneToday')}</Txt>}
+            <View style={{ marginBottom: 16 }}>
+              <Segmented
+                label={t('jobs.filterLabel')}
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  { value: 'all', label: t('jobs.filterAll') },
+                  { value: 'urgent', label: t('jobs.filterUrgent') },
+                ]}
+              />
+            </View>
 
-            {jobs.changes.length > 0 && (<><SectionLabel>{t('jobs.whatChanged')}</SectionLabel><JobChanges changes={jobs.changes} /></>)}
-
-            {jobs.laterToday.length > 0 && (<><SectionLabel>{t('jobs.laterToday')}</SectionLabel>{list(jobs.laterToday)}</>)}
-
-            {jobs.upcoming.length > 0 && <SectionLabel>{t('jobs.upcoming')}</SectionLabel>}
-            {byDay(jobs.upcoming).map((g) => (
-              <View key={g.day} style={{ marginBottom: 12 }}>
-                <Txt variant="label" color="ink2" style={{ marginBottom: 6 }}>{dateOf(g.jobs[0]!.start_time)}</Txt>
-                {list(g.jobs)}
-              </View>
-            ))}
-
-            {jobs.past.length > 0 && (
+            {filter === 'urgent' && !hasMatches ? (
+              <Notice tone="info" text={t('jobs.filterEmpty')} />
+            ) : (
               <>
-                <Pressable onPress={() => setShowEarlier((s) => !s)} accessibilityRole="button" hitSlop={6}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 18, marginBottom: 10 }}>
-                  <Txt variant="label" color="ink2">{t(showEarlier ? 'jobs.hideEarlier' : 'jobs.showEarlier', { n: jobs.past.length })}</Txt>
-                  <Feather name={showEarlier ? 'chevron-up' : 'chevron-down'} size={16} color={c.ink2} />
-                </Pressable>
-                {showEarlier && <PastJobs jobs={jobs.past} />}
+                {now
+                  ? <JobHero job={now} isToday={nowIsToday} change={jobs.changeFor[now.id]} myId={myId} />
+                  : filter === 'all'
+                  ? <Notice tone="info" text={t('jobs.nothingNext')} />
+                  : null}
+                {!nowIsToday && now && <Txt variant="caption" color="ink2" style={{ marginTop: 8 }}>{t('jobs.noneToday')}</Txt>}
+
+                {changes.length > 0 && (<><SectionLabel>{t('jobs.whatChanged')}</SectionLabel><JobChanges changes={changes} /></>)}
+
+                {laterToday.length > 0 && (<><SectionLabel>{t('jobs.laterToday')}</SectionLabel>{list(laterToday)}</>)}
+
+                {upcoming.length > 0 && <SectionLabel>{t('jobs.upcoming')}</SectionLabel>}
+                {byDay(upcoming).map((g) => (
+                  <View key={g.day} style={{ marginBottom: 12 }}>
+                    <Txt variant="label" color="ink2" style={{ marginBottom: 6 }}>{dateOf(g.jobs[0]!.start_time)}</Txt>
+                    {list(g.jobs)}
+                  </View>
+                ))}
+
+                {past.length > 0 && (
+                  <>
+                    <Pressable onPress={() => setShowEarlier((s) => !s)} accessibilityRole="button" hitSlop={6}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 18, marginBottom: 10 }}>
+                      <Txt variant="label" color="ink2">{t(showEarlier ? 'jobs.hideEarlier' : 'jobs.showEarlier', { n: past.length })}</Txt>
+                      <Feather name={showEarlier ? 'chevron-up' : 'chevron-down'} size={16} color={c.ink2} />
+                    </Pressable>
+                    {showEarlier && <PastJobs jobs={past} />}
+                  </>
+                )}
               </>
             )}
           </Animated.View>

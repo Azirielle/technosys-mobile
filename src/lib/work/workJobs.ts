@@ -30,9 +30,18 @@ export async function loadWorkJobs(): Promise<{ jobs: Job[]; changes: JobChange[
     .in('job_id', jobs.map((j) => j.id)).in('kind', ['created', 'moved', 'cancelled', 'crew_changed'])
     .gte('at', new Date(Date.now() - 7 * 86400000).toISOString()).order('at', { ascending: false });
   const name = (id: string) => jobs.find((j) => j.id === id)?.client_name ?? '';
+  const job = (id: string) => jobs.find((j) => j.id === id);
   const changes: JobChange[] = [];
   for (const e of data ?? []) {
-    const base = { jobId: e.job_id, jobName: name(e.job_id), at: e.at, reason: e.reason };
+    const j = job(e.job_id);
+    const base = {
+      jobId: e.job_id,
+      jobName: name(e.job_id),
+      at: e.at,
+      reason: e.reason,
+      is_vip_hook: j?.is_vip_hook,
+      priority: j?.priority,
+    };
     const d = (e.details ?? {}) as { before?: { start_date?: string; start_time?: string }; after?: { start_date?: string; start_time?: string } };
     const iso = (x?: { start_date?: string; start_time?: string }) => (x?.start_date && x.start_time ? new Date(`${x.start_date}T${x.start_time.slice(0, 5)}:00+08:00`).toISOString() : undefined);
     if (e.kind === 'moved') changes.push({ ...base, kind: 'moved', from: iso(d.before), to: iso(d.after) });

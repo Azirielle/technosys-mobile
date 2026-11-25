@@ -158,7 +158,11 @@
     "minAgo": "{n} min ang nakalipas",
     "hoursAgo": "{n} oras ang nakalipas",
     "yesterday": "kahapon",
-    "changedSay": "May binago ang opisina sa mga trabaho mo."
+    "changedSay": "May binago ang opisina sa mga trabaho mo.",
+    "filterLabel": "Salain ang trabaho",
+    "filterAll": "Lahat",
+    "filterUrgent": "Apura at mataas",
+    "filterEmpty": "Walang apurahan o mataas na priyoridad na trabaho"
   },
   "dtr": {
     "title": "DTR",

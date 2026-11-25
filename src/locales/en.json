@@ -158,7 +158,11 @@
     "minAgo": "{n} min ago",
     "hoursAgo": "{n} h ago",
     "yesterday": "yesterday",
-    "changedSay": "The office just updated your jobs."
+    "changedSay": "The office just updated your jobs.",
+    "filterLabel": "Filter jobs",
+    "filterAll": "All",
+    "filterUrgent": "Urgent & high",
+    "filterEmpty": "No urgent or high-priority jobs"
   },
   "dtr": {
     "title": "DTR",
