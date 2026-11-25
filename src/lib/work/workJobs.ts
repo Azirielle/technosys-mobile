@@ -17,7 +17,7 @@ function asJob(j: MyJob): Job {
   return {
     id: j.id, technician_id: null, client_name: j.client_name, location: j.address, start_time: at(j.start_time), end_time: at(j.end_time),
     status: j.status === 'ongoing' ? 'scheduled' : j.status === 'done' ? 'completed' : j.status, assignment_type: ASSIGNMENT[j.work_type] ?? 'on_site',
-    geofence_lat: j.site_lat, geofence_lon: j.site_lon, is_vip_hook: j.is_vip, cancellation_reason: j.cancel_reason,
+    geofence_lat: j.site_lat, geofence_lon: j.site_lon, is_vip_hook: j.is_vip, cancellation_reason: j.cancel_reason, priority: j.priority,
   };
 }
 
@@ -46,7 +46,7 @@ export async function loadWorkJobs(): Promise<{ jobs: Job[]; changes: JobChange[
 /** One job for the job details screen. */
 export async function getWorkJob(id: string): Promise<JobDetails | null> {
   const { data, error } = await supabase.from('jobs')
-    .select('id, client_name, address, project_name, scope, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time, work_type, report_to, status, cancel_reason, is_vip')
+    .select('id, client_name, address, project_name, scope, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time, work_type, report_to, status, cancel_reason, is_vip, priority')
     .eq('id', id).maybeSingle();
   if (error) throw error;
   if (!data) return null;

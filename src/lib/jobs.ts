@@ -20,6 +20,8 @@ export type Job = {
   geofence_lon: number | null;
   is_vip_hook: boolean | null;
   cancellation_reason: string | null;
+  /** Work v2 jobs: low / medium / high (a VIP squeeze-in shows as Urgent instead) */
+  priority?: string;
 };
 export type JobChange = {
   jobId: string;
@@ -99,9 +101,9 @@ export async function getMyJobs(): Promise<MyJobs> {
   const upcomingAll = live.filter((j) => manilaDay(j.start_time) > today);
   const older = live.filter((j) => manilaDay(j.start_time) < today);
 
-  // The job you're on now, or the next one today: not finished and not already over. An urgent (VIP) job comes first.
+  // The job you're on now, or the next one today: not finished and not already over. An urgent (VIP) job comes first, then a high-priority one.
   const open = todays.filter((j) => j.status !== 'completed' && (!j.end_time || Date.parse(j.end_time) > Date.now()));
-  const current = open.find((j) => j.is_vip_hook) ?? open[0] ?? null;
+  const current = open.find((j) => j.is_vip_hook) ?? open.find((j) => j.priority === 'high') ?? open[0] ?? null;
   const rest = todays.filter((j) => j !== current);
   const laterToday = rest.filter((j) => j.status !== 'completed' && Date.parse(j.start_time) > Date.now());
   const doneToday = rest.filter((j) => !laterToday.includes(j));

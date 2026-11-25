@@ -143,6 +143,7 @@
     "laterToday": "Later today",
     "showEarlier": "Show earlier jobs ({n})",
     "hideEarlier": "Hide earlier jobs",
+    "priority": {"low": "Low priority", "medium": "Medium priority", "high": "High priority"},
     "vip": "Urgent job",
     "moved": "Moved",
     "movedFrom": "Moved from {date}",

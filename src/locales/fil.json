@@ -143,6 +143,7 @@
     "laterToday": "Mamaya",
     "showEarlier": "Ipakita ang naunang trabaho ({n})",
     "hideEarlier": "Itago ang naunang trabaho",
+    "priority": {"low": "Mababang priyoridad", "medium": "Katamtamang priyoridad", "high": "Mataas na priyoridad"},
     "vip": "Apurahang trabaho",
     "moved": "Inilipat",
     "movedFrom": "Inilipat mula {date}",

@@ -1,4 +1,4 @@
-// The small tags under a job's name: work type, VIP squeeze-in, and the latest office change.
+// The small tags under a job's name: work type, priority (VIP squeeze-in = Urgent job), and the latest office change.
 import React from 'react';
 import { View } from 'react-native';
 import { useT } from '../../lib/i18n';
@@ -13,7 +13,8 @@ export default function JobTags({ job, change, done }: { job: Job; change?: JobC
   return (
     <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
       <WorkTag assignmentType={job.assignment_type} />
-      {job.is_vip_hook && <StatusText tone="pending" label={t('jobs.vip')} />}
+      {job.is_vip_hook ? <StatusText tone="error" label={t('jobs.vip')} />
+        : !!job.priority && <StatusText tone={job.priority === 'high' ? 'pending' : 'info'} label={t(`jobs.priority.${job.priority}`)} />}
       {badge && <StatusText tone={badge.tone} label={badge.label} />}
       {done && <StatusText tone="ok" label={t('jobs.statusDone')} />}
     </View>

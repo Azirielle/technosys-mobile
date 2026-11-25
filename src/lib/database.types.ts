@@ -810,6 +810,7 @@ export type Database = {
       jobs: {
         Row: {
           scope: string | null
+          priority: string
           address: string
           cancel_reason: string | null
           client_name: string
@@ -836,6 +837,7 @@ export type Database = {
         }
         Insert: {
           scope?: string | null
+          priority?: string
           address: string
           cancel_reason?: string | null
           client_name: string
@@ -862,6 +864,7 @@ export type Database = {
         }
         Update: {
           scope?: string | null
+          priority?: string
           address?: string
           cancel_reason?: string | null
           client_name?: string
