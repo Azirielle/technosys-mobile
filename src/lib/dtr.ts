@@ -1,5 +1,5 @@
 // The DTR tab's numbers, using the same rules as the admin DTR (Admin-side app/actions/audit.ts, confirmed by
-// Andrew on 15 Nov 2026): shift starts 8:00 (or the job's start), late only after 15 minutes of grace,
+// Andrew on 15 Nov 2026): shift starts 8:00 (or the job's start), late from 1 minute after (no grace period, client Nov 2026),
 // 1-hour meal break off shifts over 5 hours, overtime only up to what HR approved, Sunday/holiday hours all
 // count as rest-day overtime, night shift = hours between 10 PM and 6 AM, absent = a past Mon–Sat with no
 // time-in, leave or holiday. Only the first time-in of a day counts. Manila time is UTC+8 (no daylight saving).
@@ -30,7 +30,7 @@ async function workDayRows(userId: string, cut: Cutoff): Promise<{ logs: LogRow[
 
 const H = 3600000;
 const MANILA = 8 * H;
-const GRACE_MIN = 15;
+const GRACE_MIN = 0;
 const SHIFT_START_HOUR = 8;
 
 /** YYYY-MM-DD in Manila */

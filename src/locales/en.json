@@ -181,7 +181,7 @@
     "holiday": "Holiday",
     "restDay": "Rest day OT {n} h",
     "notYet": "Not yet",
-    "whyLate": "Late is counted after the 15-minute grace, from {time}.",
+    "whyLate": "Late is counted from {time}, with no grace period.",
     "whyOt": "Overtime counts only up to what HR approved ({n} h).",
     "whyUnapproved": "{n} h past 8 hours without an approved overtime request.",
     "whyNight": "Night shift hours are the hours between 10 PM and 6 AM.",

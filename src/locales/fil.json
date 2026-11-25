@@ -181,7 +181,7 @@
     "holiday": "Holiday",
     "restDay": "Rest day OT {n} h",
     "notYet": "Hindi pa",
-    "whyLate": "Binibilang ang late pagkalipas ng 15-minutong palugit, mula {time}.",
+    "whyLate": "Binibilang ang late mula {time}, walang palugit.",
     "whyOt": "Ang overtime ay hanggang sa inaprubahan lang ng HR ({n} h).",
     "whyUnapproved": "{n} h lampas sa 8 oras na walang aprubadong overtime request.",
     "whyNight": "Ang night shift ay ang mga oras mula 10 PM hanggang 6 AM.",
