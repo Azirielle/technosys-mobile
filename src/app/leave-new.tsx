@@ -32,7 +32,8 @@ export default function LeaveNewScreen() {
     : reason.trim().length < 5 ? t('leaveNew.needReason') : type === 'sick' && !photo ? t('leaveNew.needCertificate') : null;
 
   const pickPhoto = (source: 'camera' | 'library') => async () => {
-    const perm = source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // Gallery = Android's photo picker, which needs no permission (Google Play allows no broad photo access here)
+    const perm = source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : { granted: true };
     if (!perm.granted) { appAlert(t('leaveNew.certificate'), t('me.photoPermission')); return; }
     const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.6 };
     const r = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);

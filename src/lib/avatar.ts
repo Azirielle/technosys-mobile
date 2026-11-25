@@ -7,7 +7,8 @@ import { uploadPhoto } from './photoUpload';
 export type AvatarResult = { ok: true; url: string } | { ok: false; reason: 'cancelled' | 'permission' | 'failed' };
 
 export async function changeAvatar(source: 'camera' | 'library'): Promise<AvatarResult> {
-  const perm = source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
+  // Gallery = Android's photo picker, which needs no permission (Google Play allows no broad photo access here)
+  const perm = source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : { granted: true };
   if (!perm.granted) return { ok: false, reason: 'permission' };
   const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.6 };
   const picked = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
