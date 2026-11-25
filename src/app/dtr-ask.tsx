@@ -1,10 +1,11 @@
 // "Ask HR about this day": pick what looks wrong, add a note, send. It becomes a DTR concern in the admin's
 // Tickets, and HR's answer comes back in Techy's chat or your Inbox. Scope has no payroll, so this is about the DTR only.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { askHrAboutDay, dayLabel } from '../lib/dtr';
+import { openChat } from '../lib/fileTicket';
 import { openTechyChat } from '../components/assistant/TechyChatLayer';
 import { Button, ChoiceCard, Notice, PushedScreen, SentScreen, TextBox, haptic, techy } from '../ui';
 
@@ -24,8 +25,11 @@ export default function DtrAskScreen() {
   const [reason, setReason] = useState<Reason | null>(null);
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState<string | null>(null); // the new ticket's number
   const [failed, setFailed] = useState(false);
+  // Filed from a chat with Techy: show which conversation it joins (prof, 20 Nov: the form carries the ticket number)
+  const [chat, setChat] = useState<string | null>(null);
+  useEffect(() => { openChat().then((c) => setChat(c?.ref ?? null)).catch(() => {}); }, []);
   const label = date ? dayLabel(date) : '';
   const needsNote = reason === 'other' && note.trim().length < 5;
 
@@ -33,7 +37,7 @@ export default function DtrAskScreen() {
     return (
       <SentScreen
         title={t('dtrAsk.sentTitle')}
-        text={t('dtrAsk.sentText')}
+        text={t('dtrAsk.sentTicket', { ref: sent })}
         doneLabel={t('dtrAsk.done')}
         onDone={() => {
           router.replace('/(tabs)/dtr' as Href);
@@ -46,15 +50,16 @@ export default function DtrAskScreen() {
   const send = async () => {
     if (!date || !reason || needsNote) return;
     setSending(true); setFailed(false);
-    const ok = await askHrAboutDay(date, label, t(`dtrAsk.${reason}`), note);
+    const ref = await askHrAboutDay(date, label, t(`dtrAsk.${reason}`), note);
     setSending(false);
-    if (ok) { setSent(true); techy.react('cheer'); } else { setFailed(true); haptic.error(); }
+    if (ref) { setSent(ref); techy.react('cheer'); } else { setFailed(true); haptic.error(); }
   };
 
   return (
     <PushedScreen title={t('dtrAsk.title', { date: label })} subtitle={t('dtrAsk.subtitle')} backLabel={t('common.back')}
       footer={<Button label={t('dtrAsk.send')} icon="send" onPress={send} loading={sending} disabled={!reason || needsNote || sending} />}>
       <View style={{ gap: 10, marginTop: 8 }}>
+        {chat && <Notice tone="info" text={t('dtrAsk.linkedChat', { ref: chat })} />}
         {REASONS.map((r) => (
           <ChoiceCard key={r.key} icon={r.icon} title={t(`dtrAsk.${r.key}`)} selected={reason === r.key} onPress={() => setReason(r.key)} />
         ))}

@@ -5,6 +5,7 @@
 // time-in, leave or holiday. Only the first time-in of a day counts. Manila time is UTC+8 (no daylight saving).
 // With WORK_V2 on, days come from work_days, using the hours and late minutes the database worked out.
 import { supabase } from './supabase';
+import { fileTicket } from './fileTicket';
 import { WorkType, workTypeOf } from './jobs';
 import { WORK_V2 } from './work/workApi';
 
@@ -220,35 +221,13 @@ export async function getDayDetails(date: string): Promise<DayDetails> {
   };
 }
 
-/** "Ask HR about this day": files a DTR concern ticket HR answers in Tickets (reply shows in the Inbox or Techy chat). */
-export async function askHrAboutDay(date: string, dateLabel: string, reason: string, note: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const { data: activeChats } = await supabase.from('tickets')
-    .select('id').eq('employee_id', user.id).eq('title', 'Support Conversation')
-    .in('status', ['open', 'in_progress']).order('created_at', { ascending: false }).limit(1);
-  const parentId = activeChats?.[0]?.id ?? null;
-
-  const { data: created, error } = await supabase.from('tickets').insert({
-    employee_id: user.id,
+/** "Ask HR about this day": files a DTR concern ticket HR answers in Tickets, joined to your Techy chat if one is open.
+ *  Returns the ticket number, or null when it couldn't be sent. */
+export async function askHrAboutDay(date: string, dateLabel: string, reason: string, note: string): Promise<string | null> {
+  return fileTicket({
     category: 'DTR Issue',
     title: `DTR check: ${dateLabel}`,
     description: [`Day: ${dateLabel} (${date})`, `What's wrong: ${reason}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-    status: 'open',
-    from_ticket_id: parentId,
-  }).select('id').single();
-  if (error || !created) return false;
-
-  if (parentId) {
-    const ref = `#${created.id.slice(0, 8).toUpperCase()}`;
-    await supabase.from('ticket_comments').insert({
-      ticket_id: parentId,
-      author_id: user.id,
-      content: `Your DTR concern is sent (ticket ${ref}). HR will reply here.`,
-      sender_role: 'technician',
-    });
-  }
-  return true;
+  }, (r) => `Your DTR concern is sent (ticket ${r}). HR will reply here.`);
 }

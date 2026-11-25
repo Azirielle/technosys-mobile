@@ -122,5 +122,9 @@ export async function getMyWorkJobs(): Promise<MyJob[]> {
     return { ...(j as Omit<MyJob, 'role' | 'vehicle' | 'mine'>), role: me?.role ?? 'crew', vehicle: v ? `${v.name} · ${v.plate}` : null, mine: !!me };
   });
   AsyncStorage.setItem(JOBS_KEY, JSON.stringify({ at: Date.now(), jobs })).catch(() => {});
+  // Tell the office the app has shown you these jobs (an unseen urgent job tells the Coordinator to call you)
+  const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+  const shown = jobs.filter((j) => j.mine && j.status !== 'cancelled' && j.end_date >= today).map((j) => j.id);
+  if (shown.length) supabase.rpc('mark_jobs_seen', { p_job_ids: shown }).then(() => {}, () => {});
   return jobs;
 }

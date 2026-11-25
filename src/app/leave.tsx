@@ -4,7 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useT } from '../lib/i18n';
-import { getMyLeaves, leaveDays, MyLeave } from '../lib/leaves';
+import { getMyCredits, getMyLeaves, leaveDays, MyLeave, type Credits } from '../lib/leaves';
 import { useFocusRefresh } from '../lib/useFocusRefresh';
 import { Button, Card, IconChip, Notice, PushedScreen, SectionLabel, SkeletonRow, StatusText, Txt, type Tone, useTokens } from '../ui';
 
@@ -22,7 +22,11 @@ export default function LeaveScreen() {
   const [leaves, setLeaves] = useState<MyLeave[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const load = useCallback(async () => { try { setLeaves(await getMyLeaves()); setFailed(false); } catch { setFailed(true); } }, []);
+  const [credits, setCredits] = useState<Credits | null>(null);
+  const load = useCallback(async () => {
+    getMyCredits().then(setCredits).catch(() => {});
+    try { setLeaves(await getMyLeaves()); setFailed(false); } catch { setFailed(true); }
+  }, []);
   useFocusRefresh(load);
 
   return (
@@ -31,6 +35,14 @@ export default function LeaveScreen() {
       <View style={{ marginTop: 8 }}>
         <Button icon="plus" label={t('leave.fileNew')} onPress={() => router.push('/leave-new' as Href)} />
       </View>
+      {credits && (
+        <Card style={{ marginTop: 12, gap: 2 }}>
+          <Txt variant="label">{t('leave.credits')}</Txt>
+          <Txt variant="body" color="ink2">{t('leave.creditsLeft', { sick: credits.sick_left, vacation: credits.vacation_left })}</Txt>
+          {credits.without_credits > 0 && <Txt variant="caption" color="ink2">{t('leave.withoutCredits', { n: credits.without_credits })}</Txt>}
+          <Txt variant="caption" color="ink2">{t('leave.creditsRule')}</Txt>
+        </Card>
+      )}
       <SectionLabel>{t('leave.yourRequests')}</SectionLabel>
       {failed && <Notice tone="error" text={t('common.noSignal')} />}
       {!leaves && !failed && <Card padded={false}><SkeletonRow /><SkeletonRow /></Card>}

@@ -617,6 +617,7 @@ export type Database = {
       }
       holidays: {
         Row: {
+          holiday_type: string
           created_at: string | null
           holiday_date: string
           id: string
@@ -624,6 +625,7 @@ export type Database = {
           name: string
         }
         Insert: {
+          holiday_type?: string
           created_at?: string | null
           holiday_date: string
           id?: string
@@ -631,6 +633,7 @@ export type Database = {
           name: string
         }
         Update: {
+          holiday_type?: string
           created_at?: string | null
           holiday_date?: string
           id?: string
@@ -744,6 +747,7 @@ export type Database = {
       }
       job_members: {
         Row: {
+          seen_at: string | null
           added_at: string
           id: string
           is_acting_lead: boolean
@@ -755,6 +759,7 @@ export type Database = {
           vehicle_id: string | null
         }
         Insert: {
+          seen_at?: string | null
           added_at?: string
           id?: string
           is_acting_lead?: boolean
@@ -766,6 +771,7 @@ export type Database = {
           vehicle_id?: string | null
         }
         Update: {
+          seen_at?: string | null
           added_at?: string
           id?: string
           is_acting_lead?: boolean
@@ -2242,6 +2248,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      leave_credits: {
+        Args: { p_person: string; p_year?: number; p_add_type?: string; p_add_start?: string; p_add_end?: string }
+        Returns: Json
+      }
+      mark_jobs_seen: {
+        Args: { p_job_ids: string[] }
+        Returns: undefined
+      }
       record_face_check: {
         Args: { p_live: boolean; p_score: number; p_selfie_path: string; p_work_day_id: string }
         Returns: Json

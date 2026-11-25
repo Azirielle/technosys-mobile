@@ -260,6 +260,8 @@
     "notePlaceholder": "Example: I timed in at 7:55 but the app had no signal.",
     "send": "Send to HR",
     "sentTitle": "Sent to HR",
+    "sentTicket": "Your concern is ticket {ref}. HR will reply in your chat with Techy and in your Inbox.",
+    "linkedChat": "Part of your chat with Techy (ticket {ref}). HR's answer comes back there.",
     "sentText": "HR will check this day. Their reply will show in your Inbox.",
     "done": "Done"
   },
@@ -346,6 +348,10 @@
   "leave": {
     "title": "Leave",
     "subtitle": "File a leave and see what HR said.",
+    "credits": "Leave credits this year",
+    "creditsLeft": "Sick: {sick} of 5 left · Vacation: {vacation} of 5 left",
+    "withoutCredits": "{n} day(s) so far were without credits (salary deduction).",
+    "creditsRule": "When sick leave runs out, it uses your vacation credits. Days past your credits are without credits.",
     "fileNew": "File a leave",
     "yourRequests": "Your requests",
     "none": "You haven't filed a leave yet.",

@@ -35,6 +35,15 @@ export const leaveDays = (start: string, end: string) =>
 export type FileLeaveInput = { type: LeaveType; start: string; end: string; reason: string; certificateUri?: string | null };
 export type FileLeaveResult = { ok: true } | { ok: false; reason: 'upload' | 'save' };
 
+/** Your leave credits this year (5 sick + 5 vacation; sick uses vacation once sick runs out). Counted by the database. */
+export type Credits = { sick_left: number; vacation_left: number; without_credits: number };
+export async function getMyCredits(): Promise<Credits | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase.rpc('leave_credits', { p_person: user.id });
+  return error ? null : (data as Credits);
+}
+
 export async function fileLeave(input: FileLeaveInput): Promise<FileLeaveResult> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, reason: 'save' };
