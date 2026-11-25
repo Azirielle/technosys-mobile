@@ -6,7 +6,7 @@ import { useT } from '../../lib/i18n';
 import { workTypeOf } from '../../lib/jobs';
 import { Txt, useTokens } from '../../ui';
 
-const WORK_ICON = { onSite: 'map-pin', outOfTown: 'truck', officeHq: 'home' } as const;
+const WORK_ICON = { onSite: 'map-pin', outOfTown: 'truck', officeHq: 'home', inHouse: 'briefcase' } as const;
 
 export default function WorkTag({ assignmentType }: { assignmentType: string | null }) {
   const { c } = useTokens();

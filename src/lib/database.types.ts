@@ -1036,6 +1036,53 @@ export type Database = {
           },
         ]
       }
+      office_check_ins: {
+        Row: {
+          accuracy_m: number | null
+          checked_in_at: string
+          face_check: string | null
+          face_score: number | null
+          id: string
+          lat: number | null
+          lon: number | null
+          person_id: string
+          selfie_path: string | null
+          work_date: string
+        }
+        Insert: {
+          accuracy_m?: number | null
+          checked_in_at?: string
+          face_check?: string | null
+          face_score?: number | null
+          id?: string
+          lat?: number | null
+          lon?: number | null
+          person_id: string
+          selfie_path?: string | null
+          work_date: string
+        }
+        Update: {
+          accuracy_m?: number | null
+          checked_in_at?: string
+          face_check?: string | null
+          face_score?: number | null
+          id?: string
+          lat?: number | null
+          lon?: number | null
+          person_id?: string
+          selfie_path?: string | null
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "office_check_ins_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       office_locations: {
         Row: {
           created_at: string | null
@@ -2258,6 +2305,26 @@ export type Database = {
       }
       record_face_check: {
         Args: { p_live: boolean; p_score: number; p_selfie_path: string; p_work_day_id: string }
+        Returns: Json
+      }
+      office_check_in: {
+        Args: {
+          p_accuracy_m: number | null
+          p_device_id: string
+          p_lat: number | null
+          p_lon: number | null
+          p_mocked: boolean
+          p_queued_at?: string | null
+        }
+        Returns: Json
+      }
+      record_office_face_check: {
+        Args: {
+          p_check_in_id: string
+          p_live: boolean
+          p_score: number
+          p_selfie_path: string
+        }
         Returns: Json
       }
       check_in_tool: {

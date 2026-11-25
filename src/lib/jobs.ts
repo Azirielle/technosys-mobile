@@ -6,7 +6,7 @@ import { supabase } from './supabase';
 import { WORK_V2 } from './work/workApi';
 import { loadWorkJobs } from './work/workJobs';
 
-export type WorkType = 'onSite' | 'outOfTown' | 'officeHq';
+export type WorkType = 'onSite' | 'outOfTown' | 'officeHq' | 'inHouse';
 export type Job = {
   id: string;
   technician_id: string | null;
@@ -45,10 +45,11 @@ export type MyJobs = {
   changeFor: Record<string, JobChange>; // latest change per job, for the badge on its card
 };
 
-/** schedules.assignment_type → the three kinds of work technicians know. */
+/** schedules.assignment_type → the four kinds of work technicians know. */
 export function workTypeOf(assignmentType: string | null | undefined): WorkType {
-  if (assignmentType === 'deployment') return 'outOfTown';
-  if (assignmentType === 'office_duty') return 'officeHq';
+  if (assignmentType === 'deployment' || assignmentType === 'out_of_town') return 'outOfTown';
+  if (assignmentType === 'office_duty' || assignmentType === 'office') return 'officeHq';
+  if (assignmentType === 'in_house') return 'inHouse';
   return 'onSite';
 }
 

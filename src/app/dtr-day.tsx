@@ -12,7 +12,7 @@ import DayLine from '../components/dtr/DayLine';
 import { dayTags, n1 } from '../components/dtr/dayTags';
 import { BackHeader, Button, Card, Notice, SectionLabel, SkeletonRow, StatusText, Txt, useTokens } from '../ui';
 
-const TYPE_TO_ASSIGNMENT = { onSite: 'on_site', outOfTown: 'deployment', officeHq: 'office_duty' } as const;
+const TYPE_TO_ASSIGNMENT = { onSite: 'on_site', outOfTown: 'deployment', officeHq: 'office_duty', inHouse: 'in_house' } as const;
 type T = ReturnType<typeof useT>;
 
 /** The "How your hours were counted" lines, top to bottom, ending with the counted total. */

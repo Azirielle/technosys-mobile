@@ -26,6 +26,7 @@ type Props = {
   job: Job | null;
   onTimeIn: () => void;
   onTimeOut: () => void;
+  onOfficeCheckIn?: () => void;
   onRefresh: () => Promise<void>;
   /** Shown under today's job (Work v2: Arrived / Done / Ask for overtime) */
   jobExtra?: React.ReactNode;
@@ -60,7 +61,7 @@ export default function HomeBody(p: Props) {
       <Animated.View entering={arrive(0, reduced)}>
         <HomeHeader />
         <View ref={tourTarget('timeIn')} collapsable={false}>{/* Techy's tour points here */}
-          <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} />
+          <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} onOfficeCheckIn={p.onOfficeCheckIn} />
         </View>
 
         <SectionLabel>{!p.job || isToday ? t('home.todaysJob') : t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>

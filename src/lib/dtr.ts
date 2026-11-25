@@ -11,7 +11,7 @@ import { WORK_V2 } from './work/workApi';
 
 type LogRow = { id: string; app_time_in: string | null; app_time_out: string | null; status: string | null; hours?: number | null; late?: number };
 type JobRow = { id: string; client_name: string; start_time: string; assignment_type: string | null };
-const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty' };
+const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty', in_house: 'in_house' };
 
 /** Work v2: this cut-off's work days as the rows the DTR loop reads (hours and late from the database). */
 async function workDayRows(userId: string, cut: Cutoff): Promise<{ logs: LogRow[]; jobs: JobRow[] }> {
@@ -109,7 +109,7 @@ export async function getMyDtr(cut: Cutoff): Promise<DtrResult> {
   const jobRows: JobRow[] = v2?.jobs ?? (jobs.data ?? []);
 
   const today = manilaDate(new Date());
-  const result: DtrResult = { days: [], workdays: 0, workdaysSoFar: 0, present: 0, worked: 0, ot: 0, night: 0, lates: 0, absences: 0, where: { onSite: 0, outOfTown: 0, officeHq: 0 } };
+  const result: DtrResult = { days: [], workdays: 0, workdaysSoFar: 0, present: 0, worked: 0, ot: 0, night: 0, lates: 0, absences: 0, where: { onSite: 0, outOfTown: 0, officeHq: 0, inHouse: 0 } };
 
   for (let ms = Date.parse(`${cut.start}T00:00:00Z`); ms <= Date.parse(`${cut.end}T00:00:00Z`); ms += 86400000) {
     const date = new Date(ms).toISOString().slice(0, 10);

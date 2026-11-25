@@ -7,7 +7,7 @@ import type { Job, JobChange } from '../jobs';
 import type { CrewMember } from '../crew';
 import type { JobDetails } from '../jobDetails';
 
-const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty' };
+const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty', in_house: 'in_house' };
 const manilaToday = () => new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
 
 function asJob(j: MyJob): Job {

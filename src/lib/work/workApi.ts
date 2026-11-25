@@ -12,6 +12,10 @@ import type { Spot } from '../timeIn';
 export const WORK_V2 = true; // on since the switch-over on 2026-11-17 (PROJECT_STATE.md §8)
 
 export type WorkResult = { status: string; [key: string]: unknown };
+export type OfficeCheckIn = {
+  id: string; work_date: string; checked_in_at: string; lat: number | null; lon: number | null;
+  selfie_path: string | null; face_score: number | null; face_check: string | null;
+};
 export type WorkDay = {
   id: string; work_date: string; job_id: string | null; place: 'site' | 'hq'; place_name: string; time_in: string;
   time_out: string | null; late_minutes: number; in_check: string; hours: number | null; status: string;
@@ -94,16 +98,41 @@ export async function askOvertime(hours: number, reason: string): Promise<WorkRe
   return error ? { status: 'error' } : (data as WorkResult);
 }
 
-/** Today's work day (Manila), and an earlier day still without a time-out. */
-export async function getMyDays(): Promise<{ today: WorkDay | null; forgotten: WorkDay | null }> {
+/** Advance check-in at Pacita HQ before heading to the on-site job. */
+export async function workOfficeCheckIn(here: Spot | null): Promise<WorkResult> {
+  const args = {
+    p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_accuracy_m: here?.accuracy ?? null,
+    p_mocked: here?.isMocked ?? false, p_device_id: await getDeviceId(),
+  };
+  const { data, error } = await supabase.rpc('office_check_in', args as never);
+  if (error) {
+    if (!isNetwork(error)) return { status: error.message.includes('Not signed in') ? 'signed_out' : 'error' };
+    const at = new Date().toISOString();
+    await syncQueue.addToQueue('work_office_check_in', { ...args, p_queued_at: at });
+    return { status: 'queued', queued_at: at };
+  }
+  return (data ?? { status: 'error' }) as unknown as WorkResult;
+}
+
+/** Today's work day (Manila), office check-in, and an earlier day still without a time-out. */
+export async function getMyDays(): Promise<{ today: WorkDay | null; forgotten: WorkDay | null; officeCheckIn: OfficeCheckIn | null }> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { today: null, forgotten: null };
+  if (!user) return { today: null, forgotten: null, officeCheckIn: null };
   const todayDate = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
-  const { data } = await supabase.from('work_days')
-    .select('id, work_date, job_id, place, place_name, time_in, time_out, late_minutes, in_check, hours, status')
-    .eq('person_id', user.id).or(`work_date.eq.${todayDate},time_out.is.null`).order('work_date', { ascending: false });
-  const days = (data ?? []) as WorkDay[];
-  return { today: days.find((d) => d.work_date === todayDate) ?? null, forgotten: days.find((d) => d.work_date < todayDate && !d.time_out) ?? null };
+  const [{ data: daysData }, { data: officeData }] = await Promise.all([
+    supabase.from('work_days')
+      .select('id, work_date, job_id, place, place_name, time_in, time_out, late_minutes, in_check, hours, status')
+      .eq('person_id', user.id).or(`work_date.eq.${todayDate},time_out.is.null`).order('work_date', { ascending: false }),
+    supabase.from('office_check_ins')
+      .select('id, work_date, checked_in_at, lat, lon, selfie_path, face_score, face_check')
+      .eq('person_id', user.id).eq('work_date', todayDate).maybeSingle(),
+  ]);
+  const days = (daysData ?? []) as WorkDay[];
+  return {
+    today: days.find((d) => d.work_date === todayDate) ?? null,
+    forgotten: days.find((d) => d.work_date < todayDate && !d.time_out) ?? null,
+    officeCheckIn: (officeData as OfficeCheckIn | null) ?? null,
+  };
 }
 
 /** Jobs you're on (the access rules return only those), with your role and, for drivers, the vehicle. */

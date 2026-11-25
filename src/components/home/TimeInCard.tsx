@@ -6,18 +6,21 @@ import { View } from 'react-native';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useT } from '../../lib/i18n';
 import { Button, Glass, StatusPill, SuccessCheck, Txt, useReducedMotion, useTokens } from '../../ui';
+import { openTechyChat } from '../assistant/TechyChatLayer';
 
 export type ShiftState =
-  | { kind: 'off'; shiftStart?: string }
+  | { kind: 'off'; shiftStart?: string; canCheckInOffice?: boolean }
+  | { kind: 'at_office'; checkedInAt: string; clientName?: string }
   | { kind: 'working'; startedAt: string; verified: boolean }
-  | { kind: 'done'; timeIn: string; timeOut: string | null; hours: number | null };
+  | { kind: 'done'; timeIn: string; timeOut: string | null; hours: number | null }
+  | { kind: 'in_house'; clientName?: string };
 
-type Props = { shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void };
+type Props = { shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void; onOfficeCheckIn?: () => void };
 
 const SHIFT_MS = 9 * 3600000; // 8 hours of work plus the 1-hour meal break
 const clock = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut }: Props) {
+export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeCheckIn }: Props) {
   const t = useT();
   const { c, radius } = useTokens();
   const reduced = useReducedMotion();
@@ -46,9 +49,15 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut }: Props) 
   const view = shift.kind === 'working'
     ? { tone: 'ok' as const, pill: t('home.working', { time: clock(new Date(shift.startedAt)) }), big: t('home.elapsed', { h, m }),
         sub: shift.verified ? t('home.verified') : t('home.photoOverride') }
+    : shift.kind === 'at_office'
+    ? { tone: 'ok' as const, pill: t('home.atOfficePill', { time: clock(new Date(shift.checkedInAt)) }), big: clock(now),
+        sub: t('home.atOfficeTransitNote') }
     : shift.kind === 'done'
     ? { tone: 'ok' as const, pill: t('home.doneToday'), big: shift.hours != null ? `${shift.hours.toFixed(1)} h` : '—',
         sub: `${clock(new Date(shift.timeIn))} – ${shift.timeOut ? clock(new Date(shift.timeOut)) : '…'} · ${t('home.sentToHr')}` }
+    : shift.kind === 'in_house'
+    ? { tone: 'pending' as const, pill: t('home.inHousePill'), big: clock(now),
+        sub: shift.clientName ? `${shift.clientName} · ${t('home.inHouseSub')}` : t('home.inHouseSub') }
     : { tone: late ? 'error' as const : 'pending' as const, pill: t(late ? 'home.notYetLate' : 'home.notYet'), big: clock(now),
         sub: t('home.shiftStarts', { time: clock(start) }) };
   // Not timed in: amber before the start, red once it has started, so it never looks like a switched-off card
@@ -67,8 +76,28 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut }: Props) 
       <View style={{ marginTop: 12, minHeight: 56, justifyContent: 'center' }}>
         {celebrate > 0 ? (
           <View style={{ alignItems: 'center' }}><SuccessCheck size={52} playKey={celebrate} /></View>
+        ) : shift.kind === 'in_house' ? (
+          <View style={{ gap: 8 }}>
+            <Txt variant="caption" color="ink2">{t('home.inHouseNote')}</Txt>
+            <Button icon="message-square" label={t('home.inHouseTechy')} onPress={openTechyChat} />
+          </View>
+        ) : shift.kind === 'at_office' ? (
+          <View style={{ gap: 8 }}>
+            <Button icon="log-in" label={t('home.timeInManual')} onPress={onTimeIn} loading={busy} />
+          </View>
         ) : shift.kind === 'off' ? (
-          <Button icon="log-in" label={t('home.timeIn')} onPress={onTimeIn} loading={busy} />
+          <View style={{ gap: 8 }}>
+            {shift.canCheckInOffice && onOfficeCheckIn && (
+              <Button icon="map-pin" label={t('home.checkInOffice')} onPress={onOfficeCheckIn} loading={busy} />
+            )}
+            <Button
+              kind={shift.canCheckInOffice ? 'ghost' : 'primary'}
+              icon="log-in"
+              label={t('home.timeIn')}
+              onPress={onTimeIn}
+              loading={busy}
+            />
+          </View>
         ) : shift.kind === 'working' ? (
           <Button kind="secondary" icon="log-out" label={t('home.timeOut')} onPress={onTimeOut} loading={busy} />
         ) : (
