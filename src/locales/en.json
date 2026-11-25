@@ -664,5 +664,26 @@
     "send": "Send to the Coordinator",
     "sentTitle": "Request sent",
     "sentText": "Your request is ticket {ref}. The Coordinator will reply in your chat with Techy. Once it's lent, it shows under My tools."
+  },
+  "records": {
+    "title": "My records",
+    "subtitle": "Everything you filed, with its ticket number.",
+    "none": "Nothing filed yet.",
+    "leave": "{type} leave",
+    "leaveType": {
+      "vacation": "Vacation",
+      "sick": "Sick",
+      "emergency": "Emergency",
+      "unpaid": "Unpaid"
+    },
+    "status": {
+      "open": "Waiting",
+      "in_progress": "Being handled",
+      "resolved": "Resolved",
+      "closed": "Closed",
+      "pending": "Waiting for HR",
+      "approved": "Approved",
+      "rejected": "Declined"
+    }
   }
 }

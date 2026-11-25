@@ -128,6 +128,7 @@ export default function ProfileTab() {
 
           <SectionLabel>{t('me.security')}</SectionLabel>
           <Card padded={false} style={group}>
+            <ListRow look="settings" icon="list" title={t('records.title')} onPress={() => router.push('/records' as Href)} />
             <ListRow look="settings" icon="book-open" title={t('me.handbook')} value={toRead > 0 ? t('me.toRead', { n: toRead }) : undefined}
               onPress={() => router.push('/handbook' as Href)} />
             {isFieldStaff && <ListRow look="settings" icon="smartphone" title={t('me.phone')} value={getDeviceName()} />}

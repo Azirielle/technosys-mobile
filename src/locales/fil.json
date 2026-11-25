@@ -664,5 +664,26 @@
     "send": "Ipadala sa Coordinator",
     "sentTitle": "Naipadala ang hiling",
     "sentText": "Ticket {ref} ang hiling mo. Sasagot ang Coordinator sa chat mo kay Techy. Kapag naipahiram na, makikita ito sa My tools."
+  },
+  "records": {
+    "title": "Mga record ko",
+    "subtitle": "Lahat ng isinumite mo, kasama ang ticket number.",
+    "none": "Wala pang naisumite.",
+    "leave": "{type} leave",
+    "leaveType": {
+      "vacation": "Vacation",
+      "sick": "Sick",
+      "emergency": "Emergency",
+      "unpaid": "Unpaid"
+    },
+    "status": {
+      "open": "Naghihintay",
+      "in_progress": "Inaasikaso",
+      "resolved": "Naayos na",
+      "closed": "Sarado",
+      "pending": "Hinihintay ang HR",
+      "approved": "Aprubado",
+      "rejected": "Tinanggihan"
+    }
   }
 }
