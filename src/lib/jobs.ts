@@ -54,7 +54,8 @@ export function workTypeOf(assignmentType: string | null | undefined): WorkType 
 }
 
 // Manila is UTC+8 with no daylight saving, so this works on every phone (no time-zone database needed)
-export const manilaDay = (iso: string | Date) => new Date(new Date(iso).getTime() + 8 * 3600000).toISOString().slice(0, 10);
+import { manilaDay } from './manilaDay';
+export { manilaDay };
 const DAY = 86400000;
 const ADDED_IS_NEWS_FOR = 2 * DAY; // every job has a "created" entry; only recent ones are worth showing
 

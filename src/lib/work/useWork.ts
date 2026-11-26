@@ -13,7 +13,7 @@ import { useT } from '../i18n';
 import { WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE } from '../signIn';
 import { loadHandbook } from '../handbook';
 import { locateMe, tellHrCouldntTimeIn, type Spot } from '../timeIn';
-import { getMyDays, reportLeftAt, uploadWorkSelfie, workTimeIn, workTimeOut, workOfficeCheckIn, type WorkDay, type WorkResult, type OfficeCheckIn } from './workApi';
+import { getMyDays, myUserId, reportLeftAt, uploadWorkSelfie, workTimeIn, workTimeOut, workOfficeCheckIn, type WorkDay, type WorkResult, type OfficeCheckIn } from './workApi';
 import type { Problem } from '../useTimeIn';
 import { keepSelfie } from './offlineResult';
 import { enroll, keepForLater, myFace, sendFaceCheck, sendOfficeFaceCheck, type FaceResult } from '../face/faceCheck';
@@ -56,10 +56,10 @@ export function useWork() {
   }
 
   const reload = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: p } = await supabase.from('profiles').select('id, full_name').eq('id', user.id).single();
-    setMe(p ?? { id: user.id, full_name: null });
+    const userId = await myUserId(); // from the phone, so Time in still works with no signal
+    if (!userId) return;
+    const { data: p } = await supabase.from('profiles').select('id, full_name').eq('id', userId).single();
+    setMe(p ?? { id: userId, full_name: null });
     setDays(await getMyDays());
   }, []);
   useEffect(() => { reload().catch(() => {}); }, [reload]);
@@ -91,11 +91,12 @@ export function useWork() {
       case 'queued':
         setSheet(closed);
         if (r.queued_at) startFace({ queuedAt: String(r.queued_at) });
+        reload().catch(() => {}); // the card shows the saved time-in as timed in, waiting to send
         return setProblem({ open: true, kind: 'queued', gpsFound: !!here, inside: false });
       case 'in_house': setSheet(closed); return appAlert(t('jobs.inHouse'), t('home.inHouseNote'));
       case 'already': setSheet(closed); appAlert(t('work.alreadyTitle'), t('work.alreadyText', { time: timeText(r.time_in) })); return reload();
       case 'forgot_time_out': setSheet(closed); return reload();
-      case 'too_early': setSheet(closed); return appAlert(t('work.earlyTitle'), t('work.earlyText', { time: timeText(r.opens_at) }));
+      case 'too_early': setSheet(closed); return appAlert(t('work.tooEarlyTitle'), t('work.tooEarlyText', { time: timeText(r.opens_at) }));
       case 'other_phone': setSheet(closed); return appAlert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
       case 'no_job':
         setSheet(closed);

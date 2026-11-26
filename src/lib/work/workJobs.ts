@@ -2,7 +2,7 @@
 // lib/jobDetails), so the screens don't change at the switch-over. A multi-day job shows as the day that
 // matters: today if it runs today, else its first day. "What changed" comes from job_events.
 import { supabase } from '../supabase';
-import { getMyWorkJobs, type MyJob } from './workApi';
+import { getMyWorkJobs, savedJobs, type MyJob } from './workApi';
 import type { Job, JobChange } from '../jobs';
 import type { CrewMember } from '../crew';
 import type { JobDetails } from '../jobDetails';
@@ -54,10 +54,13 @@ export async function loadWorkJobs(): Promise<{ jobs: Job[]; changes: JobChange[
 
 /** One job for the job details screen. */
 export async function getWorkJob(id: string): Promise<JobDetails | null> {
-  const { data, error } = await supabase.from('jobs')
+  const { data: row, error } = await supabase.from('jobs')
     .select('id, client_name, address, project_name, scope, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time, work_type, report_to, status, cancel_reason, is_vip, priority')
     .eq('id', id).maybeSingle();
-  if (error) throw error;
+  // No signal: the job as last loaded on this phone
+  const saved = error ? (await savedJobs(Infinity))?.find((j) => j.id === id) : undefined;
+  if (error && !saved) throw error;
+  const data = (row ?? saved) as (MyJob & { scope?: string | null }) | null | undefined;
   if (!data) return null;
   const job = asJob({ ...data, role: 'crew', vehicle: null, mine: true } as MyJob);
   const where = data.report_to === 'hq' ? 'Report to the office first, then ride to the site together.' : 'Go straight to the site.';

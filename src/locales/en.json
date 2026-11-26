@@ -510,6 +510,8 @@
     "lateBy": "{m} minutes late",
     "alreadyTitle": "You're already timed in",
     "alreadyText": "You timed in at {time} today.",
+    "tooEarlyTitle": "Too early to time in",
+    "tooEarlyText": "Time-in opens at {time}, 1 hour before your job starts.",
     "earlyTitle": "Leaving early?",
     "earlyText": "Your job ends at {end}. Timing out now is {early} early, so it counts as undertime.",
     "noJobTitle": "No job today",
@@ -639,6 +641,8 @@
     "useAnother": "Use another number"
   },
   "offline": {
+    "banner": "You're offline. Your jobs are the last ones loaded; time-ins and time-outs are saved on the phone and sent when the signal is back.",
+    "bannerSaved": "{n} saved, waiting to send.",
     "inRefusedTitle": "Time-in not accepted",
     "outRefusedTitle": "Time-out not accepted",
     "refusedText": "The one you saved at {time} with no signal was not accepted: {why}. Open the app to try again or tell HR.",

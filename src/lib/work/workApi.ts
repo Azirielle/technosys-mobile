@@ -8,6 +8,7 @@ import { syncQueue } from '../syncQueue';
 import { offlineCheck } from './offlineCheck';
 import { uploadPhoto } from '../photoUpload';
 import type { Spot } from '../timeIn';
+import { manilaDay } from '../manilaDay';
 
 export const WORK_V2 = true; // on since the switch-over on 2026-11-17 (PROJECT_STATE.md §8)
 
@@ -51,12 +52,34 @@ async function call(fn: 'time_in' | 'time_out', args: Record<string, unknown>, c
   return (data ?? { status: 'error' }) as WorkResult;
 }
 
-/** Your jobs as loaded in the last 24 h, or null (never loaded, or too old to trust: then nothing is stopped). */
-async function savedJobs(): Promise<MyJob[] | null> {
+/** Your jobs as last loaded, if not older than `maxAgeMs` (null: never loaded, too old, or someone else's). */
+export async function savedJobs(maxAgeMs = 86400000): Promise<MyJob[] | null> {
   try {
-    const saved = JSON.parse((await AsyncStorage.getItem(JOBS_KEY)) ?? 'null') as { at: number; jobs: MyJob[] } | null;
-    return saved && Date.now() - saved.at < 86400000 ? saved.jobs : null;
+    const saved = JSON.parse((await AsyncStorage.getItem(JOBS_KEY)) ?? 'null') as { at: number; userId?: string; jobs: MyJob[] } | null;
+    return saved && saved.userId === (await myUserId()) && Date.now() - saved.at < maxAgeMs ? saved.jobs : null;
   } catch { return null; }
+}
+
+const LAST_USER_KEY = 'MY_LAST_USER_ID';
+supabase.auth.onAuthStateChange((event) => { if (event === 'SIGNED_OUT') AsyncStorage.removeItem(LAST_USER_KEY).catch(() => {}); });
+
+/** The signed-in person, with no signal too: auth.getUser asks the server, and getSession gives nothing once the
+ *  1-hour token has expired offline, so the last known id is kept on the phone (cleared on sign-out). */
+export async function myUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  const id = data.session?.user.id;
+  if (id) { AsyncStorage.setItem(LAST_USER_KEY, id).catch(() => {}); return id; }
+  return AsyncStorage.getItem(LAST_USER_KEY).catch(() => null);
+}
+
+/** A time-in saved on the phone today and not sent yet, shown as today's work day until it is sent. */
+async function queuedToday(todayDate: string): Promise<WorkDay | null> {
+  const queue = await syncQueue.getQueue();
+  const tin = queue.find((i) => i.type === 'work_time_in' && manilaDay(i.payload.p_queued_at) === todayDate);
+  if (!tin) return null;
+  const tout = queue.find((i) => i.type === 'work_time_out' && manilaDay(i.payload.p_queued_at) === todayDate);
+  return { id: `queued-${tin.payload.id}`, work_date: todayDate, job_id: null, place: null, place_name: null, time_in: tin.payload.p_queued_at,
+    time_out: tout?.payload.p_queued_at ?? null, late_minutes: 0, in_check: 'queued', hours: null, status: 'queued' } as unknown as WorkDay;
 }
 
 /** Time in. Without a selfie the server answers outside / fake_gps / need_selfie when it can't confirm the site. */
@@ -116,10 +139,11 @@ export async function workOfficeCheckIn(here: Spot | null): Promise<WorkResult> 
 
 /** Today's work day (Manila), office check-in, and an earlier day still without a time-out. */
 export async function getMyDays(): Promise<{ today: WorkDay | null; forgotten: WorkDay | null; officeCheckIn: OfficeCheckIn | null }> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { today: null, forgotten: null, officeCheckIn: null };
+  const userId = await myUserId();
+  if (!userId) return { today: null, forgotten: null, officeCheckIn: null };
+  const user = { id: userId };
   const todayDate = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
-  const [{ data: daysData }, { data: officeData }] = await Promise.all([
+  const [{ data: daysData, error: daysErr }, { data: officeData }] = await Promise.all([
     supabase.from('work_days')
       .select('id, work_date, job_id, place, place_name, time_in, time_out, late_minutes, in_check, hours, status')
       .eq('person_id', user.id).or(`work_date.eq.${todayDate},time_out.is.null`).order('work_date', { ascending: false }),
@@ -128,8 +152,10 @@ export async function getMyDays(): Promise<{ today: WorkDay | null; forgotten: W
       .eq('person_id', user.id).eq('work_date', todayDate).maybeSingle(),
   ]);
   const days = (daysData ?? []) as WorkDay[];
+  const pending = await queuedToday(todayDate); // a time-in saved with no signal and not sent yet
+  if (daysErr) return { today: pending, forgotten: null, officeCheckIn: null };
   return {
-    today: days.find((d) => d.work_date === todayDate) ?? null,
+    today: days.find((d) => d.work_date === todayDate) ?? pending,
     forgotten: days.find((d) => d.work_date < todayDate && !d.time_out) ?? null,
     officeCheckIn: (officeData as OfficeCheckIn | null) ?? null,
   };
@@ -137,20 +163,25 @@ export async function getMyDays(): Promise<{ today: WorkDay | null; forgotten: W
 
 /** Jobs you're on (the access rules return only those), with your role and, for drivers, the vehicle. */
 export async function getMyWorkJobs(): Promise<MyJob[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await myUserId();
+  if (!userId) return [];
+  const user = { id: userId };
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const { data, error } = await supabase.from('jobs')
-    .select(`id, client_name, address, project_name, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time,
+    .select(`id, client_name, address, project_name, scope, notes, site_lat, site_lon, site_radius_m, start_date, end_date, start_time, end_time,
       work_type, report_to, status, cancel_reason, is_vip, priority, job_members ( person_id, role, removed_at, vehicle:vehicles ( name, plate ) )`)
     .gte('end_date', since).order('start_date').order('start_time');
-  if (error) throw error;
+  if (error) {
+    // No signal: show the jobs as last loaded (any age) instead of an empty list
+    if (isNetwork(error)) { const saved = await savedJobs(Infinity); if (saved) return saved; }
+    throw error;
+  }
   const jobs = (data ?? []).map(({ job_members, ...j }) => {
     const me = (job_members ?? []).find((m) => m.person_id === user.id && !m.removed_at);
     const v = me?.vehicle as { name?: string; plate?: string } | null;
     return { ...(j as Omit<MyJob, 'role' | 'vehicle' | 'mine'>), role: me?.role ?? 'crew', vehicle: v ? `${v.name} · ${v.plate}` : null, mine: !!me };
   });
-  AsyncStorage.setItem(JOBS_KEY, JSON.stringify({ at: Date.now(), jobs })).catch(() => {});
+  AsyncStorage.setItem(JOBS_KEY, JSON.stringify({ at: Date.now(), userId, jobs })).catch(() => {});
   // Tell the office the app has shown you these jobs (an unseen urgent job tells the Coordinator to call you)
   const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
   const shown = jobs.filter((j) => j.mine && j.status !== 'cancelled' && j.end_date >= today).map((j) => j.id);

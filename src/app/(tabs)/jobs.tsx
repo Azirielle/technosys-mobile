@@ -5,6 +5,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFocusRefresh } from '../../lib/useFocusRefresh';
+import { useOnline, whenBackOnline } from '../../lib/online';
+import OfflineBanner from '../../components/OfflineBanner';
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../../lib/i18n';
@@ -43,13 +45,16 @@ export default function JobsTab() {
   // Reloads keep the old list on screen until the new one arrives (no flashing, no replayed animation).
   const load = useCallback(async () => {
     try {
-      const [{ data: { user } }, mine] = await Promise.all([supabase.auth.getUser(), getMyJobs()]);
+      const [{ data: { session } }, mine] = await Promise.all([supabase.auth.getSession(), getMyJobs()]);
+      const user = session?.user;
       setMyId(user?.id);
       setJobs(mine);
       setFailed(false);
     } catch { setFailed(true); }
   }, []);
   useFocusRefresh(load);
+  const online = useOnline();
+  useEffect(() => whenBackOnline(load), [load]);
   useEffect(() => watchMyJobs(() => {
     load();
     techy.say(tRef.current('jobs.changedSay'), { tone: 'info', mood: 'wave' });
@@ -84,7 +89,8 @@ export default function JobsTab() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brand} colors={[c.brand]} />}
       >
         <Txt variant="title" accessibilityRole="header" style={{ marginBottom: 12 }}>{t('jobs.title')}</Txt>
-        {failed && <View style={{ marginBottom: 12 }}><Notice tone="error" text={t('jobs.loadFailed')} /></View>}
+        <OfflineBanner online={online} />
+        {failed && online && <View style={{ marginBottom: 12 }}><Notice tone="error" text={t('jobs.loadFailed')} /></View>}
         {showSkeleton && <View style={{ gap: 10 }}><SkeletonCard height={220} /><SkeletonCard /><SkeletonCard /></View>}
         {empty && (
           <View style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}>

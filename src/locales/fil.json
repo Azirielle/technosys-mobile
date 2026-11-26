@@ -510,6 +510,8 @@
     "lateBy": "{m} minutong late",
     "alreadyTitle": "Naka-time in ka na",
     "alreadyText": "Nag-time in ka nang {time} ngayon.",
+    "tooEarlyTitle": "Masyado pang maaga",
+    "tooEarlyText": "Bubukas ang time-in nang {time}, 1 oras bago magsimula ang trabaho mo.",
     "earlyTitle": "Aalis ka na nang maaga?",
     "earlyText": "Matatapos ang trabaho mo nang {end}. Kung magta-time out ka ngayon, {early} itong maaga at bibilangin bilang undertime.",
     "noJobTitle": "Walang trabaho ngayon",
@@ -639,6 +641,8 @@
     "useAnother": "Ibang numero"
   },
   "offline": {
+    "banner": "Offline ka. Ang mga trabaho ay ang huling na-load; ang time-in at time-out ay naka-save sa phone at ipapadala pagbalik ng signal.",
+    "bannerSaved": "{n} naka-save, naghihintay maipadala.",
     "inRefusedTitle": "Hindi tinanggap ang time-in",
     "outRefusedTitle": "Hindi tinanggap ang time-out",
     "refusedText": "Ang na-save mo nang {time} habang walang signal ay hindi tinanggap: {why}. Buksan ang app para subukan ulit o sabihan ang HR.",

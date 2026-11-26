@@ -13,6 +13,8 @@ import { manilaDay, type Job } from '../../lib/jobs';
 import { Card, ListRow, SectionLabel, TAB_BAR_HEIGHT, arrive, tourTarget, useReducedMotion, useTokens } from '../../ui';
 import { dateOf } from '../jobs/jobWords';
 import HomeHeader from './HomeHeader';
+import OfflineBanner from '../OfflineBanner';
+import { useOnline } from '../../lib/online';
 import TimeInCard, { ShiftState } from './TimeInCard';
 import TodayJob from './TodayJob';
 import QuickActions from './QuickActions';
@@ -53,6 +55,7 @@ export default function HomeBody(p: Props) {
   function go(path: string) { router.push(path as Href); }
   const isToday = !!p.job && manilaDay(p.job.start_time) === manilaDay(new Date());
 
+  const online = useOnline();
   return (
     <ScrollView
       contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: 8, paddingBottom: TAB_BAR_HEIGHT + insets.bottom + 40 }}
@@ -60,6 +63,7 @@ export default function HomeBody(p: Props) {
     >
       <Animated.View entering={arrive(0, reduced)}>
         <HomeHeader />
+        <OfflineBanner online={online} />
         <View ref={tourTarget('timeIn')} collapsable={false}>{/* Techy's tour points here */}
           <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} onOfficeCheckIn={p.onOfficeCheckIn} />
         </View>

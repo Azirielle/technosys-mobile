@@ -20,6 +20,7 @@ import WorkCheckSheet from './WorkCheckSheet';
 import EarlyTimeOutSheet from './EarlyTimeOutSheet';
 import JobProgressCard from './JobProgressCard';
 import FaceCheckSheet from '../face/FaceCheckSheet';
+import { whenBackOnline } from '../../lib/online';
 
 const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty', in_house: 'in_house' };
 
@@ -50,6 +51,8 @@ export default function WorkHome() {
   const [jobs, setJobs] = useState<MyJob[]>([]);
   const [hideForgotten, setHideForgotten] = useState(false);
   const loadJobs = useCallback(() => { getMyWorkJobs().then(setJobs).catch(() => {}); }, []);
+  // Signal back: saved punches were just sent, so load the real day and jobs
+  useEffect(() => whenBackOnline(() => { latest.current.reload().catch(() => {}); loadJobs(); }), [loadJobs]);
   useEffect(() => { loadJobs(); }, [loadJobs]);
   useFocusRefresh(() => { loadJobs(); work.reload().catch(() => {}); }, { onMount: false });
 
