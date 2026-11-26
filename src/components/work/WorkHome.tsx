@@ -10,7 +10,8 @@ import { onPunchRequest } from '../../lib/work/punchRequest';
 import { getMyWorkJobs, type MyJob } from '../../lib/work/workApi';
 import { manilaDay, watchMyJobs, type Job } from '../../lib/jobs';
 import { useT } from '../../lib/i18n';
-import { techy } from '../../ui';
+import { appAlert, techy } from '../../ui';
+import { router, type Href } from 'expo-router';
 import { previewLeftAt } from '../../lib/forgottenShift';
 import { startLocationUpdates } from '../../lib/liveLocation';
 import { useFocusRefresh } from '../../lib/useFocusRefresh';
@@ -52,6 +53,8 @@ export default function WorkHome() {
   useEffect(() => onPunchRequest((p) => setTimeout(() => (p === 'in' ? latest.current.startTimeIn() : latest.current.timeOut()), 800)), []);
   const [jobs, setJobs] = useState<MyJob[]>([]);
   const [hideForgotten, setHideForgotten] = useState(false);
+  // P1: any time-in (button, reminder push, arrival) refused for an open earlier day shows that day's window again
+  useEffect(() => { if (work.forgotNudge) setHideForgotten(false); }, [work.forgotNudge]);
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
@@ -64,7 +67,10 @@ export default function WorkHome() {
       const fresh = urgentSeen.current && urgent.find((j) => !urgentSeen.current!.has(j.id));
       if (fresh) {
         const at = new Date(`${fresh.start_date}T${fresh.start_time.slice(0, 8)}+08:00`);
-        techy.say(tRef.current('jobs.urgentSay', { client: fresh.client_name, when: at.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) }), { tone: 'error', mood: 'wave', ms: 8000 });
+        const text = tRef.current('jobs.urgentSay', { client: fresh.client_name, when: at.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) });
+        // P2: a pop-up the person can't miss (Techy's bubble didn't show on a real phone); Techy says it too
+        appAlert(tRef.current('jobs.urgentTitle'), text, [{ text: tRef.current('jobs.later') }, { text: tRef.current('jobs.openJobs'), onPress: () => router.push('/(tabs)/jobs' as Href) }]);
+        techy.say(text, { tone: 'error', mood: 'wave', ms: 8000 });
       }
       urgentSeen.current = new Set(urgent.map((j) => j.id));
       setJobs(list);
@@ -88,6 +94,7 @@ export default function WorkHome() {
     return startLocationUpdates(meId);
   }, [working, meId]);
 
+  const forgottenJob = jobs.find((j) => j.id === work.days.forgotten?.job_id);
   const forgotten = work.days.forgotten && !hideForgotten
     ? { id: work.days.forgotten.id, app_time_in: work.days.forgotten.time_in, app_time_out: null, total_hours: null, geofence_status: null }
     : null;
@@ -160,7 +167,7 @@ export default function WorkHome() {
         onRetry={() => work.selfie && work.sendSelfie(work.selfie.reason, true)} onTellHr={work.tellHr} onClose={work.closeProblem} />
       {work.face && <FaceCheckSheet enrolled={work.face.enrolled} onEnrolled={work.enrollFace} onDone={work.faceDone} />}
       <EarlyTimeOutSheet early={work.early} busy={work.busy} onTimeOut={(reason) => work.sendTimeOut(reason)} onClose={work.closeEarly} />
-      <ForgottenShiftSheet shift={forgotten}
+      <ForgottenShiftSheet shift={forgotten} jobStart={forgottenJob?.start_time} jobEnd={forgottenJob?.end_time}
         // Checked, not `forgotten!.`: the React Compiler reads that path on every render, which crashed Home when it was null
         onSave={async (time) => (forgotten ? work.saveLeftAt(previewLeftAt(new Date(forgotten.app_time_in), time).leftAt) : false)}
         onLater={() => setHideForgotten(true)} />

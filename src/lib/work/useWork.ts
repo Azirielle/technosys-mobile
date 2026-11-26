@@ -35,6 +35,8 @@ export function useWork() {
   const [selfie, setSelfie] = useState<{ uri: string; reason: string } | null>(null);
   const [sending, setSending] = useState<'selfie' | 'hr' | null>(null);
   const [busy, setBusy] = useState(false);
+  // Bumped when the server says an earlier day is still open: Home shows that day's window again (Round 5 P1)
+  const [forgotNudge, setForgotNudge] = useState(0);
   const [early, setEarly] = useState<{ endsAt: string; minutes: number } | null>(null);
   // The verified selfie after a time-in (components/face/FaceCheckSheet): for this work day, or for a saved time-in
   const [face, setFace] = useState<{ workDayId?: string; checkInId?: string; queuedAt?: string; enrolled: number[] | null } | null>(null);
@@ -95,7 +97,7 @@ export function useWork() {
         return setProblem({ open: true, kind: 'queued', gpsFound: !!here, inside: false });
       case 'in_house': setSheet(closed); return appAlert(t('jobs.inHouse'), t('home.inHouseNote'));
       case 'already': setSheet(closed); appAlert(t('work.alreadyTitle'), t('work.alreadyText', { time: timeText(r.time_in) })); return reload();
-      case 'forgot_time_out': setSheet(closed); return reload();
+      case 'forgot_time_out': setSheet(closed); setForgotNudge((n) => n + 1); return reload();
       case 'too_early': setSheet(closed); return appAlert(t('work.tooEarlyTitle'), t('work.tooEarlyText', { time: timeText(r.opens_at) }));
       case 'other_phone': setSheet(closed); return appAlert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
       case 'no_job':
@@ -223,7 +225,7 @@ export function useWork() {
   }
 
   return {
-    me, days, sheet, problem, selfie, sending, busy, reload, startTimeIn, startOfficeCheckIn, sendSelfie, tellHr, timeOut, saveLeftAt,
+    me, days, sheet, problem, selfie, sending, busy, forgotNudge, reload, startTimeIn, startOfficeCheckIn, sendSelfie, tellHr, timeOut, saveLeftAt,
     early, sendTimeOut, closeEarly: () => setEarly(null),
     face, faceDone, enrollFace: (uri: string, numbers: number[]) => (me ? enroll(me.id, uri, numbers) : Promise.reject(new Error('signed out'))),
     retry: () => startTimeIn(sheet.officeDuty),

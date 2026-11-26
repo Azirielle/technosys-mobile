@@ -44,7 +44,9 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
   const bar = useAnimatedStyle(() => ({ width: withTiming(`${progress * 100}%`, { duration: reduced ? 0 : 600 }) }), [progress, reduced]);
   const h = Math.floor(workedMs / 3600000), m = Math.floor((workedMs % 3600000) / 60000);
   const start = shift.kind === 'off' && shift.shiftStart ? new Date(shift.shiftStart) : new Date(new Date(now).setHours(8, 0, 0, 0));
-  const late = shift.kind === 'off' && now > start;
+  // P5: no job today means nobody expects you, so never "late" (it said late in red next to "No job scheduled")
+  const noJob = shift.kind === 'off' && !shift.shiftStart;
+  const late = shift.kind === 'off' && !noJob && now > start;
 
   const view = shift.kind === 'working'
     ? { tone: 'ok' as const, pill: t('home.working', { time: clock(new Date(shift.startedAt)) }), big: t('home.elapsed', { h, m }),
@@ -58,6 +60,8 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
     : shift.kind === 'in_house'
     ? { tone: 'pending' as const, pill: t('home.inHousePill'), big: clock(now),
         sub: shift.clientName ? `${shift.clientName} · ${t('home.inHouseSub')}` : t('home.inHouseSub') }
+    : noJob
+    ? { tone: 'pending' as const, pill: t('home.noJobPill'), big: clock(now), sub: t('home.noJobSub') }
     : { tone: late ? 'error' as const : 'pending' as const, pill: t(late ? 'home.notYetLate' : 'home.notYet'), big: clock(now),
         sub: t('home.shiftStarts', { time: clock(start) }) };
   // Not timed in: amber before the start, red once it has started, so it never looks like a switched-off card

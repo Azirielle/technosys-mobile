@@ -21,10 +21,20 @@ export async function findForgottenShift(userId: string): Promise<ShiftLog | nul
   return (stale as ShiftLog | undefined) ?? null;
 }
 
-/** Quick choices: 5, 6 and 7 PM (work ends at 5 PM). After a late-day time-in: 9, 10 and 11 hours later. */
-export function quickChoices(start: Date): { label: string; time: string }[] {
+/** Quick choices: the job's end and 1 and 2 hours later (Round 5 P4: a 5 PM time-in on a job ending at 10 PM was
+ *  offered 2, 3 and 4 AM). No job known: 5, 6 and 7 PM (work ends at 5 PM), or 9, 10 and 11 hours after a late time-in. */
+export function quickChoices(start: Date, jobEnd?: string | null, jobStart?: string | null): { label: string; time: string }[] {
   const at = (h: number) => new Date(new Date(start).setHours(h, 0, 0, 0));
-  const choices = start.getHours() < 15 ? [at(17), at(18), at(19)] : [9, 10, 11].map((h) => new Date(start.getTime() + h * HOUR));
+  let choices: Date[] | null = null;
+  if (jobEnd) {
+    const [h, m] = jobEnd.split(':').map((x) => parseInt(x, 10));
+    let end = new Date(start).setHours(h || 0, m || 0, 0, 0);
+    // Next day only for a job that itself runs past midnight (e.g. 20:00–04:00), not for a late time-in
+    if (end <= start.getTime() && !!jobStart && jobEnd < jobStart) end += 24 * HOUR;
+    if (end > start.getTime()) choices = [0, 1, 2].map((n) => new Date(end + n * HOUR));
+  }
+  // No job, or timed in after the job's end: 5, 6, 7 PM, or 9, 10, 11 hours after a late-day time-in
+  if (!choices) choices = start.getHours() < 15 ? [at(17), at(18), at(19)] : [9, 10, 11].map((h) => new Date(start.getTime() + h * HOUR));
   return choices.map((d) => ({ label: d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), time: hhmm(d) }));
 }
 

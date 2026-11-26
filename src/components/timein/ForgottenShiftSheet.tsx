@@ -9,13 +9,13 @@ import { hhmm, previewLeftAt, quickChoices } from '../../lib/forgottenShift';
 import type { ShiftLog } from '../../lib/timeIn';
 import { Button, IconChip, Txt, useTokens } from '../../ui';
 
-type Props = { shift: ShiftLog | null; onSave: (time: string) => Promise<boolean>; onLater: () => void };
+type Props = { shift: ShiftLog | null; onSave: (time: string) => Promise<boolean>; onLater: () => void; /** That day's job start and end, "HH:MM:SS" */ jobStart?: string | null; jobEnd?: string | null };
 
-export default function ForgottenShiftSheet({ shift, onSave, onLater }: Props) {
+export default function ForgottenShiftSheet({ shift, onSave, onLater, jobStart, jobEnd }: Props) {
   const t = useT();
   const { c, radius } = useTokens();
   const start = useMemo(() => (shift ? new Date(shift.app_time_in) : null), [shift]);
-  const choices = useMemo(() => (start ? quickChoices(start) : []), [start]);
+  const choices = useMemo(() => (start ? quickChoices(start, jobEnd, jobStart) : []), [start, jobEnd, jobStart]);
   const [time, setTime] = useState('17:00');
   const [custom, setCustom] = useState(false);
   const [picking, setPicking] = useState(false);
