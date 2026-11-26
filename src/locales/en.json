@@ -652,6 +652,11 @@
     "whyOther": "the office couldn't confirm it"
   },
   "face": {
+    "step": "Step {n} of 3",
+    "hintNoFace": "Put your face inside the oval",
+    "hintStraight": "Look straight at the camera",
+    "hintMore": "A little more…",
+    "hintGood": "Good, hold still",
     "look": "Look at the camera",
     "enrollLook": "Look at the camera. Hold still for 3 photos.",
     "enrollNote": "First time: your face is saved once. Every time-in after this is compared with it.",

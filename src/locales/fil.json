@@ -652,6 +652,11 @@
     "whyOther": "hindi ito makumpirma ng opisina"
   },
   "face": {
+    "step": "Hakbang {n} sa 3",
+    "hintNoFace": "Ilagay ang mukha sa loob ng bilog",
+    "hintStraight": "Tumingin nang diretso sa camera",
+    "hintMore": "Kaunti pa…",
+    "hintGood": "Ayos, huwag gumalaw",
     "look": "Tumingin sa camera",
     "enrollLook": "Tumingin sa camera. Huwag gumalaw para sa 3 litrato.",
     "enrollNote": "Unang beses: isang beses lang ise-save ang mukha mo. Ihahambing dito ang bawat time-in pagkatapos.",
