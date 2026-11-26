@@ -92,7 +92,7 @@ export default function TechyDock({ onAsk }: { onAsk: () => void }) {
 
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom, 10) + TAB_BAR_HEIGHT + 14 }}>
-      <Animated.View {...pan.panHandlers} style={[{ position: 'absolute', bottom: 0, width: SIZE, height: SIZE * 0.92, [side]: 2, opacity: away ? 0 : 1 }, shadow.raised, dock]}>
+      <Animated.View {...pan.panHandlers} style={[{ position: 'absolute', bottom: 0, width: SIZE, height: SIZE * 0.92, [side]: 2, opacity: away ? 0 : 1, overflow: 'visible' }, shadow.raised, dock]}>
         <Pressable onPress={onAsk} accessibilityRole="button" accessibilityLabel="Techy, your helper. Tap to ask a question." accessibilityHint="Drag sideways to move it to the other edge">
           <View style={{ transform: [{ scaleX: side === 'left' ? -1 : 1 }] }}>
             <Techy mood={mood} size={SIZE} />
@@ -104,7 +104,8 @@ export default function TechyDock({ onAsk }: { onAsk: () => void }) {
             exiting={FadeOut.duration(150)}
             pointerEvents="none"
             style={[{
-              position: 'absolute', top: 4, [side === 'right' ? 'right' : 'left']: SIZE - 2, maxWidth: 200,
+              // P2: a fixed width; inside Techy's small box the bubble shrank to nothing on Android
+              position: 'absolute', top: 4, [side === 'right' ? 'right' : 'left']: SIZE - 2, width: 200,
               backgroundColor: c.card, paddingHorizontal: 11, paddingVertical: 8,
               borderRadius: 14, [side === 'right' ? 'borderBottomRightRadius' : 'borderBottomLeftRadius']: 4,
             }, shadow.raised]}

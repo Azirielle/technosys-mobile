@@ -28,7 +28,8 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
   const [celebrate, setCelebrate] = useState(0);
   const lastKind = useRef(shift.kind);
 
-  useEffect(() => { const id = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(id); }, []);
+  // P8: tick every 5 s so the big clock changes within seconds of the phone's (every 30 s it could lag almost a minute)
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 5000); return () => clearInterval(id); }, []);
   useEffect(() => {
     if (lastKind.current !== shift.kind && shift.kind !== 'off') {
       setCelebrate((n) => n + 1);
