@@ -30,7 +30,7 @@ export function onInboxRead(cb: () => void): () => void { readListeners.add(cb);
 
 // What you've opened is kept in the database (inbox_reads), so a reinstall or a new phone remembers it; the phone's own
 // copy covers no signal, and anything only the phone knows (from before the database kept it) is sent up once.
-async function readIds(userId: string): Promise<Set<string>> {
+export async function readIds(userId: string): Promise<Set<string>> {
   let local: string[] = [];
   try { local = JSON.parse((await AsyncStorage.getItem(readKey(userId))) ?? '[]'); } catch { /* none yet */ }
   const { data, error } = await supabase.from('inbox_reads').select('item_id').eq('user_id', userId);

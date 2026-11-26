@@ -155,6 +155,8 @@ export function watchMyJobs(onChange: () => void): () => void {
   const channel = supabase
     .channel(`my-jobs-${Date.now()}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: WORK_V2 ? 'jobs' : 'schedules' }, () => onChange())
+    // Being added to (or taken off) a job changes job_members, not jobs (C2: an urgent job showed only after a refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'job_members' }, () => onChange())
     .subscribe();
   return () => { supabase.removeChannel(channel); };
 }

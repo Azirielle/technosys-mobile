@@ -44,10 +44,11 @@ export default function UpdatesScreen() {
           const long = !id && u.content.length > 160;
           const isOpen = !!id || !!open[u.id];
           return (
-            <Card key={u.id} style={{ gap: 6 }}>
+            <Card key={u.id} style={{ gap: 6, ...(u.read ? { opacity: 0.75 } : { backgroundColor: c.infoBg, borderLeftWidth: 4, borderLeftColor: c.info }) }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Txt variant="caption" color="ink2" style={{ flex: 1 }} numberOfLines={1}>{[u.author ?? t('updates.office'), ago(u.createdAt, t)].join(' · ')}</Txt>
-                {u.important && <StatusText tone="error" label={t('updates.important')} />}
+                {u.priority !== 'normal' && <StatusText tone={u.priority === 'urgent' ? 'error' : 'pending'} label={t(u.priority === 'urgent' ? 'updates.urgent' : 'updates.important')} />}
+                {!u.read && <StatusText tone="info" label={t('inbox.new')} />}
               </View>
               <Txt variant="heading">{u.title}</Txt>
               <Txt variant="body" color="ink2" style={{ fontSize: 15, lineHeight: 22 }} numberOfLines={isOpen ? undefined : 4}>{u.content}</Txt>

@@ -64,6 +64,7 @@ export default function InboxScreen() {
                 ? <StatusText tone={item.decision === 'Approved' ? 'ok' : item.decision === 'Refused' ? 'error' : 'info'} label={item.decision === 'Approved' ? t('inbox.approved') : item.decision === 'Refused' ? t('inbox.refused') : item.decision} />
                 : <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: item.read ? c.ink3 : c.error }} accessibilityLabel={item.read ? undefined : t('inbox.new')} />}
               onPress={() => open(item)}
+              unread={!item.read}
               last={i === items.length - 1}
             />
             </View>

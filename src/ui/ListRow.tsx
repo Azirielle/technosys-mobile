@@ -9,6 +9,7 @@ import IconChip from './IconChip';
 import PressableScale from './PressableScale';
 import Txt from './Txt';
 import { useTokens } from './useTokens';
+import { fonts } from './tokens';
 
 type Props = {
   icon: React.ComponentProps<typeof Feather>['name'];
@@ -21,16 +22,18 @@ type Props = {
   value?: string;
   danger?: boolean;
   leading?: React.ReactNode; // replaces the icon chip (a tool photo, an avatar)
+  /** Inbox read state, like a chat app: true = highlighted and bold, false = greyed. Leave out for other lists. */
+  unread?: boolean;
 };
 
-export default function ListRow({ icon, title, subtitle, right, onPress, last, look = 'default', value, danger, leading }: Props) {
+export default function ListRow({ icon, title, subtitle, right, onPress, last, look = 'default', value, danger, leading, unread }: Props) {
   const { c } = useTokens();
   const settings = look === 'settings';
   const body = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: settings ? 7 : 11, paddingHorizontal: 14, borderBottomWidth: last || settings ? 0 : 1, borderBottomColor: c.line }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: settings ? 7 : 11, paddingHorizontal: 14, borderBottomWidth: last || settings ? 0 : 1, borderBottomColor: c.line, backgroundColor: unread ? c.infoBg : undefined, opacity: unread === false ? 0.7 : 1 }}>
       {leading ?? <IconChip icon={icon} size={settings ? 'md' : 'sm'} tone={danger ? 'danger' : settings ? 'neutral' : 'brand'} />}
       <View style={{ flex: 1 }}>
-        <Txt variant="body" numberOfLines={1} style={danger ? { color: c.error } : undefined}>{title}</Txt>
+        <Txt variant="body" numberOfLines={1} style={[danger && { color: c.error }, unread && { fontFamily: fonts.semibold }, unread === false && { color: c.ink2 }]}>{title}</Txt>
         {!!subtitle && <Txt variant="caption" color="ink2" numberOfLines={1}>{subtitle}</Txt>}
       </View>
       {!!value && <Txt variant="body" color="ink2" numberOfLines={1} style={{ fontSize: 14, maxWidth: '45%' }}>{value}</Txt>}

@@ -19,15 +19,17 @@ export type MyTool = {
   reported: boolean;
 };
 
-export type MyToolLists = { withYou: MyTool[]; returned: MyTool[] };
+/** A tool request not answered yet (C5: shown under My tools as waiting). */
+export type ToolAsk = { ref: string; tool: string; howMany: number; at: string };
+export type MyToolLists = { withYou: MyTool[]; returned: MyTool[]; requested: ToolAsk[] };
 let lastLoaded: MyToolLists | null = null; // so My tools reopens instantly and the report screen finds its tool
 export const getLoadedTools = () => lastLoaded;
 export const getLoadedTool = (id: string) => lastLoaded?.withYou.find((x) => x.id === id) ?? null;
 
 export async function getMyTools(): Promise<MyToolLists> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { withYou: [], returned: [] };
-  const [{ data, error }, { data: reports }] = await Promise.all([
+  if (!user) return { withYou: [], returned: [], requested: [] };
+  const [{ data, error }, { data: reports }, { data: asks }] = await Promise.all([
     supabase
       .from('tool_borrowings')
       .select('id, quantity, status, handed_over_at, returned_at, tool:tools ( name, category, serial_number, image_url ), unit:tool_units ( tag )')
@@ -35,6 +37,7 @@ export async function getMyTools(): Promise<MyToolLists> {
       .order('handed_over_at', { ascending: false })
       .limit(40),
     supabase.from('tickets').select('title').eq('employee_id', user.id).eq('category', 'Equipment / Tools').neq('status', 'resolved'),
+    supabase.from('tickets').select('id, description, created_at').eq('employee_id', user.id).eq('category', 'Tool request').in('status', ['open', 'in_progress']).order('created_at', { ascending: false }),
   ]);
   if (error) throw error;
   // shortcut: a report is matched to the tool by its title ("Tool problem: <name>"), so two borrowings of the same
@@ -49,7 +52,9 @@ export async function getMyTools(): Promise<MyToolLists> {
       reported: reported.has(tool?.name ?? 'Tool'),
     };
   });
-  lastLoaded = { withYou: tools.filter((x) => x.status === 'checked_out'), returned: tools.filter((x) => x.status !== 'checked_out').slice(0, 10) };
+  const line = (text: string, label: string) => text.split('\n').find((l) => l.startsWith(`${label}: `))?.slice(label.length + 2) ?? '';
+  const requested = (asks ?? []).map((a) => ({ ref: `#${a.id.slice(0, 8).toUpperCase()}`, tool: line(a.description, 'Tool'), howMany: Number(line(a.description, 'How many')) || 1, at: a.created_at ?? '' }));
+  lastLoaded = { withYou: tools.filter((x) => x.status === 'checked_out'), returned: tools.filter((x) => x.status !== 'checked_out').slice(0, 10), requested };
   return lastLoaded;
 }
 
@@ -77,12 +82,23 @@ export async function getToolCatalog(): Promise<CatalogTool[]> {
 }
 
 /** Asks the Coordinator for a tool: a "Tool request" ticket (the Coordinator lends it, or says why not). */
-export async function requestTool(tool: CatalogTool, howMany: number, neededOn: string, why: string): Promise<string | null> {
+export async function requestTool(tool: CatalogTool, howMany: number, neededOn: string, why: string, delivery: 'pickup' | 'driver'): Promise<string | null> {
   return fileTicket({
     category: 'Tool request',
     title: `Tool request: ${tool.name}`,
-    description: [`Tool: ${tool.name}`, `How many: ${howMany}`, `Needed on: ${neededOn}`, why.trim() ? `Why: ${why.trim()}` : null].filter(Boolean).join('\n'),
+    description: [`Tool: ${tool.name}`, `How many: ${howMany}`, `Needed on: ${neededOn}`, `Delivery: ${delivery}`, why.trim() ? `Why: ${why.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-  }, (r) => `I asked for a tool: ${tool.name} (ticket ${r}). The Coordinator will reply here.`);
+  }, (r) => `I asked for a tool: ${howMany} × ${tool.name} (ticket ${r}). The Coordinator will reply here.`);
+}
+
+/** Several tools at once (C5): one request per kind of tool, so the Coordinator lends each as usual. Ticket numbers, or null if none went. */
+export async function requestTools(picks: { tool: CatalogTool; howMany: number }[], neededOn: string, why: string, delivery: 'pickup' | 'driver'): Promise<string[] | null> {
+  const refs: string[] = [];
+  for (const p of picks) {
+    const ref = await requestTool(p.tool, p.howMany, neededOn, why, delivery);
+    if (!ref) return refs.length ? refs : null;
+    refs.push(ref);
+  }
+  return refs;
 }
 

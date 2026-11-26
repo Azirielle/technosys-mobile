@@ -8,7 +8,9 @@ import { getDistance } from 'geolib';
 import { useWork } from '../../lib/work/useWork';
 import { onPunchRequest } from '../../lib/work/punchRequest';
 import { getMyWorkJobs, type MyJob } from '../../lib/work/workApi';
-import { manilaDay, type Job } from '../../lib/jobs';
+import { manilaDay, watchMyJobs, type Job } from '../../lib/jobs';
+import { useT } from '../../lib/i18n';
+import { techy } from '../../ui';
 import { previewLeftAt } from '../../lib/forgottenShift';
 import { startLocationUpdates } from '../../lib/liveLocation';
 import { useFocusRefresh } from '../../lib/useFocusRefresh';
@@ -50,7 +52,26 @@ export default function WorkHome() {
   useEffect(() => onPunchRequest((p) => setTimeout(() => (p === 'in' ? latest.current.startTimeIn() : latest.current.timeOut()), 800)), []);
   const [jobs, setJobs] = useState<MyJob[]>([]);
   const [hideForgotten, setHideForgotten] = useState(false);
-  const loadJobs = useCallback(() => { getMyWorkJobs().then(setJobs).catch(() => {}); }, []);
+  const t = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
+  // Urgent (VIP) and high-priority jobs already seen; a new one for you is announced by Techy (C1). null = first load.
+  const urgentSeen = useRef<Set<string> | null>(null);
+  const loadJobs = useCallback(() => {
+    getMyWorkJobs().then((list) => {
+      const today = manilaDay(new Date());
+      const urgent = list.filter((j) => j.mine && j.status !== 'cancelled' && j.end_date >= today && (j.is_vip || j.priority === 'high'));
+      const fresh = urgentSeen.current && urgent.find((j) => !urgentSeen.current!.has(j.id));
+      if (fresh) {
+        const at = new Date(`${fresh.start_date}T${fresh.start_time.slice(0, 8)}+08:00`);
+        techy.say(tRef.current('jobs.urgentSay', { client: fresh.client_name, when: at.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) }), { tone: 'error', mood: 'wave', ms: 8000 });
+      }
+      urgentSeen.current = new Set(urgent.map((j) => j.id));
+      setJobs(list);
+    }).catch(() => {});
+  }, []);
+  // C2: the office adds you to a job or changes it → Home updates by itself, no refresh
+  useEffect(() => watchMyJobs(() => { loadJobs(); latest.current.reload().catch(() => {}); }), [loadJobs]);
   // Signal back: saved punches were just sent, so load the real day and jobs
   useEffect(() => whenBackOnline(() => { latest.current.reload().catch(() => {}); loadJobs(); }), [loadJobs]);
   useEffect(() => { loadJobs(); }, [loadJobs]);

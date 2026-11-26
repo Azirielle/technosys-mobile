@@ -35,6 +35,18 @@ export default function ToolsScreen() {
       {!lists && !failed && <Card padded={false}><SkeletonRow /><SkeletonRow /></Card>}
       {lists && (
         <>
+          {lists.requested.length > 0 && (
+            <>
+              <SectionLabel>{t('tools.requested', { n: lists.requested.length })}</SectionLabel>
+              <Card padded={false}>
+                {lists.requested.map((r, i) => (
+                  <ListRow key={r.ref} icon="clock" title={`${r.howMany} × ${r.tool}`}
+                    subtitle={`${r.ref} · ${new Date(r.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}`}
+                    right={<StatusText tone="pending" label={t('tools.waiting')} />} last={i === lists.requested.length - 1} />
+                ))}
+              </Card>
+            </>
+          )}
           <SectionLabel>{t('tools.withYou', { n: lists.withYou.length })}</SectionLabel>
           {lists.withYou.length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 24, gap: 6 }}>
