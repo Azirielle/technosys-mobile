@@ -12,6 +12,8 @@ export type MyTool = {
   name: string;
   category: string | null;
   serial: string | null;
+  /** The tool's own ID from the warehouse, e.g. TC-DEW-0003 */
+  tag: string | null;
   imageUrl: string | null;
   /** You reported a problem with it and HR hasn't closed the report yet */
   reported: boolean;
@@ -28,7 +30,7 @@ export async function getMyTools(): Promise<MyToolLists> {
   const [{ data, error }, { data: reports }] = await Promise.all([
     supabase
       .from('tool_borrowings')
-      .select('id, quantity, status, handed_over_at, returned_at, tool:tools ( name, category, serial_number, image_url )')
+      .select('id, quantity, status, handed_over_at, returned_at, tool:tools ( name, category, serial_number, image_url ), unit:tool_units ( tag )')
       .eq('technician_id', user.id)
       .order('handed_over_at', { ascending: false })
       .limit(40),
@@ -40,9 +42,10 @@ export async function getMyTools(): Promise<MyToolLists> {
   const reported = new Set((reports ?? []).map((r) => r.title.replace(/^Tool problem: /, '')));
   const tools: MyTool[] = (data ?? []).map((b) => {
     const tool = (Array.isArray(b.tool) ? b.tool[0] : b.tool) as { name?: string; category?: string; serial_number?: string; image_url?: string } | null;
+    const unit = (Array.isArray(b.unit) ? b.unit[0] : b.unit) as { tag?: string } | null;
     return {
       id: b.id, status: b.status ?? 'checked_out', quantity: b.quantity ?? 1, handedOverAt: b.handed_over_at, returnedAt: b.returned_at,
-      name: tool?.name ?? 'Tool', category: tool?.category ?? null, serial: tool?.serial_number ?? null, imageUrl: tool?.image_url ?? null,
+      name: tool?.name ?? 'Tool', category: tool?.category ?? null, serial: tool?.serial_number ?? null, tag: unit?.tag ?? null, imageUrl: tool?.image_url ?? null,
       reported: reported.has(tool?.name ?? 'Tool'),
     };
   });
@@ -58,7 +61,7 @@ export async function reportToolProblem(tool: MyTool, problem: string, note: str
   const ref = await fileTicket({
     category: 'Equipment / Tools',
     title: `Tool problem: ${tool.name}`,
-    description: [`Tool: ${tool.name}${tool.serial ? ` (SN ${tool.serial})` : ''}`, `Problem: ${problem}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
+    description: [`Tool: ${tool.name}${tool.tag ? ` (${tool.tag})` : tool.serial ? ` (SN ${tool.serial})` : ''}`, `Problem: ${problem}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
   }, (r) => `Your tool report is sent (ticket ${r}). The office will reply here.`);
   return ref !== null;

@@ -1990,6 +1990,8 @@ export type Database = {
           status: string | null
           technician_id: string | null
           tool_id: string | null
+          unit_id: string | null
+          delivery: string | null
         }
         Insert: {
           condition_notes?: string | null
@@ -2004,6 +2006,8 @@ export type Database = {
           status?: string | null
           technician_id?: string | null
           tool_id?: string | null
+          unit_id?: string | null
+          delivery?: string | null
         }
         Update: {
           condition_notes?: string | null
@@ -2018,8 +2022,11 @@ export type Database = {
           status?: string | null
           technician_id?: string | null
           tool_id?: string | null
+          unit_id?: string | null
+          delivery?: string | null
         }
         Relationships: [
+          { foreignKeyName: "tool_borrowings_unit_id_fkey"; columns: ["unit_id"]; isOneToOne: false; referencedRelation: "tool_units"; referencedColumns: ["id"] },
           {
             foreignKeyName: "tool_borrowings_received_by_fkey"
             columns: ["received_by"]
@@ -2041,6 +2048,14 @@ export type Database = {
             referencedRelation: "tools"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      tool_units: {
+        Row: { created_at: string; id: string; status: string; tag: string; tool_id: string; updated_at: string }
+        Insert: { created_at?: string; id?: string; status?: string; tag: string; tool_id: string; updated_at?: string }
+        Update: { created_at?: string; id?: string; status?: string; tag?: string; tool_id?: string; updated_at?: string }
+        Relationships: [
+          { foreignKeyName: "tool_units_tool_id_fkey"; columns: ["tool_id"]; isOneToOne: false; referencedRelation: "tools"; referencedColumns: ["id"] },
         ]
       }
       tools: {
@@ -2327,6 +2342,11 @@ export type Database = {
         }
         Returns: Json
       }
+      lend_tool_units: {
+        Args: { p_delivery?: string; p_notes?: string; p_technician_id: string; p_unit_ids: string[] }
+        Returns: Json
+      }
+      decide_tool_unit: { Args: { p_back_in_service: boolean; p_unit_id: string }; Returns: Json }
       check_in_tool: {
         Args: {
           p_borrowing_id: string

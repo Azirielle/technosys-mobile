@@ -22,7 +22,7 @@ export default function ToolsScreen() {
   }, []);
   useFocusRefresh(load);
 
-  const sub = (x: MyTool) => [x.category, x.serial ? `SN ${x.serial}` : null].filter(Boolean).join(' · ') || undefined;
+  const sub = (x: MyTool) => [x.tag, x.category, x.serial ? `SN ${x.serial}` : null].filter(Boolean).join(' · ') || undefined;
   const photo = (x: MyTool) => x.imageUrl
     ? <Image source={{ uri: x.imageUrl }} style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: c.cardSoft }} />
     : <IconChip icon="tool" />;
