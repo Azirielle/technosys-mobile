@@ -4,7 +4,7 @@
 //   no signal → the phone's own check (lib/work/offlineCheck), then saved on the phone, selfie too · too early → when it opens · no job → office duty? · other phone · forgot
 //   driver away from HQ → bring the vehicle back, or call the Coordinator
 //   time out early (15+ min before the end) → say why; the Coordinator checks it
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router, type Href } from 'expo-router';
@@ -17,6 +17,7 @@ import { getMyDays, myUserId, reportLeftAt, uploadWorkSelfie, workTimeIn, workTi
 import type { Problem } from '../useTimeIn';
 import { keepSelfie } from './offlineResult';
 import { enroll, flagNoFace, keepForLater, myFace, NO_FACE, sendFaceCheck, sendOfficeFaceCheck, type FaceResult } from '../face/faceCheck';
+import { FACE_TRIES, facePassed } from '../face/facePass';
 import { techy, appAlert } from '../../ui';
 
 export type OutsideState = {
@@ -38,28 +39,45 @@ export function useWork() {
   // Bumped when the server says an earlier day is still open: Home shows that day's window again (Round 5 P1)
   const [forgotNudge, setForgotNudge] = useState(0);
   const [early, setEarly] = useState<{ endsAt: string; minutes: number } | null>(null);
-  // The verified selfie after a time-in (components/face/FaceCheckSheet): for this work day, or for a saved time-in
-  const [face, setFace] = useState<{ workDayId?: string; checkInId?: string; queuedAt?: string; enrolled: number[] | null } | null>(null);
+  // The face check BEFORE a time-in (components/face/FaceCheckSheet; Andrew 27 Nov: like Face ID). No time-in until the
+  // face matches and the head turns; after 3 failed tries it goes through, flagged for HR, so nobody is stuck at a site.
+  const [face, setFace] = useState<{ enrolled: number[] | null; tries: number; resolve: (r: FaceResult | null | 'cancel') => void } | null>(null);
+  // The last answer, sent with the time-in it was for; reused for 10 min so Try again / selfie / office duty don't ask again
+  const checked = useRef<{ r: FaceResult | null; at: number } | null>(null);
 
-  async function startFace(target: { workDayId?: string; checkInId?: string; queuedAt?: string }) {
-    if (!me) return;
-    setFace({ ...target, enrolled: await myFace(me.id).catch(() => null) });
+  /** Asks for the face (or reuses a fresh answer). 'cancel' = the person stopped: no time-in. */
+  async function askFace(): Promise<FaceResult | null | 'cancel'> {
+    if (checked.current && Date.now() - checked.current.at < 10 * 60_000) return checked.current.r;
+    const enrolled = me ? await myFace(me.id).catch(() => null) : null;
+    const r = await new Promise<FaceResult | null | 'cancel'>((resolve) => setFace({ enrolled, tries: 1, resolve }));
+    if (r !== 'cancel') checked.current = { r, at: Date.now() };
+    return r;
   }
 
-  /** The face step finished: send it now, or keep it with the saved time-in */
-  async function faceDone(r: FaceResult | null) {
-    const target = face;
+  /** The sheet finished one try: pass, try again, or (after the last try) go through for HR to check */
+  function faceDone(r: FaceResult | null) {
+    const f = face;
     setFace(null);
-    remindRules();
-    if (!target) return;
-    if (!r) { // no face found or no head turns: never silent, the Coordinator checks it (Round 6)
-      if (target.workDayId) await flagNoFace(target.workDayId).catch(() => null);
-      else if (target.queuedAt) await keepForLater(target.queuedAt, NO_FACE).catch(() => {});
-      return;
+    if (!f) return;
+    const passed = facePassed(r, !!f.enrolled);
+    if (passed || f.tries >= FACE_TRIES) {
+      if (!passed) appAlert(t('face.lastTitle'), t('face.lastText'));
+      return f.resolve(r);
     }
-    if (target.workDayId) await sendFaceCheck(target.workDayId, r).catch(() => null);
-    else if (target.checkInId) await sendOfficeFaceCheck(target.checkInId, r).catch(() => null);
-    else if (target.queuedAt) await keepForLater(target.queuedAt, r).catch(() => {});
+    const why = !r ? 'face.failNoFace' : !r.live ? 'face.failNoTurn' : 'face.failMismatch';
+    appAlert(t('face.failTitle'), t(why, { n: f.tries }), [
+      { text: t('common.cancel'), style: 'cancel', onPress: () => f.resolve('cancel') },
+      { text: t('face.tryAgain'), onPress: () => setFace({ ...f, tries: f.tries + 1 }) },
+    ]);
+  }
+
+  /** The time-in was saved: send the face answer with it. No answer = flagged for the Coordinator (Round 6). */
+  async function sendFace(target: { workDayId?: string; checkInId?: string; queuedAt?: string }) {
+    const r = checked.current?.r ?? null;
+    checked.current = null;
+    if (target.workDayId) await (r ? sendFaceCheck(target.workDayId, r) : flagNoFace(target.workDayId)).catch(() => null);
+    else if (target.checkInId && r) await sendOfficeFaceCheck(target.checkInId, r).catch(() => null);
+    else if (target.queuedAt) await keepForLater(target.queuedAt, r ?? NO_FACE).catch(() => {});
   }
 
   const reload = useCallback(async () => {
@@ -86,10 +104,9 @@ export function useWork() {
       case 'timed_in':
         techy.react('cheer');
         setSheet((s) => ({ ...s, open: true, step: 'done', lateMinutes: Number(r.late_minutes ?? 0) }));
-        setTimeout(() => {
-          setSheet(closed);
-          if (!r.face_already_checked) startFace({ workDayId: String(r.work_day_id) });
-        }, 1800);
+        setTimeout(() => { setSheet(closed); remindRules(); }, 1800);
+        if (r.face_already_checked) checked.current = null; // checked at the office this morning
+        else sendFace({ workDayId: String(r.work_day_id) });
         return reload();
       case 'outside': case 'fake_gps': case 'need_selfie':
         return setSheet({ open: true, step: 'outside', here, officeDuty, why: r.status === 'need_selfie' ? 'no_location' : (r.status as 'outside' | 'fake_gps'),
@@ -97,7 +114,7 @@ export function useWork() {
           place: r.place_lat != null ? { name: String(r.place_name), lat: Number(r.place_lat), lon: Number(r.place_lon), radius: Number(r.radius_m) } : null });
       case 'queued':
         setSheet(closed);
-        if (r.queued_at) startFace({ queuedAt: String(r.queued_at) });
+        if (r.queued_at) sendFace({ queuedAt: String(r.queued_at) });
         reload().catch(() => {}); // the card shows the saved time-in as timed in, waiting to send
         return setProblem({ open: true, kind: 'queued', gpsFound: !!here, inside: false });
       case 'in_house': setSheet(closed); return appAlert(t('jobs.inHouse'), t('home.inHouseNote'));
@@ -120,6 +137,7 @@ export function useWork() {
     if (!me) return;
     // An earlier day is still open: the server would refuse (also a saved offline one), so ask for that time-out first
     if (days.forgotten) { setForgotNudge((n) => n + 1); return; }
+    if (!days.officeCheckIn && (await askFace()) === 'cancel') return; // checked at the office already
     setSheet({ ...closed, open: true, officeDuty });
     const found = await locateMe().catch(() => 'no_gps' as const);
     if (found === 'no_permission') {
@@ -133,7 +151,7 @@ export function useWork() {
 
   /** Check in at Pacita office before leaving for the on-site job */
   async function startOfficeCheckIn() {
-    if (!me) return;
+    if (!me || (await askFace()) === 'cancel') return;
     setBusy(true);
     const found = await locateMe().catch(() => 'no_gps' as const);
     const here = typeof found === 'string' ? null : found;
@@ -143,9 +161,11 @@ export function useWork() {
       techy.react('cheer');
       appAlert(t('home.checkedInOfficeTitle'), t('home.checkedInOfficeMsg'));
       await reload();
-      if (r.check_in_id) startFace({ checkInId: String(r.check_in_id) });
+      if (r.check_in_id) sendFace({ checkInId: String(r.check_in_id) });
     } else if (r.status === 'queued') {
-      if (r.queued_at) startFace({ queuedAt: String(r.queued_at) });
+      // a saved office check-in keeps only a real face answer (lib/syncQueue sends it with the check-in)
+      if (r.queued_at && checked.current?.r) sendFace({ queuedAt: String(r.queued_at) });
+      else checked.current = null;
       setProblem({ open: true, kind: 'queued', gpsFound: !!here, inside: false });
     } else if (r.status === 'outside') {
       appAlert(t('home.outsideOfficeTitle'), t('home.outsideOfficeMsg', { distance: r.distance_m != null ? String(r.distance_m) : '—' }));

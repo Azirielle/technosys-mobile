@@ -676,7 +676,14 @@
     "turnLeft": "Now turn your head a little to the left",
     "turnRight": "Now turn your head a little to the right",
     "checking": "Checking…",
-    "why": "This proves it's you at the site. It never stops your time-in."
+    "why": "This proves it is really you. You can time in once your face matches.",
+    "failTitle": "Face not matched",
+    "failNoFace": "We could not see your face. Find good light and keep your face inside the oval. Try {n} of 3.",
+    "failNoTurn": "We did not see your head turn left and right. Try {n} of 3.",
+    "failMismatch": "Your face does not match the face saved for you. Try {n} of 3.",
+    "tryAgain": "Try again",
+    "lastTitle": "Timing you in for review",
+    "lastText": "Your face did not match after 3 tries. You can still time in, but HR will check it."
   },
   "issue": {
     "title": "Report a problem",

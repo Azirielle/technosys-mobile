@@ -676,7 +676,14 @@
     "turnLeft": "Ngayon, ibaling nang kaunti ang ulo pakaliwa",
     "turnRight": "Ngayon, ibaling nang kaunti ang ulo pakanan",
     "checking": "Sinusuri…",
-    "why": "Patunay ito na ikaw ang nasa site. Hindi nito pipigilan ang time-in mo."
+    "why": "Patunay ito na ikaw talaga. Makakapag-time in ka kapag tugma ang mukha mo.",
+    "failTitle": "Hindi tugma ang mukha",
+    "failNoFace": "Hindi namin makita ang mukha mo. Humanap ng maliwanag na lugar at ilagay ang mukha sa loob ng bilog. Subok {n} sa 3.",
+    "failNoTurn": "Hindi namin nakita na ibinaling mo ang ulo pakaliwa at pakanan. Subok {n} sa 3.",
+    "failMismatch": "Hindi tugma ang mukha mo sa naka-save na mukha mo. Subok {n} sa 3.",
+    "tryAgain": "Subukan ulit",
+    "lastTitle": "Ita-time in ka para masuri",
+    "lastText": "Hindi tugma ang mukha mo pagkatapos ng 3 subok. Puwede ka pa ring mag-time in, pero susuriin ito ng HR."
   },
   "issue": {
     "title": "Mag-report ng problema",

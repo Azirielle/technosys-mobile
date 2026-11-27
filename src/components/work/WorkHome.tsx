@@ -165,7 +165,7 @@ export default function WorkHome() {
         onRetry={work.retry} onSelfie={(reason) => work.sendSelfie(reason)} onClose={work.closeSheet} />
       <TimeInProblemSheet problem={work.problem} sending={work.sending}
         onRetry={() => work.selfie && work.sendSelfie(work.selfie.reason, true)} onTellHr={work.tellHr} onClose={work.closeProblem} />
-      {work.face && <FaceCheckSheet enrolled={work.face.enrolled} onEnrolled={work.enrollFace} onDone={work.faceDone} />}
+      {work.face && <FaceCheckSheet key={work.face.tries} enrolled={work.face.enrolled} onEnrolled={work.enrollFace} onDone={work.faceDone} />}
       <EarlyTimeOutSheet early={work.early} busy={work.busy} onTimeOut={(reason) => work.sendTimeOut(reason)} onClose={work.closeEarly} />
       <ForgottenShiftSheet shift={forgotten} jobStart={forgottenJob?.start_time} jobEnd={forgottenJob?.end_time}
         // Checked, not `forgotten!.`: the React Compiler reads that path on every render, which crashed Home when it was null

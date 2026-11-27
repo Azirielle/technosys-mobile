@@ -1,11 +1,11 @@
-// FaceCheckSheet: the verified selfie right after a time-in (CONSULTATION_FIXES B15, C3). Full-screen front camera
+// FaceCheckSheet: the face check before a time-in (CONSULTATION_FIXES B15, C3; lib/work/useWork decides pass / try again). Full-screen front camera
 // with an oval to put your face in and a big prompt on top; photos are silent (no shutter sound or flash):
 // 1. "Look at the camera": until one face looks straight (enrolling: 3 of them, averaged = your face).
 // 2. "Turn your head a little to the left", then "to the right" (order picked at random), each with an arrow: two
 //    turns of 15° from straight in OPPOSITE directions, so a printed photo or a one-way video doesn't pass. (Which
 //    angle sign means "left" depends on whether the camera mirrors the photo, so the check doesn't rely on it.)
 //    Then the straight photo is scored against your face.
-// Nothing here blocks the time-in: a failed turn or no face found is sent as it is, and the Coordinator reviews it.
+// One try per opening: a failed turn or no face found is sent back as it is. The face is saved only after the turns pass.
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -36,19 +36,21 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
   const [step, setStep] = useState<Step>('straight');
   const [hint, setHint] = useState<Hint>(null);
   const [firstTurn, setFirstTurn] = useState<Step | null>(null); // shown as step 2; the other turn is step 3
+  // Photos fail until the camera says it's open (27 Nov: all tries were used up in a moment, so no face, no turns)
+  const [camReady] = useState(() => { let open = () => {}; const p = new Promise<void>((r) => { open = r; }); return { p, open }; });
 
   useEffect(() => {
     let stopped = false;
     const snap = async () => {
-      const p = await camera.current?.takePictureAsync({ quality: 0.5, shutterSound: false });
-      if (!p) return null;
-      const face = await findFace(p.uri).catch(() => null);
-      if (!face) setHint('noFace');
-      return face ? { ...p, face } : null;
+      const p = await camera.current?.takePictureAsync({ quality: 0.5, shutterSound: false }).catch(() => null);
+      const face = p ? await findFace(p.uri).catch(() => null) : null;
+      if (!p || !face) { setHint('noFace'); await wait(400); return null; } // a pause, so the tries last a few seconds
+      return { ...p, face };
     };
     (async () => {
       if (!(permission?.granted || (await askPermission()).granted)) return onDone(null);
-      await wait(1200); // let the camera open and the person look at it
+      await Promise.race([camReady.p, wait(10000)]);
+      await wait(800); // let the person look at the camera
       // 1. Straight photos (3 when enrolling)
       const straight: { uri: string; numbers: number[]; turn: number }[] = [];
       for (let i = 0; i < 12 && straight.length < (enrolled ? 1 : 3) && !stopped; i++) {
@@ -84,7 +86,7 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
       if (stopped) return;
       setStep('checking');
       let mine = enrolled;
-      if (!mine) {
+      if (!mine && live) { // never save a face that did not turn (a photo)
         mine = averageFace(straight.map((s) => s.numbers));
         await onEnrolled(straight[0].uri, mine).catch(() => { mine = null; }); // no signal: enroll next time
       }
@@ -101,7 +103,7 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
   return (
     <Modal visible animationType="slide" onRequestClose={() => { /* finishes by itself in a few seconds */ }}>
       <View style={{ flex: 1, backgroundColor: c.canvas }}>
-        {permission?.granted && <CameraView ref={camera} style={{ flex: 1 }} facing="front" animateShutter={false} />}
+        {permission?.granted && <CameraView ref={camera} style={{ flex: 1 }} facing="front" animateShutter={false} onCameraReady={camReady.open} />}
         {/* The oval: where to put your face; green when the photo is good, amber when something needs fixing */}
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ width: 250, height: 330, borderRadius: 165, borderWidth: 4, borderColor: ring }} />
