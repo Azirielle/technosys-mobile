@@ -29,8 +29,6 @@ type Props = {
   onTimeIn: () => void;
   onTimeOut: () => void;
   onOfficeCheckIn?: () => void;
-  /** No job today: time in at the office for office duty (the database still checks the office location) */
-  onOfficeDuty?: () => void;
   onRefresh: () => Promise<void>;
   /** Shown under today's job (Work v2: Arrived / Done / Ask for overtime) */
   jobExtra?: React.ReactNode;
@@ -67,7 +65,7 @@ export default function HomeBody(p: Props) {
         <HomeHeader />
         <OfflineBanner online={online} />
         <View ref={tourTarget('timeIn')} collapsable={false}>{/* Techy's tour points here */}
-          <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} onOfficeCheckIn={p.onOfficeCheckIn} onOfficeDuty={p.onOfficeDuty} />
+          <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} onOfficeCheckIn={p.onOfficeCheckIn} />
         </View>
 
         <SectionLabel>{!p.job || isToday ? t('home.todaysJob') : t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>

@@ -8,6 +8,7 @@ import { getDistance } from 'geolib';
 import { useWork } from '../../lib/work/useWork';
 import { onPunchRequest } from '../../lib/work/punchRequest';
 import { getMyWorkJobs, type MyJob } from '../../lib/work/workApi';
+import { getMyLeaves } from '../../lib/leaves';
 import { manilaDay, watchMyJobs, type Job } from '../../lib/jobs';
 import { useT } from '../../lib/i18n';
 import { appAlert, techy } from '../../ui';
@@ -25,7 +26,7 @@ import JobProgressCard from './JobProgressCard';
 import FaceCheckSheet from '../face/FaceCheckSheet';
 import { whenBackOnline } from '../../lib/online';
 
-const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty', in_house: 'in_house' };
+const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', in_house: 'in_house' };
 
 /** The job you timed in on, else today's urgent (VIP) job, else today's job, else the next one; shaped like the Home card expects (one day of it). */
 function pickJob(jobs: MyJob[], timedInJobId?: string | null): { card: Job | null; job: MyJob | null } {
@@ -53,6 +54,7 @@ export default function WorkHome() {
   useEffect(() => onPunchRequest((p) => setTimeout(() => (p === 'in' ? latest.current.startTimeIn() : latest.current.timeOut()), 800)), []);
   const [jobs, setJobs] = useState<MyJob[]>([]);
   const [hideForgotten, setHideForgotten] = useState(false);
+  const [leaveToday, setLeaveToday] = useState<string | null>(null); // approved leave covering today: its type
   // P1: any time-in (button, reminder push, arrival) refused for an open earlier day shows that day's window again
   useEffect(() => { if (work.forgotNudge) setHideForgotten(false); }, [work.forgotNudge]);
   const t = useT();
@@ -74,6 +76,10 @@ export default function WorkHome() {
       }
       urgentSeen.current = new Set(urgent.map((j) => j.id));
       setJobs(list);
+    }).catch(() => {});
+    getMyLeaves().then((list) => {
+      const today = manilaDay(new Date());
+      setLeaveToday(list.find((l) => l.status === 'approved' && l.start_date <= today && today <= l.end_date)?.leave_type ?? null);
     }).catch(() => {});
   }, []);
   // C2: the office adds you to a job or changes it → Home updates by itself, no refresh
@@ -100,7 +106,9 @@ export default function WorkHome() {
     : null;
 
   const todayStr = manilaDay(new Date());
-  const isInHouse = job?.work_type === 'in_house' && job.start_date <= todayStr && todayStr <= job.end_date;
+  const jobToday = !!job && job.start_date <= todayStr && todayStr <= job.end_date;
+  // Andrew 27 Nov: Time in only for on-site and out-of-town jobs (VIP is an on-site job); in-house jobs don't use it
+  const isInHouse = jobToday && job.work_type === 'in_house';
   const atOffice = !today && !!work.days.officeCheckIn;
   const autoTriggered = useRef(false);
 
@@ -143,10 +151,12 @@ export default function WorkHome() {
       : { kind: 'working', startedAt: today.time_in, verified: today.in_check === 'inside' })
     : atOffice
     ? { kind: 'at_office', checkedInAt: work.days.officeCheckIn!.checked_in_at, clientName: job?.client_name }
+    : leaveToday
+    ? { kind: 'leave', leaveType: leaveToday }
     : isInHouse
     ? { kind: 'in_house', clientName: job?.client_name }
-    // Task 2 (27 Nov): only TODAY's job gives a start time; a later job alone means no job today (no Time in button)
-    : { kind: 'off', shiftStart: job && job.start_date <= todayStr ? card?.start_time : undefined, canCheckInOffice: job?.work_type === 'on_site' && job.start_date <= todayStr };
+    // Task 2 (27 Nov): only TODAY's job gives a start time; no job today = "No schedule today", no Time in button
+    : { kind: 'off', shiftStart: jobToday ? card?.start_time : undefined, canCheckInOffice: jobToday && job.work_type === 'on_site' };
 
   return (
     <>
@@ -157,7 +167,6 @@ export default function WorkHome() {
         onTimeIn={() => work.startTimeIn()}
         onTimeOut={work.timeOut}
         onOfficeCheckIn={work.startOfficeCheckIn}
-        onOfficeDuty={() => work.startTimeIn(true)}
         job={card}
         onRefresh={async () => { loadJobs(); await work.reload(); }}
         jobExtra={working && job && today?.job_id === job.id ? <JobProgressCard jobId={job.id} reportTo={job.report_to} /> : null}

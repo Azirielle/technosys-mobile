@@ -23,10 +23,10 @@ type Props = {
   onDone: (result: FaceResult | null) => void;
 };
 type Step = 'straight' | 'left' | 'right' | 'checking';
-type Hint = 'noFace' | 'straight' | 'more' | 'good' | null;
+type Hint = 'noFace' | 'straight' | 'more' | 'good' | 'turned' | null;
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const HINT_KEY = { noFace: 'face.hintNoFace', straight: 'face.hintStraight', more: 'face.hintMore', good: 'face.hintGood' } as const;
+const HINT_KEY = { noFace: 'face.hintNoFace', straight: 'face.hintStraight', more: 'face.hintMore', good: 'face.hintGood', turned: 'face.hintTurned' } as const;
 
 export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) {
   const t = useT();
@@ -81,9 +81,11 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
           turned = Math.abs(d) > 15 && (!firstSign || Math.sign(d) === -firstSign);
           setTurn(Math.min(1, (firstSign ? Math.max(0, -firstSign * d) : Math.abs(d)) / 15));
           if (turned && !firstSign) firstSign = Math.sign(d);
-          setHint(turned ? 'good' : 'more');
+          setHint(turned ? 'turned' : 'more');
         }
         if (!turned || stopped) break;
+        setTurn(1); // 27 Nov: show the full green bar and "Done" before the next turn, or the switch looks like a reset
+        await wait(1200);
         live = side === sides[1];
       }
       if (stopped) return;
@@ -102,7 +104,7 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
 
   const turning = step === 'left' || step === 'right';
   const words = step === 'straight' ? t(enrolled ? 'face.look' : 'face.enrollLook') : step === 'checking' ? t('face.checking') : t(step === 'left' ? 'face.turnLeft' : 'face.turnRight');
-  const ring = hint === 'good' ? c.ok : hint ? c.pending : c.brand;
+  const ring = hint === 'good' || hint === 'turned' ? c.ok : hint ? c.pending : c.brand;
   return (
     <Modal visible animationType="slide" onRequestClose={() => { /* finishes by itself in a few seconds */ }}>
       <View style={{ flex: 1, backgroundColor: c.canvas }}>

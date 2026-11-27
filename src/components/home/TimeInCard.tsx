@@ -13,14 +13,15 @@ export type ShiftState =
   | { kind: 'at_office'; checkedInAt: string; clientName?: string }
   | { kind: 'working'; startedAt: string; verified: boolean }
   | { kind: 'done'; timeIn: string; timeOut: string | null; hours: number | null }
-  | { kind: 'in_house'; clientName?: string };
+  | { kind: 'in_house'; clientName?: string }
+  | { kind: 'leave'; leaveType: string };
 
-type Props = { shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void; onOfficeCheckIn?: () => void; onOfficeDuty?: () => void };
+type Props = { shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void; onOfficeCheckIn?: () => void };
 
 const SHIFT_MS = 9 * 3600000; // 8 hours of work plus the 1-hour meal break
 const clock = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeCheckIn, onOfficeDuty }: Props) {
+export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeCheckIn }: Props) {
   const t = useT();
   const { c, radius } = useTokens();
   const reduced = useReducedMotion();
@@ -31,7 +32,7 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
   // P8: tick every 5 s so the big clock changes within seconds of the phone's (every 30 s it could lag almost a minute)
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 5000); return () => clearInterval(id); }, []);
   useEffect(() => {
-    if (lastKind.current !== shift.kind && shift.kind !== 'off') {
+    if (lastKind.current !== shift.kind && shift.kind !== 'off' && shift.kind !== 'leave') { // leave loads late: no tick for it
       setCelebrate((n) => n + 1);
       const id = setTimeout(() => setCelebrate(0), 1600);
       lastKind.current = shift.kind;
@@ -61,6 +62,8 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
     : shift.kind === 'in_house'
     ? { tone: 'pending' as const, pill: t('home.inHousePill'), big: clock(now),
         sub: shift.clientName ? `${shift.clientName} · ${t('home.inHouseSub')}` : t('home.inHouseSub') }
+    : shift.kind === 'leave'
+    ? { tone: 'ok' as const, pill: t('home.onLeavePill'), big: clock(now), sub: t('home.onLeaveSub', { type: t(`home.leaveTypes.${shift.leaveType}`) }) }
     : noJob
     ? { tone: 'pending' as const, pill: t('home.noJobPill'), big: clock(now), sub: t('home.noJobSub') }
     : { tone: late ? 'error' as const : 'pending' as const, pill: t(late ? 'home.notYetLate' : 'home.notYet'), big: clock(now),
@@ -90,9 +93,8 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
           <View style={{ gap: 8 }}>
             <Button icon="log-in" label={t('home.timeInManual')} onPress={onTimeIn} loading={busy} />
           </View>
-        ) : noJob ? (
-          // Task 2: no job today, no Time in button; office duty (asked by the office) is the only way in
-          onOfficeDuty ? <Button kind="ghost" icon="briefcase" label={t('work.officeDuty')} onPress={onOfficeDuty} loading={busy} /> : null
+        ) : noJob || shift.kind === 'leave' ? (
+          null // no schedule or on leave: nothing to time in for (task 2)
         ) : shift.kind === 'off' ? (
           <View style={{ gap: 8 }}>
             {shift.canCheckInOffice && onOfficeCheckIn && (

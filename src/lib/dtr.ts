@@ -11,7 +11,7 @@ import { WORK_V2 } from './work/workApi';
 
 type LogRow = { id: string; app_time_in: string | null; app_time_out: string | null; status: string | null; hours?: number | null; late?: number };
 type JobRow = { id: string; client_name: string; start_time: string; assignment_type: string | null };
-const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', office: 'office_duty', in_house: 'in_house' };
+const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', in_house: 'in_house' };
 
 /** Work v2: this cut-off's work days as the rows the DTR loop reads (hours and late from the database). */
 async function workDayRows(userId: string, cut: Cutoff): Promise<{ logs: LogRow[]; jobs: JobRow[] }> {

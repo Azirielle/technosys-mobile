@@ -6,8 +6,7 @@ import { manilaDay } from '../jobs';
 import { metersBetween, type Spot } from '../timeIn';
 import type { MyJob, WorkResult } from './workApi';
 
-export function offlineCheck(jobs: MyJob[], here: Spot | null, officeDuty: boolean, hasSelfie: boolean): WorkResult | null {
-  if (officeDuty) return null; // the office is checked when it's sent; HR sees it if unsure
+export function offlineCheck(jobs: MyJob[], here: Spot | null, hasSelfie: boolean): WorkResult | null {
   const today = manilaDay(new Date());
   const job = jobs
     .filter((j) => j.mine && ['planned', 'ongoing'].includes(j.status) && j.start_date <= today && today <= j.end_date)

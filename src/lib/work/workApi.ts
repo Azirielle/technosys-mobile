@@ -85,12 +85,12 @@ async function queuedToday(todayDate: string): Promise<WorkDay | null> {
 
 /** Time in. Without a selfie the server answers outside / fake_gps / need_selfie when it can't confirm the site. */
 /** With `selfieUri` (a selfie taken with no signal, see lib/work/offlineResult) it's saved for later straight away. */
-export async function workTimeIn(here: Spot | null, extra: { selfiePath?: string; selfieUri?: string; reason?: string; officeDuty?: boolean } = {}) {
+export async function workTimeIn(here: Spot | null, extra: { selfiePath?: string; selfieUri?: string; reason?: string } = {}) {
   const args = {
     p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_accuracy_m: here?.accuracy ?? null, p_mocked: here?.isMocked ?? false,
-    p_device_id: await getDeviceId(), p_selfie_path: extra.selfiePath ?? null, p_reason: extra.reason ?? null, p_office_duty: extra.officeDuty ?? false,
+    p_device_id: await getDeviceId(), p_selfie_path: extra.selfiePath ?? null, p_reason: extra.reason ?? null,
   };
-  const check = async () => { const jobs = await savedJobs(); return jobs && offlineCheck(jobs, here, !!extra.officeDuty, !!(extra.selfiePath || extra.selfieUri)); };
+  const check = async () => { const jobs = await savedJobs(); return jobs && offlineCheck(jobs, here, !!(extra.selfiePath || extra.selfieUri)); };
   if (extra.selfieUri) return saveForLater('time_in', { ...args, selfie_uri: extra.selfieUri }, check);
   return call('time_in', args, check);
 }
