@@ -21,7 +21,7 @@ const LANGUAGE_DONE = 'setup_language_done';
 const permissionsKey = (userId: string) => `setup_permissions_done_${userId}`;
 // Techy's tour ('main', on Home after setup) and its first-visit tips ('inbox', 'profile'): once per person per phone
 const tourKey = (userId: string, name: TourName) => (name === 'main' ? `setup_tour_done_${userId}` : `tour_tip_${name}_${userId}`);
-export type TourName = 'main' | 'inbox' | 'profile';
+export type TourName = 'main' | 'inbox' | 'profile' | 'timeOut';
 
 /** The two app rules every user agrees to once: the newest Terms of use and Privacy notice. */
 export async function loadAppRules(): Promise<CompanyPolicy[]> {

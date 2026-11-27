@@ -21,6 +21,7 @@ import WorkCheckSheet from './WorkCheckSheet';
 import EarlyTimeOutSheet from './EarlyTimeOutSheet';
 import JobProgressCard from './JobProgressCard';
 import FaceCheckSheet from '../face/FaceCheckSheet';
+import { showTechyTip } from '../tour/TechyTour';
 import { whenBackOnline } from '../../lib/online';
 
 const ASSIGNMENT: Record<string, string> = { on_site: 'on_site', out_of_town: 'deployment', in_house: 'in_house' };
@@ -95,6 +96,9 @@ export default function WorkHome() {
   const today = work.days.today;
   const { card, job } = useMemo(() => pickJob(jobs, today?.job_id), [jobs, today?.job_id]);
   const working = !!today && !today.time_out;
+
+  // The first time someone is timed in, Techy shows the Time out button and the "Is the job finished?" question
+  useEffect(() => { if (working) showTechyTip('timeOut'); }, [working]);
 
   // While timed in, the office's live map gets your position every minute
   const meId = work.me?.id;

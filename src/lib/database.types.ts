@@ -2530,6 +2530,7 @@ export type Database = {
           p_device_id: string
           p_lat: number
           p_lon: number
+          p_job_finished?: boolean
           p_queued_at?: string
           p_reason?: string
         }

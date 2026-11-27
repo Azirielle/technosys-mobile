@@ -1,6 +1,7 @@
 // JobProgressCard (Work v2): while timed in on a job: "Arrived at the site" (jobs that report to the office
-// first), "Job done", and "Ask for overtime" (just a reason: once the Coordinator approves, the time after the job's end
-// counts until they time out; technicians can't know in advance how long it will take).
+// first) and "Ask for overtime" (just a reason: once the Coordinator approves, the time after the job's end
+// counts until they time out; technicians can't know in advance how long it will take). "Job done" is now asked
+// at the time-out on the job's last day (lib/work/useWork.ts).
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, View } from 'react-native';
 import RNModal from 'react-native-modal';
@@ -15,16 +16,16 @@ const UNTIL_TIME_OUT = 8; // the most the server allows; approved overtime only 
 export default function JobProgressCard({ jobId, reportTo }: Props) {
   const t = useT();
   const { c, radius } = useTokens();
-  const [busy, setBusy] = useState<'arrived' | 'done' | 'ot' | null>(null);
+  const [busy, setBusy] = useState<'arrived' | 'ot' | null>(null);
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState('');
 
-  async function step(kind: 'arrived' | 'done') {
-    setBusy(kind);
+  async function arrived() {
+    setBusy('arrived');
     const found = await locateMe().catch(() => null);
-    const r = await markProgress(jobId, kind, found && typeof found !== 'string' ? found : null);
+    const r = await markProgress(jobId, 'arrived', found && typeof found !== 'string' ? found : null);
     setBusy(null);
-    if (r.status === 'saved') appAlert(t(`work.${kind}Saved`));
+    if (r.status === 'saved') appAlert(t('work.arrivedSaved'));
     else if (r.status === 'already') appAlert(t('work.progressAlready'));
     else if (r.status === 'not_timed_in') appAlert(t('work.progressNotIn'));
     else appAlert(t('timeIn.outFailTitle'), t('common.noSignal'));
@@ -40,10 +41,7 @@ export default function JobProgressCard({ jobId, reportTo }: Props) {
 
   return (
     <Card style={{ gap: 10, marginTop: 10 }}>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        {reportTo === 'hq' && <View style={{ flex: 1 }}><Button size="md" kind="secondary" icon="map-pin" label={t('work.arrived')} onPress={() => step('arrived')} loading={busy === 'arrived'} /></View>}
-        <View style={{ flex: 1 }}><Button size="md" kind="secondary" icon="check-circle" label={t('work.done')} onPress={() => step('done')} loading={busy === 'done'} /></View>
-      </View>
+      {reportTo === 'hq' && <Button size="md" kind="secondary" icon="map-pin" label={t('work.arrived')} onPress={arrived} loading={busy === 'arrived'} />}
       <Button size="md" kind="ghost" icon="clock" label={t('work.askOvertime')} onPress={() => setAsking(true)} />
 
       <RNModal isVisible={asking} useNativeDriver useNativeDriverForBackdrop hideModalContentWhileAnimating

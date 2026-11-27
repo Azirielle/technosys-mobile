@@ -92,8 +92,9 @@ export async function workTimeIn(here: Spot | null, extra: { selfiePath?: string
 }
 
 /** Time out. More than 15 min before the end the server answers "early" until a reason is sent. */
-export async function workTimeOut(here: Spot | null, reason?: string) {
-  return call('time_out', { p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_device_id: await getDeviceId(), p_reason: reason ?? null });
+/** On the job's last day it answers "ask_finished" until `finished` (is the whole job finished?) is sent. */
+export async function workTimeOut(here: Spot | null, reason?: string, finished?: boolean) {
+  return call('time_out', { p_lat: here?.lat ?? null, p_lon: here?.lon ?? null, p_device_id: await getDeviceId(), p_reason: reason ?? null, p_job_finished: finished ?? null });
 }
 
 /** Selfie for a time-in outside the site: private bucket, path must start with your id (the server checks). */

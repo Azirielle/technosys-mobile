@@ -38,6 +38,7 @@ export function useWork() {
   const [busy, setBusy] = useState(false);
   // Bumped when the server says an earlier day is still open: Home shows that day's window again (Round 5 P1)
   const [forgotNudge, setForgotNudge] = useState(0);
+  const jobFinished = useRef<boolean | undefined>(undefined); // the answer to "Is the job finished?" for this time-out
   const [early, setEarly] = useState<{ endsAt: string; minutes: number } | null>(null);
   // The face check BEFORE a time-in (components/face/FaceCheckSheet; Andrew 27 Nov: like Face ID). No time-in until the
   // face matches and the head turns; after 3 failed tries it goes through, flagged for HR, so nobody is stuck at a site.
@@ -192,15 +193,28 @@ export function useWork() {
     ]);
   }
 
-  /** Sends the time-out (again with a reason after "early") and says what happened */
-  async function sendTimeOut(reason?: string) {
+  /** Sends the time-out (again with the job answer, or a reason after "early") and says what happened */
+  async function sendTimeOut(reason?: string, finished = jobFinished.current): Promise<void> {
+    jobFinished.current = finished; // kept for the resend with a reason after "early"
     setBusy(true);
     const found = await locateMe().catch(() => 'no_gps' as const);
-    const r = await workTimeOut(typeof found === 'string' ? null : found, reason);
+    const r = await workTimeOut(typeof found === 'string' ? null : found, reason, finished);
     setBusy(false);
+    // The job's last day (merged "Job done", 28 Nov): one Yes finishes the job for the whole crew
+    if (r.status === 'ask_finished') {
+      return appAlert(t('work.finishedTitle'), t('work.finishedText', { client: String(r.client_name ?? '') }), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('work.finishedNo'), onPress: () => sendTimeOut(reason, false) },
+        { text: t('work.finishedYes'), onPress: () => sendTimeOut(reason, true) },
+      ]);
+    }
     if (r.status === 'early') return setEarly({ endsAt: String(r.ends_at), minutes: Number(r.minutes_early) });
     setEarly(null);
-    if (r.status === 'timed_out') { techy.react('wave'); appAlert(t('timeIn.outDoneTitle'), t('timeIn.outDoneText', { hours: Number(r.hours) })); }
+    jobFinished.current = undefined;
+    if (r.status === 'timed_out') {
+      techy.react(r.job_finished ? 'cheer' : 'wave');
+      appAlert(t('timeIn.outDoneTitle'), t('timeIn.outDoneText', { hours: Number(r.hours) }) + (r.job_finished ? `\n\n${t('work.finishedSaved')}` : ''));
+    }
     else if (r.status === 'queued') appAlert(t('timeIn.queuedTitle'), t('work.outQueued'));
     else if (r.status === 'bring_vehicle_back') appAlert(t('work.vehicleTitle'), t('work.vehicleText', { office: String(r.office_name) }));
     else if (r.status === 'other_phone') appAlert(WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE);
@@ -220,7 +234,7 @@ export function useWork() {
 
   return {
     me, days, sheet, problem, selfie, sending, busy, forgotNudge, reload, startTimeIn, sendSelfie, tellHr, timeOut, saveLeftAt,
-    early, sendTimeOut, closeEarly: () => setEarly(null),
+    early, sendTimeOut, closeEarly: () => { jobFinished.current = undefined; setEarly(null); },
     face, faceDone, enrollFace: (uri: string, numbers: number[]) => (me ? enroll(me.id, uri, numbers) : Promise.reject(new Error('signed out'))),
     retry: () => startTimeIn(),
     closeSheet: () => setSheet(closed),

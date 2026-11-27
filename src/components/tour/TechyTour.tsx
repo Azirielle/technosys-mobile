@@ -2,6 +2,7 @@
 // setup): welcome → spotlight on the Time in card → the Inbox tab → Techy itself → "your turn: tap Jobs" (learn by
 // doing) → a cheer and "Let's go!". Short tips the first time someone opens Inbox or Profile. Each plays once per
 // person per phone for field staff (lib/setup.ts isTourDue); Profile replays the main one (startTechyTour).
+// The time-out tip plays the first time someone is timed in on Home (showTechyTip from WorkHome).
 // Drawn over the tabs (app/(tabs)/_layout.tsx); the real parts register with tourTarget() (ui/tourTargets.ts).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Pressable, View } from 'react-native';
@@ -28,6 +29,7 @@ const TOURS: Record<TourName, Stop[]> = {
     { text: 'tour.languageTip', mood: 'ready', target: 'profile-language' },
     { text: 'tour.replayTip', mood: 'wave', target: 'profile-replay' },
   ],
+  timeOut: [{ text: 'tour.timeOutTip', mood: 'ready', target: 'timeIn' }], // the time-in card, now showing Time out
 };
 const TIP_TAB: Partial<Record<string, TourName>> = { inbox: 'inbox', profile: 'profile' };
 const DOCK = 84, PAD = 8;
@@ -35,6 +37,9 @@ const DOCK = 84, PAD = 8;
 const listeners = new Set<() => void>();
 /** Plays the main tour again (Profile → "Replay Techy's tour"). */
 export function startTechyTour() { listeners.forEach((l) => l()); }
+const tipAsks = new Set<(name: TourName) => void>();
+/** A tip for something on screen now (e.g. the Time out button), once per person per phone. */
+export function showTechyTip(name: TourName) { tipAsks.forEach((l) => l(name)); }
 
 export default function TechyTour({ tab }: { tab: string }) {
   const t = useT();
@@ -72,9 +77,11 @@ export default function TechyTour({ tab }: { tab: string }) {
     return () => { listeners.delete(replay); };
   }, [start]);
 
-  // First visit to Inbox or Profile: a short tip (only when no tour is running)
+  // First visit to Inbox or Profile, or a tip a screen asks for: a short tip (only when no tour is running)
+  const [asked, setAsked] = useState<TourName | null>(null);
+  useEffect(() => { tipAsks.add(setAsked); return () => { tipAsks.delete(setAsked); }; }, []);
   useEffect(() => {
-    const name = TIP_TAB[tab];
+    const name = TIP_TAB[tab] ?? (tab === 'index' ? asked : null);
     if (!name || tour || tipsStarted.current.has(name)) return;
     let alive = true;
     isTourDue(name).then((due) => {
@@ -83,7 +90,7 @@ export default function TechyTour({ tab }: { tab: string }) {
       start(name);
     }).catch(() => {});
     return () => { alive = false; };
-  }, [tab, tour, start]);
+  }, [tab, tour, start, asked]);
 
   // Find the real part to spotlight, measured the same way as this layer so they line up on every phone.
   // A part that isn't showing (or is scrolled off the screen) is skipped.

@@ -571,9 +571,12 @@
     "badLeftAt": "That time is before your time-in or more than a day later. Pick another time.",
     "leftAtSaved": "Saved: {hours} hours. HR will check it.",
     "arrived": "Arrived at the site",
-    "done": "Job done",
+    "finishedTitle": "Is the job finished?",
+    "finishedText": "Today is the last day of {client}. Is the whole job finished? One Yes counts for your whole crew.",
+    "finishedYes": "Yes, it's finished",
+    "finishedNo": "Not yet",
+    "finishedSaved": "Job marked finished. The Coordinator can see it.",
     "arrivedSaved": "Arrival saved. The Coordinator can see it.",
-    "doneSaved": "Marked done. The Coordinator can see it.",
     "progressAlready": "That's already saved for today.",
     "progressNotIn": "Time in first.",
     "askOvertime": "Ask for overtime",
@@ -635,7 +638,8 @@
     "gotIt": "Got it",
     "inboxTip": "HR's replies, leave decisions and news land here. Tap one to open it: an HR reply opens your chat with HR.",
     "languageTip": "Prefer Filipino? Change the app's language here, any time.",
-    "replayTip": "Want to see my tour again? Tap here and I'll show you around."
+    "replayTip": "Want to see my tour again? Tap here and I'll show you around.",
+    "timeOutTip": "Done for the day? Tap Time out. On the job's last day I'll ask if the whole job is finished: say Yes only when it is. One Yes counts for your whole crew."
   },
   "pin": {
     "currentTitle": "Enter your current PIN",

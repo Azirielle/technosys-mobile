@@ -571,9 +571,12 @@
     "badLeftAt": "Bago sa time-in mo ang oras na iyan o lampas isang araw. Pumili ng ibang oras.",
     "leftAtSaved": "Na-save: {hours} oras. Titingnan ito ng HR.",
     "arrived": "Nakarating na sa site",
-    "done": "Tapos na ang trabaho",
+    "finishedTitle": "Tapos na ba ang trabaho?",
+    "finishedText": "Ngayon ang huling araw ng {client}. Tapos na ba ang buong trabaho? Isang Oo lang, para na sa buong crew.",
+    "finishedYes": "Oo, tapos na",
+    "finishedNo": "Hindi pa",
+    "finishedSaved": "Naitala na tapos ang trabaho. Nakikita ito ng Coordinator.",
     "arrivedSaved": "Na-save ang pagdating. Nakikita ito ng Coordinator.",
-    "doneSaved": "Natapos na. Nakikita ito ng Coordinator.",
     "progressAlready": "Naka-save na iyan ngayong araw.",
     "progressNotIn": "Mag-time in muna.",
     "askOvertime": "Humingi ng overtime",
@@ -635,7 +638,8 @@
     "gotIt": "Sige",
     "inboxTip": "Dito dumarating ang sagot ng HR, desisyon sa leave, at balita. I-tap para buksan: ang sagot ng HR ay magbubukas ng usapan ninyo.",
     "languageTip": "Mas gusto ang English o Filipino? Palitan dito ang wika ng app kahit kailan.",
-    "replayTip": "Gusto mong makita ulit ang tour ko? I-tap dito at ipapakita ko ulit."
+    "replayTip": "Gusto mong makita ulit ang tour ko? I-tap dito at ipapakita ko ulit.",
+    "timeOutTip": "Tapos na sa araw na ito? I-tap ang Time out. Sa huling araw ng trabaho, itatanong ko kung tapos na ang buong trabaho: Oo lang kapag tapos na talaga. Isang Oo lang, para na sa buong crew."
   },
   "pin": {
     "currentTitle": "Ilagay ang kasalukuyang PIN",
