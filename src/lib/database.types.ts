@@ -615,37 +615,60 @@ export type Database = {
         }
         Relationships: []
       }
+      face_enrollments: {
+        Row: {
+          embedding: number[]
+          enrolled_at: string
+          person_id: string
+          photo_path: string
+        }
+        Insert: {
+          embedding: number[]
+          enrolled_at?: string
+          person_id: string
+          photo_path: string
+        }
+        Update: {
+          embedding?: number[]
+          enrolled_at?: string
+          person_id?: string
+          photo_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "face_enrollments_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       holidays: {
         Row: {
-          holiday_type: string
           created_at: string | null
           holiday_date: string
+          holiday_type: string
           id: string
           is_active: boolean
           name: string
         }
         Insert: {
-          holiday_type?: string
           created_at?: string | null
           holiday_date: string
+          holiday_type?: string
           id?: string
           is_active?: boolean
           name: string
         }
         Update: {
-          holiday_type?: string
           created_at?: string | null
           holiday_date?: string
+          holiday_type?: string
           id?: string
           is_active?: boolean
           name?: string
         }
-        Relationships: []
-      }
-      face_enrollments: {
-        Row: { embedding: number[]; enrolled_at: string; person_id: string; photo_path: string }
-        Insert: { embedding: number[]; enrolled_at?: string; person_id: string; photo_path: string }
-        Update: { embedding?: number[]; enrolled_at?: string; person_id?: string; photo_path?: string }
         Relationships: []
       }
       inbox_reads: {
@@ -747,7 +770,6 @@ export type Database = {
       }
       job_members: {
         Row: {
-          seen_at: string | null
           added_at: string
           id: string
           is_acting_lead: boolean
@@ -755,11 +777,11 @@ export type Database = {
           person_id: string | null
           removed_at: string | null
           role: string
+          seen_at: string | null
           temp_worker_id: string | null
           vehicle_id: string | null
         }
         Insert: {
-          seen_at?: string | null
           added_at?: string
           id?: string
           is_acting_lead?: boolean
@@ -767,11 +789,11 @@ export type Database = {
           person_id?: string | null
           removed_at?: string | null
           role: string
+          seen_at?: string | null
           temp_worker_id?: string | null
           vehicle_id?: string | null
         }
         Update: {
-          seen_at?: string | null
           added_at?: string
           id?: string
           is_acting_lead?: boolean
@@ -779,6 +801,7 @@ export type Database = {
           person_id?: string | null
           removed_at?: string | null
           role?: string
+          seen_at?: string | null
           temp_worker_id?: string | null
           vehicle_id?: string | null
         }
@@ -815,8 +838,6 @@ export type Database = {
       }
       jobs: {
         Row: {
-          scope: string | null
-          priority: string
           address: string
           cancel_reason: string | null
           client_name: string
@@ -829,8 +850,10 @@ export type Database = {
           is_vip: boolean
           legacy_schedule_id: string | null
           notes: string | null
+          priority: string
           project_name: string | null
           report_to: string
+          scope: string | null
           site_lat: number
           site_lon: number
           site_radius_m: number
@@ -842,8 +865,6 @@ export type Database = {
           work_type: string
         }
         Insert: {
-          scope?: string | null
-          priority?: string
           address: string
           cancel_reason?: string | null
           client_name: string
@@ -856,8 +877,10 @@ export type Database = {
           is_vip?: boolean
           legacy_schedule_id?: string | null
           notes?: string | null
+          priority?: string
           project_name?: string | null
           report_to?: string
+          scope?: string | null
           site_lat: number
           site_lon: number
           site_radius_m?: number
@@ -869,8 +892,6 @@ export type Database = {
           work_type?: string
         }
         Update: {
-          scope?: string | null
-          priority?: string
           address?: string
           cancel_reason?: string | null
           client_name?: string
@@ -883,8 +904,10 @@ export type Database = {
           is_vip?: boolean
           legacy_schedule_id?: string | null
           notes?: string | null
+          priority?: string
           project_name?: string | null
           report_to?: string
+          scope?: string | null
           site_lat?: number
           site_lon?: number
           site_radius_m?: number
@@ -1030,53 +1053,6 @@ export type Database = {
           {
             foreignKeyName: "login_pins_set_by_fkey"
             columns: ["set_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      office_check_ins: {
-        Row: {
-          accuracy_m: number | null
-          checked_in_at: string
-          face_check: string | null
-          face_score: number | null
-          id: string
-          lat: number | null
-          lon: number | null
-          person_id: string
-          selfie_path: string | null
-          work_date: string
-        }
-        Insert: {
-          accuracy_m?: number | null
-          checked_in_at?: string
-          face_check?: string | null
-          face_score?: number | null
-          id?: string
-          lat?: number | null
-          lon?: number | null
-          person_id: string
-          selfie_path?: string | null
-          work_date: string
-        }
-        Update: {
-          accuracy_m?: number | null
-          checked_in_at?: string
-          face_check?: string | null
-          face_score?: number | null
-          id?: string
-          lat?: number | null
-          lon?: number | null
-          person_id?: string
-          selfie_path?: string | null
-          work_date?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "office_check_ins_person_id_fkey"
-            columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1981,6 +1957,7 @@ export type Database = {
           condition_notes: string | null
           condition_on_return: string | null
           damage_fee: number | null
+          delivery: string | null
           handed_over_at: string | null
           id: string
           notes: string | null
@@ -1991,12 +1968,12 @@ export type Database = {
           technician_id: string | null
           tool_id: string | null
           unit_id: string | null
-          delivery: string | null
         }
         Insert: {
           condition_notes?: string | null
           condition_on_return?: string | null
           damage_fee?: number | null
+          delivery?: string | null
           handed_over_at?: string | null
           id?: string
           notes?: string | null
@@ -2007,12 +1984,12 @@ export type Database = {
           technician_id?: string | null
           tool_id?: string | null
           unit_id?: string | null
-          delivery?: string | null
         }
         Update: {
           condition_notes?: string | null
           condition_on_return?: string | null
           damage_fee?: number | null
+          delivery?: string | null
           handed_over_at?: string | null
           id?: string
           notes?: string | null
@@ -2023,10 +2000,8 @@ export type Database = {
           technician_id?: string | null
           tool_id?: string | null
           unit_id?: string | null
-          delivery?: string | null
         }
         Relationships: [
-          { foreignKeyName: "tool_borrowings_unit_id_fkey"; columns: ["unit_id"]; isOneToOne: false; referencedRelation: "tool_units"; referencedColumns: ["id"] },
           {
             foreignKeyName: "tool_borrowings_received_by_fkey"
             columns: ["received_by"]
@@ -2048,14 +2023,48 @@ export type Database = {
             referencedRelation: "tools"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tool_borrowings_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "tool_units"
+            referencedColumns: ["id"]
+          },
         ]
       }
       tool_units: {
-        Row: { created_at: string; id: string; status: string; tag: string; tool_id: string; updated_at: string }
-        Insert: { created_at?: string; id?: string; status?: string; tag: string; tool_id: string; updated_at?: string }
-        Update: { created_at?: string; id?: string; status?: string; tag?: string; tool_id?: string; updated_at?: string }
+        Row: {
+          created_at: string
+          id: string
+          status: string
+          tag: string
+          tool_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          status?: string
+          tag: string
+          tool_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          status?: string
+          tag?: string
+          tool_id?: string
+          updated_at?: string
+        }
         Relationships: [
-          { foreignKeyName: "tool_units_tool_id_fkey"; columns: ["tool_id"]; isOneToOne: false; referencedRelation: "tools"; referencedColumns: ["id"] },
+          {
+            foreignKeyName: "tool_units_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
         ]
       }
       tools: {
@@ -2196,11 +2205,11 @@ export type Database = {
       }
       work_days: {
         Row: {
-          face_check: string | null
-          face_score: number | null
           counted_from: string
           created_at: string
           device_id: string | null
+          face_check: string | null
+          face_score: number | null
           hours: number | null
           id: string
           in_accuracy_m: number | null
@@ -2227,11 +2236,11 @@ export type Database = {
           work_date: string
         }
         Insert: {
-          face_check?: string | null
-          face_score?: number | null
           counted_from: string
           created_at?: string
           device_id?: string | null
+          face_check?: string | null
+          face_score?: number | null
           hours?: number | null
           id?: string
           in_accuracy_m?: number | null
@@ -2258,11 +2267,11 @@ export type Database = {
           work_date: string
         }
         Update: {
-          face_check?: string | null
-          face_score?: number | null
           counted_from?: string
           created_at?: string
           device_id?: string | null
+          face_check?: string | null
+          face_score?: number | null
           hours?: number | null
           id?: string
           in_accuracy_m?: number | null
@@ -2310,44 +2319,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      leave_credits: {
-        Args: { p_person: string; p_year?: number; p_add_type?: string; p_add_start?: string; p_add_end?: string }
-        Returns: Json
-      }
-      mark_jobs_seen: {
-        Args: { p_job_ids: string[] }
-        Returns: undefined
-      }
-      record_face_check: {
-        Args: { p_live: boolean; p_score: number; p_selfie_path: string; p_work_day_id: string }
-        Returns: Json
-      }
-      office_check_in: {
-        Args: {
-          p_accuracy_m: number | null
-          p_device_id: string
-          p_lat: number | null
-          p_lon: number | null
-          p_mocked: boolean
-          p_queued_at?: string | null
-        }
-        Returns: Json
-      }
-      record_office_face_check: {
-        Args: {
-          p_check_in_id: string
-          p_live: boolean
-          p_score: number
-          p_selfie_path: string
-        }
-        Returns: Json
-      }
-      lend_tool_units: {
-        Args: { p_delivery?: string; p_notes?: string; p_technician_id: string; p_unit_ids: string[] }
-        Returns: Json
-      }
-      flag_no_face_check: { Args: { p_work_day_id: string }; Returns: Json }
-      decide_tool_unit: { Args: { p_back_in_service: boolean; p_unit_id: string }; Returns: Json }
       check_in_tool: {
         Args: {
           p_borrowing_id: string
@@ -2376,6 +2347,10 @@ export type Database = {
         Args: { p_approve: boolean; p_note?: string; p_review_id: string }
         Returns: Json
       }
+      decide_tool_unit: {
+        Args: { p_back_in_service: boolean; p_unit_id: string }
+        Returns: Json
+      }
       file_phone_change: {
         Args: {
           p_device_id: string
@@ -2384,6 +2359,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      flag_no_face_check: { Args: { p_work_day_id: string }; Returns: Json }
       get_email_from_contact: { Args: { p_contact: string }; Returns: string }
       get_server_time: { Args: never; Returns: string }
       hr_correct_work_day: {
@@ -2420,6 +2396,25 @@ export type Database = {
           vehicle_id: string
         }[]
       }
+      leave_credits: {
+        Args: {
+          p_add_end?: string
+          p_add_start?: string
+          p_add_type?: string
+          p_person: string
+          p_year?: number
+        }
+        Returns: Json
+      }
+      lend_tool_units: {
+        Args: {
+          p_delivery?: string
+          p_notes?: string
+          p_technician_id: string
+          p_unit_ids: string[]
+        }
+        Returns: Json
+      }
       login_pin_status: { Args: { p_profile_id: string }; Returns: Json }
       manila_at: { Args: { d: string; t: string }; Returns: string }
       manila_today: { Args: never; Returns: string }
@@ -2427,6 +2422,7 @@ export type Database = {
         Args: { p_job_id: string; p_kind: string; p_lat: number; p_lon: number }
         Returns: Json
       }
+      mark_jobs_seen: { Args: { p_job_ids: string[] }; Returns: undefined }
       mark_no_time_outs: { Args: never; Returns: number }
       match_documents: {
         Args: {
@@ -2471,6 +2467,16 @@ export type Database = {
           p_device_name: string
           p_pin: string
           p_request_change?: boolean
+        }
+        Returns: Json
+      }
+      publish_due_announcements: { Args: never; Returns: number }
+      record_face_check: {
+        Args: {
+          p_live: boolean
+          p_score: number
+          p_selfie_path: string
+          p_work_day_id: string
         }
         Returns: Json
       }
