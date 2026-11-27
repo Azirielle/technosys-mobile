@@ -386,7 +386,7 @@
     "subtitle": "File a leave and see what HR said.",
     "credits": "Leave credits this year",
     "creditsLeft": "Sick: {sick} of 5 left · Vacation: {vacation} of 5 left",
-    "withoutCredits": "{n} day(s) so far were without credits (salary deduction).",
+    "withoutCredits": "{n} day(s) so far were without credits (counted as absent).",
     "creditsRule": "When sick leave runs out, it uses your vacation credits. Days past your credits are without credits.",
     "fileNew": "File a leave",
     "yourRequests": "Your requests",

@@ -386,7 +386,7 @@
     "subtitle": "Mag-file ng leave at tingnan ang sagot ng HR.",
     "credits": "Leave credits ngayong taon",
     "creditsLeft": "Sick: {sick} sa 5 natitira · Vacation: {vacation} sa 5 natitira",
-    "withoutCredits": "{n} araw ang walang credits na (kaltas sa sahod).",
+    "withoutCredits": "{n} araw ang walang credits na (bilang absent).",
     "creditsRule": "Kapag ubos na ang sick leave, gagamitin ang vacation credits mo. Walang credits ang mga araw na lampas dito.",
     "fileNew": "Mag-file ng leave",
     "yourRequests": "Mga request mo",
