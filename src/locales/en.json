@@ -479,6 +479,7 @@
     "willSend": "Will send when you have signal",
     "notSentYet": "Not sent to HR yet",
     "tryAgain": "Try again",
+    "meter": "Turn until the bar is full",
     "tellHr": "Tell HR instead",
     "close": "Close",
     "ok": "OK",

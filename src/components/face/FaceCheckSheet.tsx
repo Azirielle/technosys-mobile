@@ -35,6 +35,7 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
   const [permission, askPermission] = useCameraPermissions();
   const [step, setStep] = useState<Step>('straight');
   const [hint, setHint] = useState<Hint>(null);
+  const [turn, setTurn] = useState(0); // how far the head has turned, 0 to 1 (1 = enough), for the meter
   const [firstTurn, setFirstTurn] = useState<Step | null>(null); // shown as step 2; the other turn is step 3
   // Photos fail until the camera says it's open (27 Nov: all tries were used up in a moment, so no face, no turns)
   const [camReady] = useState(() => { let open = () => {}; const p = new Promise<void>((r) => { open = r; }); return { p, open }; });
@@ -70,6 +71,7 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
       for (const side of sides) {
         setStep(side);
         setHint(null);
+        setTurn(0);
         let turned = false;
         for (let i = 0; i < 10 && !turned && !stopped; i++) {
           const shot = await snap().catch(() => null);
@@ -77,6 +79,7 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
           const d = headTurn(shot.face) - straight[0].turn;
           // first turn: any direction; second turn: the other direction from the first
           turned = Math.abs(d) > 15 && (!firstSign || Math.sign(d) === -firstSign);
+          setTurn(Math.min(1, (firstSign ? Math.max(0, -firstSign * d) : Math.abs(d)) / 15));
           if (turned && !firstSign) firstSign = Math.sign(d);
           setHint(turned ? 'good' : 'more');
         }
@@ -115,6 +118,15 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
             <Txt variant="title" style={{ flex: 1 }} accessibilityLiveRegion="polite">{words}</Txt>
           </View>
           {hint && step !== 'checking' && <Txt variant="body" style={{ color: ring }}>{t(HINT_KEY[hint])}</Txt>}
+          {/* The turn meter: fills toward the arrow as the head turns; green = far enough */}
+          {turning && (
+            <View accessibilityLabel={t('face.meter')} style={{ gap: 4 }}>
+              <View style={{ height: 12, borderRadius: 6, backgroundColor: c.line, overflow: 'hidden', alignItems: step === 'left' ? 'flex-end' : 'flex-start' }}>
+                <View style={{ height: 12, width: `${Math.round(turn * 100)}%`, borderRadius: 6, backgroundColor: turn >= 1 ? c.ok : c.brand }} />
+              </View>
+              <Txt variant="caption" color="ink2">{t('face.meter')}</Txt>
+            </View>
+          )}
         </View>
         <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 24, paddingBottom: 48, gap: 6, backgroundColor: c.card }}>
           {!enrolled && <Txt variant="caption" color="ink2">{t('face.enrollNote')}</Txt>}
