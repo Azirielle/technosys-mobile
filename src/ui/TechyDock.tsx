@@ -3,7 +3,7 @@
 // say something useful (techy.say), then tucks back. Tap it to Ask Techy; drag it to the other edge.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PanResponder, Pressable, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Techy, { TechyMood } from './Techy';
@@ -98,22 +98,21 @@ export default function TechyDock({ onAsk }: { onAsk: () => void }) {
             <Techy mood={mood} size={SIZE} />
           </View>
         </Pressable>
-        {bubble && (
-          <Animated.View
-            entering={reduced ? undefined : FadeIn.duration(180).delay(150)}
-            exiting={FadeOut.duration(150)}
-            pointerEvents="none"
-            style={[{
-              // P2: a fixed width; inside Techy's small box the bubble shrank to nothing on Android
-              position: 'absolute', top: 4, [side === 'right' ? 'right' : 'left']: SIZE - 2, width: 200,
-              backgroundColor: c.card, paddingHorizontal: 11, paddingVertical: 8,
-              borderRadius: 14, [side === 'right' ? 'borderBottomRightRadius' : 'borderBottomLeftRadius']: 4,
-            }, shadow.raised]}
-          >
-            <Txt variant="label" style={{ color: bubble.tone ? c[bubble.tone] : c.ink }}>{bubble.text}</Txt>
-          </Animated.View>
-        )}
       </Animated.View>
+      {bubble && (
+        // P2 (task 9): drawn BESIDE Techy, not inside its small moving, rotated, shadowed box. On Android anything
+        // outside that box was cut off, and the fade-in could stay invisible there, so the bubble never showed.
+        <View
+          pointerEvents="none"
+          style={[{
+            position: 'absolute', bottom: SIZE * 0.45, [side]: SIZE + 4, maxWidth: 220,
+            backgroundColor: c.card, paddingHorizontal: 11, paddingVertical: 8,
+            borderRadius: 14, [side === 'right' ? 'borderBottomRightRadius' : 'borderBottomLeftRadius']: 4,
+          }, shadow.raised]}
+        >
+          <Txt variant="label" style={{ color: bubble.tone ? c[bubble.tone] : c.ink }}>{bubble.text}</Txt>
+        </View>
+      )}
     </View>
   );
 }
