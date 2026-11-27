@@ -45,11 +45,11 @@ export function usePressScale(to = 0.97) {
 let hapticsOn = true;
 export function setHapticsEnabled(on: boolean) { hapticsOn = on; }
 const canBuzz = () => hapticsOn && Platform.OS !== 'web';
-// Android: the phone's own haptics (like the keyboard's). expo-haptics' "light" impact there is a 12% strength buzz
-// most motors can't even make, so nothing was felt. These follow the phone's "Touch feedback" setting.
+// Android: the vibration motor directly. The phone's own touch haptics stayed silent on POCO phones (HyperOS turns
+// them off with its haptic setting), and the "light" impact is a buzz too weak to feel, so taps use "medium".
 const android = Platform.OS === 'android';
 export const haptic = {
-  tap: () => { if (canBuzz()) (android ? Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Virtual_Key) : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)).catch(() => {}); },
-  success: () => { if (canBuzz()) (android ? Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Confirm) : Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)).catch(() => {}); },
-  error: () => { if (canBuzz()) (android ? Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Reject) : Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)).catch(() => {}); },
+  tap: () => { if (canBuzz()) Haptics.impactAsync(android ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light).catch(() => {}); },
+  success: () => { if (canBuzz()) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); },
+  error: () => { if (canBuzz()) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}); },
 };

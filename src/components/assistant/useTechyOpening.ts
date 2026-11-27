@@ -36,7 +36,10 @@ const back = (x: number) => { 'worklet'; const c = 1.2; return 1 + (c + 1) * Mat
 
 /** Runs a shared value to `to` and resolves when it's there (closing only). */
 function run(sv: SharedValue<number>, to: number, duration: number) {
-  return new Promise<void>((done) => { sv.value = withTiming(to, { duration, easing: Easing.inOut(Easing.cubic) }, () => scheduleOnRN(done)); });
+  return new Promise<void>((done) => {
+    sv.value = withTiming(to, { duration, easing: Easing.inOut(Easing.cubic) }, () => scheduleOnRN(done));
+    setTimeout(done, duration + 400); // if the phone never reports the end, closing still finishes (no stuck chat)
+  });
 }
 
 export function useTechyOpening() {
@@ -108,16 +111,20 @@ export function useTechyOpening() {
     side.value = techyDock.side === 'left' ? -1 : 1;
     closing.value = 0; home.value = 0; tuckBack.value = 0; slide.value = 0;
     setStill(true); setMood('cheer'); // one face for the whole move: nothing redraws Techy mid-flight
-    const finish = () => { setStill(false); setMood('wave'); done(); };
+    let finished = false;
+    const finish = () => { if (finished) return; finished = true; setStill(false); setMood('wave'); done(); };
     if (reduced) { clock.value = TOTAL; finish(); return; }
     clock.value = 0;
     clock.value = withTiming(TOTAL, { duration: TOTAL, easing: Easing.linear }, () => scheduleOnRN(finish));
+    setTimeout(finish, TOTAL + 400); // same safety as run(): Back always works once the opening is over
   }), [reduced, side, clock, closing, home, tuckBack, slide]);
 
   const close = useCallback(async () => {
+    // Flatten the screen first, also with Reduce motion: once the chat is gone the screen's animated style is dropped,
+    // but its last size stays. Left at the opening's end (narrowed to nothing) it was a blank screen (POCO, HyperOS).
+    closing.value = 1;                                                       // the screen waits flat under the chat
     if (reduced) { slide.value = 1; return; }
     setStill(true); setMood('ready');
-    closing.value = 1;                                                       // the screen waits flat under the chat
     slide.value = withTiming(1, { duration: 560, easing: Easing.inOut(Easing.cubic) }); // the chat slides down
     await run(home, 1, 620);                                                 // Techy goes straight home
     await run(tuckBack, 1, 320);                                             // and tucks in
