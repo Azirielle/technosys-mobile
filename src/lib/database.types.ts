@@ -944,6 +944,7 @@ export type Database = {
           leave_type: string
           reason: string
           rejection_reason: string | null
+          sick_days: number
           start_date: string
           status: string
           technician_id: string
@@ -957,6 +958,7 @@ export type Database = {
           leave_type: string
           reason: string
           rejection_reason?: string | null
+          sick_days?: number
           start_date: string
           status?: string
           technician_id: string
@@ -970,6 +972,7 @@ export type Database = {
           leave_type?: string
           reason?: string
           rejection_reason?: string | null
+          sick_days?: number
           start_date?: string
           status?: string
           technician_id?: string
