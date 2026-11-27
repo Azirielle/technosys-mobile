@@ -3,7 +3,6 @@
 // opened is remembered on this phone. HR replies also show as a phone notification while the app is open.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
-import { getNotifications } from './notifications';
 import { sanitizeNotification } from '../utils/notification-sanitizer';
 
 export type InboxItem = {
@@ -121,16 +120,7 @@ export function watchInbox(onChange: () => void): () => void {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments' }, (payload: { new?: { sender_role?: string; content?: string; ticket_id?: string } }) => {
       const reply = payload.new;
       if (reply?.sender_role !== 'admin' && reply?.sender_role !== 'system') return;
-      onChange();
-      try {
-        // Not available in Expo Go on Android (see lib/notifications); skipped there.
-        getNotifications()?.scheduleNotificationAsync({
-          content: { title: 'Technocycle HR', body: (reply.content || '').replace(/\[DECISION:.*?\]\s*/i, '').slice(0, 100), data: { ticketId: reply.ticket_id } },
-          trigger: null,
-        });
-      } catch {
-        // no phone notification: the Inbox still shows it
-      }
+      onChange(); // no phone notification here: the server already pushes HR's reply (27 Nov: it came twice)
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets' }, () => onChange())
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leaves' }, () => onChange())

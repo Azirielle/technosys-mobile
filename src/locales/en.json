@@ -3,7 +3,7 @@
     "continue": "Continue",
     "back": "Back",
     "stepOf": "Step {step} of {total}",
-    "noSignal": "Can't reach the server. Check your signal and try again.",
+    "noSignal": "That didn't go through. Check your signal or Wi-Fi and try again.",
     "cancel": "Cancel",
     "exitTitle": "Exit Technocycle?",
     "exitText": "You'll stay signed in.",

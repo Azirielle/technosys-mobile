@@ -3,7 +3,7 @@
     "continue": "Magpatuloy",
     "back": "Bumalik",
     "stepOf": "Hakbang {step} sa {total}",
-    "noSignal": "Hindi maabot ang server. I-check ang signal mo at subukan ulit.",
+    "noSignal": "Hindi ito naipadala. I-check ang signal o Wi-Fi mo at subukan ulit.",
     "cancel": "Kanselahin",
     "exitTitle": "Lumabas sa Technocycle?",
     "exitText": "Mananatili kang naka-sign in.",
