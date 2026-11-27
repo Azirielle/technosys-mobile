@@ -747,14 +747,17 @@
   },
   "records": {
     "title": "Mga record ko",
-    "subtitle": "Lahat ng isinumite mo, kasama ang ticket number.",
-    "none": "Wala pang naisumite.",
+    "subtitle": "Lahat ng ginawa mo sa app: time in at out, trabaho, mga isinumite at mga tool mo.",
+    "none": "Wala pa rito.",
     "leave": "{type} leave",
     "leaveType": {
       "vacation": "Vacation",
       "sick": "Sick",
       "emergency": "Emergency",
-      "unpaid": "Unpaid"
+      "unpaid": "Unpaid",
+      "wedding": "Kasal",
+      "paternal": "Paternity",
+      "maternal": "Maternity"
     },
     "status": {
       "open": "Naghihintay",
@@ -763,7 +766,38 @@
       "closed": "Sarado",
       "pending": "Hinihintay ang HR",
       "approved": "Aprubado",
-      "rejected": "Tinanggihan"
+      "rejected": "Tinanggihan",
+      "late": "Huli",
+      "needs_review": "Titingnan ng HR",
+      "damaged": "Sira",
+      "lost": "Nawala"
+    },
+    "show": "Ipakita",
+    "today": "Ngayon",
+    "yesterday": "Kahapon",
+    "overtimeTitle": "Hiling na overtime",
+    "phoneTitle": "Hiling na bagong phone",
+    "hours": "{h} oras",
+    "lateBy": "{m} min huli",
+    "group": {
+      "all": "Lahat",
+      "work": "Trabaho",
+      "filed": "Isinumite",
+      "tools": "Tools"
+    },
+    "kind": {
+      "time_in": "Time in",
+      "time_out": "Time out",
+      "arrived": "Nakarating sa site",
+      "finished": "Tapos ang trabaho",
+      "dtr": "DTR ticket",
+      "tool": "Tool ticket",
+      "other": "Ticket",
+      "leave": "Leave",
+      "overtime": "Overtime",
+      "phone": "Phone",
+      "borrowed": "Hiniram na tool",
+      "returned": "Ibinalik na tool"
     }
   },
   "chatForm": {

@@ -747,14 +747,17 @@
   },
   "records": {
     "title": "My records",
-    "subtitle": "Everything you filed, with its ticket number.",
-    "none": "Nothing filed yet.",
+    "subtitle": "Everything you did in the app: time in and out, jobs, what you filed and your tools.",
+    "none": "Nothing here yet.",
     "leave": "{type} leave",
     "leaveType": {
       "vacation": "Vacation",
       "sick": "Sick",
       "emergency": "Emergency",
-      "unpaid": "Unpaid"
+      "unpaid": "Unpaid",
+      "wedding": "Wedding",
+      "paternal": "Paternity",
+      "maternal": "Maternity"
     },
     "status": {
       "open": "Waiting",
@@ -763,7 +766,38 @@
       "closed": "Closed",
       "pending": "Waiting for HR",
       "approved": "Approved",
-      "rejected": "Declined"
+      "rejected": "Declined",
+      "late": "Late",
+      "needs_review": "HR checks it",
+      "damaged": "Damaged",
+      "lost": "Lost"
+    },
+    "show": "Show",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "overtimeTitle": "Overtime request",
+    "phoneTitle": "New phone request",
+    "hours": "{h} h",
+    "lateBy": "{m} min late",
+    "group": {
+      "all": "All",
+      "work": "Work",
+      "filed": "Filed",
+      "tools": "Tools"
+    },
+    "kind": {
+      "time_in": "Time in",
+      "time_out": "Time out",
+      "arrived": "Arrived at the site",
+      "finished": "Job finished",
+      "dtr": "DTR ticket",
+      "tool": "Tool ticket",
+      "other": "Ticket",
+      "leave": "Leave",
+      "overtime": "Overtime",
+      "phone": "Phone",
+      "borrowed": "Tool borrowed",
+      "returned": "Tool returned"
     }
   },
   "chatForm": {

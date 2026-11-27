@@ -32,7 +32,7 @@ export async function fileTicket(t: NewTicket, techyLine: (ref: string) => strin
   if (photoUri) {
     const path = `${user.id}/${Date.now()}.jpg`;
     try { await uploadPhoto(BUCKET, path, photoUri); } catch { return null; } // no photo, no half a concern: try again
-    photo = { attachment_url: supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl, attachment_type: 'image/jpeg' };
+    photo = { attachment_url: path, attachment_type: 'image/jpeg' }; // private bucket: HR opens it with a short-lived link
   }
   const row = { ...t, ...(photo ?? {}), status: 'open' };
 

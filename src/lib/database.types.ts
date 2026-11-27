@@ -2360,7 +2360,6 @@ export type Database = {
         Returns: undefined
       }
       flag_no_face_check: { Args: { p_work_day_id: string }; Returns: Json }
-      get_email_from_contact: { Args: { p_contact: string }; Returns: string }
       get_server_time: { Args: never; Returns: string }
       hr_correct_work_day: {
         Args: {
