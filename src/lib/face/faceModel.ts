@@ -4,6 +4,7 @@
 import { RNMLKitFaceDetector, type RNMLKitFace } from '@infinitered/react-native-mlkit-face-detection';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { decode } from 'jpeg-js';
+import { Asset } from 'expo-asset';
 import { loadTensorflowModel, type TfliteModel } from 'react-native-fast-tflite';
 
 const SIZE = 112;
@@ -19,7 +20,12 @@ async function getDetector() {
 }
 
 async function getModel() {
-  model ??= await loadTensorflowModel(require('../../../assets/models/mobile_facenet.tflite'), []);
+  // The model's file must be a real file:// path: in the installed app a bundled file is only a name, which the
+  // model loader can't read (27 Nov: every face check stopped right after the face was found). expo-asset copies it.
+  if (!model) {
+    const [file] = await Asset.loadAsync(require('../../../assets/models/mobile_facenet.tflite'));
+    model = await loadTensorflowModel({ url: file.localUri ?? file.uri }, []);
+  }
   return model;
 }
 

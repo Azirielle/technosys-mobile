@@ -91,7 +91,7 @@ export default function FaceCheckSheet({ enrolled, onEnrolled, onDone }: Props) 
         await onEnrolled(straight[0].uri, mine).catch(() => { mine = null; }); // no signal: enroll next time
       }
       onDone({ uri: straight[0].uri, live, score: mine ? similarity(mine, straight[0].numbers) : 0 });
-    })().catch(() => onDone(null));
+    })().catch((e) => { console.warn('face check stopped:', e); onDone(null); }); // in the phone log (adb logcat)
     return () => { stopped = true; };
     // Runs once when the sheet opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
