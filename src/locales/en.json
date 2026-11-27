@@ -428,8 +428,7 @@
     "office": "The office",
     "important": "Important",
     "urgent": "Urgent",
-    "more": "Read more",
-    "less": "Show less"
+    "open": "Read the whole update"
   },
   "job": {
     "title": "Job",

@@ -1,9 +1,9 @@
-// Updates from the office (from Home): company announcements, newest first. Each shows who posted it and when;
-// long ones open fully with "Read more". "Important" in words when the office marked it urgent or required.
-// From the Inbox (?id=…) it shows just that announcement, fully open.
+// Updates from the office (from Home): company announcements, newest first. Each shows who posted it and when, and
+// a short preview; tapping one opens it in full (?id=…, the same screen the Inbox opens). "Important" in words when the
+// office marked it urgent or required.
 import React, { useCallback, useState } from 'react';
-import { Pressable, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { View } from 'react-native';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { getUpdates, Update } from '../lib/updates';
 import { markRead } from '../lib/inbox';
@@ -15,7 +15,6 @@ export default function UpdatesScreen() {
   const t = useT();
   const { c } = useTokens();
   const [updates, setUpdates] = useState<Update[] | null>(null);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -41,10 +40,9 @@ export default function UpdatesScreen() {
           </View>
         )}
         {(id && updates?.some((u) => u.id === id) ? updates.filter((u) => u.id === id) : updates)?.map((u) => {
-          const long = !id && u.content.length > 160;
-          const isOpen = !!id || !!open[u.id];
+          const isOpen = !!id; // the list shows a preview; tapping opens it in full (task 6)
           return (
-            <Card key={u.id} style={{ gap: 6, ...(u.read ? { opacity: 0.75 } : { backgroundColor: c.infoBg, borderLeftWidth: 4, borderLeftColor: c.info }) }}>
+            <Card key={u.id} onPress={isOpen ? undefined : () => router.push(`/updates?id=${u.id}` as Href)} accessibilityLabel={u.title} style={{ gap: 6, ...(u.read ? { opacity: 0.75 } : { backgroundColor: c.infoBg, borderLeftWidth: 4, borderLeftColor: c.info }) }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Txt variant="caption" color="ink2" style={{ flex: 1 }} numberOfLines={1}>{[u.author ?? t('updates.office'), ago(u.createdAt, t)].join(' · ')}</Txt>
                 {u.priority !== 'normal' && <StatusText tone={u.priority === 'urgent' ? 'error' : 'pending'} label={t(u.priority === 'urgent' ? 'updates.urgent' : 'updates.important')} />}
@@ -52,11 +50,7 @@ export default function UpdatesScreen() {
               </View>
               <Txt variant="heading">{u.title}</Txt>
               <Txt variant="body" color="ink2" style={{ fontSize: 15, lineHeight: 22 }} numberOfLines={isOpen ? undefined : 4}>{u.content}</Txt>
-              {long && (
-                <Pressable onPress={() => setOpen((o) => ({ ...o, [u.id]: !o[u.id] }))} hitSlop={8} accessibilityRole="button">
-                  <Txt variant="label" style={{ color: c.brand }}>{isOpen ? t('updates.less') : t('updates.more')}</Txt>
-                </Pressable>
-              )}
+              {!isOpen && <Txt variant="label" style={{ color: c.brand }}>{t('updates.open')}</Txt>}
             </Card>
           );
         })}
