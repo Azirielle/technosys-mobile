@@ -5,7 +5,7 @@ import { supabase } from './supabase';
 import { getDeviceId } from './deviceId';
 import { uploadPhoto } from './photoUpload';
 import { dropSelfie, tellIfRefused } from './work/offlineResult';
-import { sendKeptFace, sendKeptOfficeFace } from './face/faceCheck';
+import { sendKeptFace } from './face/faceCheck';
 
 const QUEUE_KEY = 'OFFLINE_TRANSACTION_QUEUE';
 
@@ -20,7 +20,7 @@ export function generateUUID(): string {
 export interface QueueItem {
   id: string;
   // work_time_in / work_time_out: Work v2, sent through the database's time_in / time_out with the time taken
-  type: 'time_in' | 'time_out' | 'leave_request' | 'work_time_in' | 'work_time_out' | 'work_office_check_in';
+  type: 'time_in' | 'time_out' | 'leave_request' | 'work_time_in' | 'work_time_out'; // an old saved 'work_office_check_in' (removed 27 Nov) matches nothing and is dropped
   payload: any;
   timestamp: string;
 }
@@ -225,14 +225,6 @@ export const syncQueue = {
               await tellIfRefused(item.type, data as { status?: string } | null, args.p_queued_at);
               const day = (data as { status?: string; work_day_id?: string } | null);
               if (item.type === 'work_time_in' && day?.status === 'timed_in' && day.work_day_id) await sendKeptFace(args.p_queued_at, day.work_day_id);
-            }
-          } else if (item.type === 'work_office_check_in') {
-            const { id: _id, ...args } = item.payload;
-            const { data, error: err } = await supabase.rpc('office_check_in', args);
-            error = err;
-            if (!err) {
-              const res = data as { status?: string; check_in_id?: string } | null;
-              if (res?.status === 'checked_in' && res.check_in_id) await sendKeptOfficeFace(args.p_queued_at, res.check_in_id);
             }
           } else if (item.type === 'leave_request') {
             const leaveId = item.payload.id || item.id;

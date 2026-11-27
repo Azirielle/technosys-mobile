@@ -32,17 +32,6 @@ export async function enroll(uid: string, uri: string, face: number[]) {
   await AsyncStorage.setItem(faceKey(uid), JSON.stringify(face)).catch(() => {});
 }
 
-/** Uploads the selfie and saves the result on the office check-in. */
-export async function sendOfficeFaceCheck(checkInId: string, r: FaceResult): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return null;
-  const path = `${session.user.id}-office-face-${Date.now()}.jpg`;
-  await uploadPhoto('dtr-selfies', path, r.uri);
-  const { data, error } = await supabase.rpc('record_office_face_check', { p_check_in_id: checkInId, p_selfie_path: path, p_score: r.score, p_live: r.live });
-  const answer = data as { status?: string; face_check?: string } | null;
-  return error ? null : (answer?.face_check ?? answer?.status ?? 'done');
-}
-
 /** Uploads the selfie and saves the result on the work day. Returns the database's face_check, or null if it failed. */
 export async function sendFaceCheck(workDayId: string, r: FaceResult): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -76,17 +65,6 @@ export async function sendKeptFace(queuedAt: string, workDayId: string) {
   const sent = r.uri ? await sendFaceCheck(workDayId, r).catch(() => null) : await flagNoFace(workDayId).catch(() => null);
   if (sent === null) return;
   if (r.uri) dropSelfie(r.uri);
-  delete all[queuedAt];
-  await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(all));
-}
-
-/** The saved office check-in was accepted: send its face result. */
-export async function sendKeptOfficeFace(queuedAt: string, checkInId: string) {
-  const all = JSON.parse((await AsyncStorage.getItem(PENDING_KEY).catch(() => null)) ?? '{}');
-  const r: FaceResult | undefined = all[queuedAt];
-  if (!r) return;
-  if ((await sendOfficeFaceCheck(checkInId, r).catch(() => null)) === null) return;
-  dropSelfie(r.uri);
   delete all[queuedAt];
   await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(all));
 }

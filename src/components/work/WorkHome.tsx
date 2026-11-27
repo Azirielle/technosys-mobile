@@ -2,9 +2,6 @@
 // the database (lib/work/useWork), the check / problem / "When did you leave?" dialogs, and Arrived / Done /
 // overtime while timed in on a job. The shared parts (Support chat, push, offline sending) stay on the Home tab.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState } from 'react-native';
-import * as Location from 'expo-location';
-import { getDistance } from 'geolib';
 import { useWork } from '../../lib/work/useWork';
 import { onPunchRequest } from '../../lib/work/punchRequest';
 import { getMyWorkJobs, type MyJob } from '../../lib/work/workApi';
@@ -115,54 +112,16 @@ export default function WorkHome() {
   const jobToday = !!job && job.start_date <= todayStr && todayStr <= job.end_date;
   // Andrew 27 Nov: Time in only for on-site and out-of-town jobs (VIP is an on-site job); in-house jobs don't use it
   const isInHouse = jobToday && job.work_type === 'in_house';
-  const atOffice = !today && !!work.days.officeCheckIn;
-  const autoTriggered = useRef(false);
-
-  useEffect(() => {
-    if (!atOffice || !job?.site_lat || !job?.site_lon) return;
-    autoTriggered.current = false;
-    const checkSiteArrival = async () => {
-      if (autoTriggered.current) return;
-      try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const dist = getDistance(
-          { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
-          { latitude: job.site_lat, longitude: job.site_lon }
-        );
-        if (dist <= (job.site_radius_m || 75)) {
-          autoTriggered.current = true;
-          latest.current.startTimeIn();
-        }
-      } catch { /* GPS unavailable or permission off */ }
-    };
-
-    checkSiteArrival();
-    const interval = setInterval(checkSiteArrival, 10000);
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        latest.current.reload().catch(() => {});
-        checkSiteArrival();
-      }
-    });
-
-    return () => {
-      clearInterval(interval);
-      sub.remove();
-    };
-  }, [atOffice, job?.site_lat, job?.site_lon, job?.site_radius_m]); // not `work`: it changes every render and would re-arm the watch
-
   const shift: ShiftState = today
     ? (today.time_out
       ? { kind: 'done', timeIn: today.time_in, timeOut: today.time_out, hours: today.hours != null ? Number(today.hours) : null }
       : { kind: 'working', startedAt: today.time_in, verified: today.in_check === 'inside' })
-    : atOffice
-    ? { kind: 'at_office', checkedInAt: work.days.officeCheckIn!.checked_in_at, clientName: job?.client_name }
     : leaveToday
     ? { kind: 'leave', leaveType: leaveToday }
     : isInHouse
     ? { kind: 'in_house', clientName: job?.client_name }
     // Task 2 (27 Nov): only TODAY's job gives a start time; no job today = "No schedule today", no Time in button
-    : { kind: 'off', shiftStart: jobToday ? card?.start_time : undefined, canCheckInOffice: jobToday && job.work_type === 'on_site' };
+    : { kind: 'off', shiftStart: jobToday ? card?.start_time : undefined };
 
   return (
     <>
@@ -171,7 +130,6 @@ export default function WorkHome() {
         busy={work.busy}
         onTimeIn={() => work.startTimeIn()}
         onTimeOut={work.timeOut}
-        onOfficeCheckIn={work.startOfficeCheckIn}
         job={card}
         onRefresh={async () => { loadJobs(); await work.reload(); }}
         jobExtra={working && job && today?.job_id === job.id ? <JobProgressCard jobId={job.id} reportTo={job.report_to} /> : null}

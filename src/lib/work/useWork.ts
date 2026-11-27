@@ -13,10 +13,10 @@ import { useT } from '../i18n';
 import { WRONG_PHONE_TITLE, WRONG_PHONE_MESSAGE } from '../signIn';
 import { loadHandbook } from '../handbook';
 import { locateMe, tellHrCouldntTimeIn, type Spot } from '../timeIn';
-import { getMyDays, myUserId, reportLeftAt, uploadWorkSelfie, workTimeIn, workTimeOut, workOfficeCheckIn, type WorkDay, type WorkResult, type OfficeCheckIn } from './workApi';
+import { getMyDays, myUserId, reportLeftAt, uploadWorkSelfie, workTimeIn, workTimeOut, type WorkDay, type WorkResult } from './workApi';
 import type { Problem } from '../useTimeIn';
 import { keepSelfie } from './offlineResult';
-import { enroll, flagNoFace, keepForLater, myFace, NO_FACE, sendFaceCheck, sendOfficeFaceCheck, type FaceResult } from '../face/faceCheck';
+import { enroll, flagNoFace, keepForLater, myFace, NO_FACE, sendFaceCheck, type FaceResult } from '../face/faceCheck';
 import { FACE_TRIES, facePassed } from '../face/facePass';
 import { techy, appAlert } from '../../ui';
 
@@ -30,7 +30,7 @@ const timeText = (iso: unknown) => new Date(String(iso)).toLocaleTimeString([], 
 export function useWork() {
   const t = useT();
   const [me, setMe] = useState<{ id: string; full_name: string | null } | null>(null);
-  const [days, setDays] = useState<{ today: WorkDay | null; forgotten: WorkDay | null; officeCheckIn: OfficeCheckIn | null }>({ today: null, forgotten: null, officeCheckIn: null });
+  const [days, setDays] = useState<{ today: WorkDay | null; forgotten: WorkDay | null }>({ today: null, forgotten: null });
   const [sheet, setSheet] = useState<OutsideState>(closed);
   const [problem, setProblem] = useState<Problem>({ open: false, kind: 'notSent', gpsFound: false, inside: false });
   const [selfie, setSelfie] = useState<{ uri: string; reason: string } | null>(null);
@@ -42,7 +42,7 @@ export function useWork() {
   // The face check BEFORE a time-in (components/face/FaceCheckSheet; Andrew 27 Nov: like Face ID). No time-in until the
   // face matches and the head turns; after 3 failed tries it goes through, flagged for HR, so nobody is stuck at a site.
   const [face, setFace] = useState<{ enrolled: number[] | null; tries: number; resolve: (r: FaceResult | null | 'cancel') => void } | null>(null);
-  // The last answer, sent with the time-in it was for; reused for 10 min so Try again / selfie / office duty don't ask again
+  // The last answer, sent with the time-in it was for; reused for 10 min so Try again / selfie don't ask again
   const checked = useRef<{ r: FaceResult | null; at: number } | null>(null);
 
   /** Asks for the face (or reuses a fresh answer). 'cancel' = the person stopped: no time-in. */
@@ -72,11 +72,10 @@ export function useWork() {
   }
 
   /** The time-in was saved: send the face answer with it. No answer = flagged for the Coordinator (Round 6). */
-  async function sendFace(target: { workDayId?: string; checkInId?: string; queuedAt?: string }) {
+  async function sendFace(target: { workDayId?: string; queuedAt?: string }) {
     const r = checked.current?.r ?? null;
     checked.current = null;
     if (target.workDayId) await (r ? sendFaceCheck(target.workDayId, r) : flagNoFace(target.workDayId)).catch(() => null);
-    else if (target.checkInId && r) await sendOfficeFaceCheck(target.checkInId, r).catch(() => null);
     else if (target.queuedAt) await keepForLater(target.queuedAt, r ?? NO_FACE).catch(() => {});
   }
 
@@ -105,8 +104,7 @@ export function useWork() {
         techy.react('cheer');
         setSheet((s) => ({ ...s, open: true, step: 'done', lateMinutes: Number(r.late_minutes ?? 0) }));
         setTimeout(() => { setSheet(closed); remindRules(); }, 1800);
-        if (r.face_already_checked) checked.current = null; // checked at the office this morning
-        else sendFace({ workDayId: String(r.work_day_id) });
+        sendFace({ workDayId: String(r.work_day_id) });
         return reload();
       case 'outside': case 'fake_gps': case 'need_selfie':
         return setSheet({ open: true, step: 'outside', here, why: r.status === 'need_selfie' ? 'no_location' : (r.status as 'outside' | 'fake_gps'),
@@ -134,7 +132,7 @@ export function useWork() {
     if (!me) return;
     // An earlier day is still open: the server would refuse (also a saved offline one), so ask for that time-out first
     if (days.forgotten) { setForgotNudge((n) => n + 1); return; }
-    if (!days.officeCheckIn && (await askFace()) === 'cancel') return; // checked at the office already
+    if ((await askFace()) === 'cancel') return;
     setSheet({ ...closed, open: true });
     const found = await locateMe().catch(() => 'no_gps' as const);
     if (found === 'no_permission') {
@@ -144,34 +142,6 @@ export function useWork() {
     }
     const here = typeof found === 'string' ? null : found;
     await handleIn(await workTimeIn(here), here);
-  }
-
-  /** Check in at Pacita office before leaving for the on-site job */
-  async function startOfficeCheckIn() {
-    if (!me || (await askFace()) === 'cancel') return;
-    setBusy(true);
-    const found = await locateMe().catch(() => 'no_gps' as const);
-    const here = typeof found === 'string' ? null : found;
-    const r = await workOfficeCheckIn(here);
-    setBusy(false);
-    if (r.status === 'checked_in') {
-      techy.react('cheer');
-      appAlert(t('home.checkedInOfficeTitle'), t('home.checkedInOfficeMsg'));
-      await reload();
-      if (r.check_in_id) sendFace({ checkInId: String(r.check_in_id) });
-    } else if (r.status === 'queued') {
-      // a saved office check-in keeps only a real face answer (lib/syncQueue sends it with the check-in)
-      if (r.queued_at && checked.current?.r) sendFace({ queuedAt: String(r.queued_at) });
-      else checked.current = null;
-      setProblem({ open: true, kind: 'queued', gpsFound: !!here, inside: false });
-    } else if (r.status === 'outside') {
-      appAlert(t('home.outsideOfficeTitle'), t('home.outsideOfficeMsg', { distance: r.distance_m != null ? String(r.distance_m) : '—' }));
-    } else if (r.status === 'already') {
-      appAlert(t('home.alreadyOfficeTitle'), t('home.alreadyOfficeMsg'));
-      reload();
-    } else {
-      appAlert(t('common.error'), String(r.message ?? t('timeIn.tryAgain')));
-    }
   }
 
   /** Outside the site: take (or reuse) the selfie and send it with the reason picked */
@@ -249,7 +219,7 @@ export function useWork() {
   }
 
   return {
-    me, days, sheet, problem, selfie, sending, busy, forgotNudge, reload, startTimeIn, startOfficeCheckIn, sendSelfie, tellHr, timeOut, saveLeftAt,
+    me, days, sheet, problem, selfie, sending, busy, forgotNudge, reload, startTimeIn, sendSelfie, tellHr, timeOut, saveLeftAt,
     early, sendTimeOut, closeEarly: () => setEarly(null),
     face, faceDone, enrollFace: (uri: string, numbers: number[]) => (me ? enroll(me.id, uri, numbers) : Promise.reject(new Error('signed out'))),
     retry: () => startTimeIn(),

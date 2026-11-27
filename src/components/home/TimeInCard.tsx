@@ -9,15 +9,14 @@ import { Button, Card, Glass, IconChip, StatusPill, SuccessCheck, Txt, useReduce
 import { openTechyChat } from '../assistant/TechyChatLayer';
 
 export type ShiftState =
-  | { kind: 'off'; shiftStart?: string; canCheckInOffice?: boolean }
-  | { kind: 'at_office'; checkedInAt: string; clientName?: string }
+  | { kind: 'off'; shiftStart?: string }
   | { kind: 'working'; startedAt: string; verified: boolean }
   | { kind: 'done'; timeIn: string; timeOut: string | null; hours: number | null }
   | { kind: 'in_house'; clientName?: string }
   | { kind: 'leave'; leaveType: string };
 
 type Props = {
-  shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void; onOfficeCheckIn?: () => void;
+  shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void;
   /** Today's job, shown inside the card above the button (task 3) */
   job?: React.ReactNode;
 };
@@ -25,7 +24,7 @@ type Props = {
 const SHIFT_MS = 9 * 3600000; // 8 hours of work plus the 1-hour meal break
 const clock = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeCheckIn, job }: Props) {
+export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, job }: Props) {
   const t = useT();
   const { c, radius } = useTokens();
   const reduced = useReducedMotion();
@@ -71,9 +70,6 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
   const view = shift.kind === 'working'
     ? { tone: 'ok' as const, pill: t('home.working', { time: clock(new Date(shift.startedAt)) }), big: t('home.elapsed', { h, m }),
         sub: shift.verified ? t('home.verified') : t('home.photoOverride') }
-    : shift.kind === 'at_office'
-    ? { tone: 'ok' as const, pill: t('home.atOfficePill', { time: clock(new Date(shift.checkedInAt)) }), big: clock(now),
-        sub: t('home.atOfficeTransitNote') }
     : shift.kind === 'done'
     ? { tone: 'ok' as const, pill: t('home.doneToday'), big: shift.hours != null ? `${shift.hours.toFixed(1)} h` : '—',
         sub: `${clock(new Date(shift.timeIn))} – ${shift.timeOut ? clock(new Date(shift.timeOut)) : '…'} · ${t('home.sentToHr')}` }
@@ -104,23 +100,8 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
             <Txt variant="caption" color="ink2">{t('home.inHouseNote')}</Txt>
             <Button icon="message-square" label={t('home.inHouseTechy')} onPress={openTechyChat} />
           </View>
-        ) : shift.kind === 'at_office' ? (
-          <View style={{ gap: 8 }}>
-            <Button icon="log-in" label={t('home.timeInManual')} onPress={onTimeIn} loading={busy} />
-          </View>
         ) : shift.kind === 'off' ? (
-          <View style={{ gap: 8 }}>
-            {shift.canCheckInOffice && onOfficeCheckIn && (
-              <Button icon="map-pin" label={t('home.checkInOffice')} onPress={onOfficeCheckIn} loading={busy} />
-            )}
-            <Button
-              kind={shift.canCheckInOffice ? 'ghost' : 'primary'}
-              icon="log-in"
-              label={t('home.timeIn')}
-              onPress={onTimeIn}
-              loading={busy}
-            />
-          </View>
+          <Button icon="log-in" label={t('home.timeIn')} onPress={onTimeIn} loading={busy} />
         ) : shift.kind === 'working' ? (
           <Button kind="secondary" icon="log-out" label={t('home.timeOut')} onPress={onTimeOut} loading={busy} />
         ) : (
