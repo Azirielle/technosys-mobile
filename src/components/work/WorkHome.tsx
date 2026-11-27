@@ -145,7 +145,8 @@ export default function WorkHome() {
     ? { kind: 'at_office', checkedInAt: work.days.officeCheckIn!.checked_in_at, clientName: job?.client_name }
     : isInHouse
     ? { kind: 'in_house', clientName: job?.client_name }
-    : { kind: 'off', shiftStart: card?.start_time, canCheckInOffice: job?.work_type === 'on_site' };
+    // Task 2 (27 Nov): only TODAY's job gives a start time; a later job alone means no job today (no Time in button)
+    : { kind: 'off', shiftStart: job && job.start_date <= todayStr ? card?.start_time : undefined, canCheckInOffice: job?.work_type === 'on_site' && job.start_date <= todayStr };
 
   return (
     <>
@@ -156,6 +157,7 @@ export default function WorkHome() {
         onTimeIn={() => work.startTimeIn()}
         onTimeOut={work.timeOut}
         onOfficeCheckIn={work.startOfficeCheckIn}
+        onOfficeDuty={() => work.startTimeIn(true)}
         job={card}
         onRefresh={async () => { loadJobs(); await work.reload(); }}
         jobExtra={working && job && today?.job_id === job.id ? <JobProgressCard jobId={job.id} reportTo={job.report_to} /> : null}

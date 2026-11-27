@@ -300,7 +300,7 @@
     "doneToday": "Done for today",
     "sentToHr": "sent to HR",
     "noJobPill": "No job today",
-    "noJobSub": "Time in only if the office asked you to work today.",
+    "noJobSub": "Wait for the Coordinator to schedule you. Your Time in button shows up when you have a job today.",
     "shiftStarts": "Shift starts {time}",
     "timeIn": "Time in",
     "timeOut": "Time out",

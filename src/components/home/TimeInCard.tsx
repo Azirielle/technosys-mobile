@@ -15,12 +15,12 @@ export type ShiftState =
   | { kind: 'done'; timeIn: string; timeOut: string | null; hours: number | null }
   | { kind: 'in_house'; clientName?: string };
 
-type Props = { shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void; onOfficeCheckIn?: () => void };
+type Props = { shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void; onOfficeCheckIn?: () => void; onOfficeDuty?: () => void };
 
 const SHIFT_MS = 9 * 3600000; // 8 hours of work plus the 1-hour meal break
 const clock = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeCheckIn }: Props) {
+export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeCheckIn, onOfficeDuty }: Props) {
   const t = useT();
   const { c, radius } = useTokens();
   const reduced = useReducedMotion();
@@ -90,6 +90,9 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
           <View style={{ gap: 8 }}>
             <Button icon="log-in" label={t('home.timeInManual')} onPress={onTimeIn} loading={busy} />
           </View>
+        ) : noJob ? (
+          // Task 2: no job today, no Time in button; office duty (asked by the office) is the only way in
+          onOfficeDuty ? <Button kind="ghost" icon="briefcase" label={t('work.officeDuty')} onPress={onOfficeDuty} loading={busy} /> : null
         ) : shift.kind === 'off' ? (
           <View style={{ gap: 8 }}>
             {shift.canCheckInOffice && onOfficeCheckIn && (
