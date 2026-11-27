@@ -5,21 +5,6 @@ import * as Crypto from 'expo-crypto';
 import { supabase, supabaseUrl } from './supabase';
 
 export const AI_CHAT_TITLE = 'Support Conversation';
-/** What Techy offers at the end of an answer (Andrew 27 Nov: only the one thing asked for):
- *  [FORM:DTR:2026-11-23] → the DTR form for that day, in the chat · [FORM:OTHER] → the "Others" form, in the chat ·
- *  [GO:LEAVE|TOOLS|TIMEIN|DTR|JOBS] → one button to that screen. Old answers' [ACTION:…] codes are hidden. */
-export type TechyAction = { form: 'dtr'; date: string | null } | { form: 'other' } | { go: 'leave' | 'tools' | 'timein' | 'dtr' | 'jobs' };
-const ACTION_RE = /\[(?:FORM|GO|ACTION):[^\]]*\]/g;
-export function readAction(text: string): { text: string; action: TechyAction | null } {
-  const code = text.match(/\[(FORM|GO):([A-Z_]+)(?::([0-9-]+))?\]/);
-  const clean = text.replace(ACTION_RE, '').trim();
-  if (!code) return { text: clean, action: null };
-  const [, kind, what, date] = code;
-  if (kind === 'FORM' && what === 'DTR') return { text: clean, action: { form: 'dtr', date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null } };
-  if (kind === 'FORM' && what === 'OTHER') return { text: clean, action: { form: 'other' } };
-  const go = ({ LEAVE: 'leave', TOOLS: 'tools', TIMEIN: 'timein', DTR: 'dtr', JOBS: 'jobs' } as const)[what as 'LEAVE'];
-  return { text: clean, action: go ? { go } : null };
-}
 const AI_URL = `${supabaseUrl}/functions/v1/chat-support`;
 
 export type Ticket = {
@@ -28,13 +13,11 @@ export type Ticket = {
   status: string;
   handling_mode: string | null;
   description?: string | null;
-  from_ticket_id?: string | null;
-  childTicketId?: string | null;
 };
 export type ChatMessage = { id: string; from: 'me' | 'techy' | 'hr' | 'note'; text: string; pending?: boolean };
 type Row = { id: string; sender_role: string | null; content: string; is_internal: boolean | null };
 
-const TICKET_FIELDS = 'id, title, status, handling_mode, description, from_ticket_id';
+const TICKET_FIELDS = 'id, title, status, handling_mode, description';
 const FROM: Record<string, ChatMessage['from']> = { ai: 'techy', admin: 'hr', system: 'note' };
 const toMessage = (r: Row): ChatMessage => ({ id: r.id, from: FROM[r.sender_role ?? ''] ?? 'me', text: r.content });
 
@@ -54,37 +37,19 @@ export async function openConversation(ticketId?: string): Promise<{ ticket: Tic
         .in('status', ['open', 'in_progress']).order('created_at', { ascending: false }).limit(1);
   const { data: tickets, error } = await query;
   if (error) throw error;
-  let ticket = (tickets?.[0] as Ticket | undefined) ?? null;
+  const ticket = (tickets?.[0] as Ticket | undefined) ?? null;
   if (!ticket) return { ticket: null, messages: [] };
 
-  // If opening Techy chat, check if a form ticket (DTR, tool) was filed from it
-  let child: Ticket | null = null;
-  if (ticket.title === AI_CHAT_TITLE) {
-    const { data: children } = await supabase.from('tickets')
-      .select(TICKET_FIELDS).eq('from_ticket_id', ticket.id)
-      .in('status', ['open', 'in_progress']).order('created_at', { ascending: false }).limit(1);
-    if (children && children.length > 0) {
-      child = children[0] as Ticket;
-    }
-  }
-
-  const ids = [ticket.id, ...(child ? [child.id] : [])];
   const { data: rows, error: rowsErr } = await supabase.from('ticket_comments')
-    .select('id, sender_role, content, is_internal').in('ticket_id', ids).order('created_at', { ascending: true });
+    .select('id, sender_role, content, is_internal').eq('ticket_id', ticket.id).order('created_at', { ascending: true });
   if (rowsErr) throw rowsErr;
   const messages = (rows as Row[]).filter((r) => !r.is_internal).map(toMessage);
-  // A ticket filed from a form (DTR question, tool report) keeps your question only as its description: show it first,
-  // also after HR has replied. A Techy chat's first question is already a message.
-  if (ticket.title !== AI_CHAT_TITLE && ticket.description) messages.unshift({ id: `desc_${ticket.id}`, from: 'me', text: ticket.description });
-
-  if (child) {
-    ticket = {
-      ...ticket,
-      childTicketId: child.id,
-      handling_mode: child.handling_mode || 'ADMIN',
-    };
+  // A ticket filed from a form screen keeps what you wrote only as its description: show it first, also after HR has
+  // replied. A chat that became a concern already has it as its summary line ("… (ticket #3F2A91C0)"), so not twice.
+  const ref = `#${ticket.id.slice(0, 8).toUpperCase()}`;
+  if (ticket.title !== AI_CHAT_TITLE && ticket.description && !messages.some((m) => m.text.includes(ref))) {
+    messages.unshift({ id: `desc_${ticket.id}`, from: 'me', text: ticket.description });
   }
-
   return { ticket, messages };
 }
 
@@ -116,34 +81,17 @@ export const saveTechyAnswer = (ticketId: string, text: string) => addMessage(ti
 /** "End": a Techy chat is closed, so the next question starts a new one. HR's tickets stay for HR to finish. */
 export async function endConversation(ticket: Ticket | null) {
   if (!ticket || ticket.title !== AI_CHAT_TITLE || ticket.handling_mode === 'ADMIN') return;
-  if (ticket.childTicketId) {
-    await supabase.from('tickets').update({ status: 'closed' }).eq('id', ticket.childTicketId);
-  }
   await supabase.from('tickets').update({ status: 'closed' }).eq('id', ticket.id);
 }
 
 /** Live: HR taking over or changing the ticket, and new messages (HR replies, saved answers). Returns stop(). */
-export function listenToConversation(
-  ticketId: string,
-  onTicket: (t: Ticket) => void,
-  onMessage: (m: ChatMessage) => void,
-  childTicketId?: string | null,
-) {
+export function listenToConversation(ticketId: string, onTicket: (t: Ticket) => void, onMessage: (m: ChatMessage) => void) {
   const channel = supabase.channel(`assistant-${ticketId}-${Date.now()}`) // unique: a removed channel finishes later
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${ticketId}` },
       (p) => onTicket(p.new as Ticket))
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${ticketId}` },
-      (p) => { const r = p.new as Row; if (!r.is_internal) onMessage(toMessage(r)); });
-
-  if (childTicketId) {
-    channel
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${childTicketId}` },
-        (p) => onTicket(p.new as Ticket))
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${childTicketId}` },
-        (p) => { const r = p.new as Row; if (!r.is_internal) onMessage(toMessage(r)); });
-  }
-
-  channel.subscribe();
+      (p) => { const r = p.new as Row; if (!r.is_internal) onMessage(toMessage(r)); })
+    .subscribe();
   return () => { supabase.removeChannel(channel); };
 }
 

@@ -229,5 +229,5 @@ export async function askHrAboutDay(date: string, dateLabel: string, reason: str
     title: `DTR check: ${dateLabel}`,
     description: [`Day: ${dateLabel} (${date})`, `What's wrong: ${reason}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-  }, (r) => `Your DTR concern is sent (ticket ${r}). HR will reply here.`);
+  }, (r) => `📅 DTR concern for ${dateLabel}: ${reason}${note.trim() ? `. Note: ${note.trim()}` : ''} (ticket ${r})`);
 }

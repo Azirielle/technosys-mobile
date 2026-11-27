@@ -37,9 +37,9 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
   const list = useRef<FlatList<ChatMessage>>(null);
 
   const setTicket = useCallback((next: Ticket) => { ticketRef.current = next; setTicketState(next); }, []);
-  const listen = useCallback((id: string, childId?: string | null) => {
+  const listen = useCallback((id: string) => {
     stopListening.current?.();
-    stopListening.current = listenToConversation(id, setTicket, (m) => setMessages((all) => mergeMessage(all, m)), childId);
+    stopListening.current = listenToConversation(id, setTicket, (m) => setMessages((all) => mergeMessage(all, m)));
   }, [setTicket]);
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
     openConversation()
       .then(({ ticket: found, messages: shown }) => {
         if (gone) return;
-        if (found) { setTicket(found); listen(found.id, found.childTicketId); }
+        if (found) { setTicket(found); listen(found.id); }
         setMessages(shown);
       })
       .catch(() => { if (!gone) setProblem('load'); })
@@ -67,10 +67,9 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
     let current = ticketRef.current;
     if (!current) {
       current = await startChat(text);
-      if (current) { setTicket(current); listen(current.id, current.childTicketId); }
+      if (current) { setTicket(current); listen(current.id); }
     }
-    const targetId = current?.childTicketId ?? current?.id;
-    const savedId = targetId ? await sendMine(targetId, text) : null;
+    const savedId = current ? await sendMine(current.id, text) : null;
     if (!current || !savedId) {
       setMessages((all) => all.filter((m) => m.id !== pendingId));
       setInput(text); setProblem('send'); haptic.error();
@@ -120,10 +119,11 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
               <Txt variant="heading" accessibilityRole="header">{t('assistant.name')}</Txt>
               <Txt variant="caption" color={hrHasIt ? 'brand' : 'ink2'} numberOfLines={1}>{subtitle}</Txt>
             </View>
-            <Pressable onPress={end} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('assistant.endHint')}
+            {/* Once the chat became a concern, HR has it: no End (it would do nothing); Back closes the window */}
+            {techyAnswers(ticket) && <Pressable onPress={end} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('assistant.endHint')}
               style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: radius.round, backgroundColor: c.cardSoft }}>
               <Txt variant="label">{t('assistant.end')}</Txt>
-            </Pressable>
+            </Pressable>}
           </View>
 
           <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" /* Android draws edge-to-edge and no longer resizes for the keyboard */>

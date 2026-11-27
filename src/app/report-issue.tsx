@@ -39,7 +39,7 @@ export default function ReportIssueScreen() {
     // Saved in English: the office reads it in the admin
     const what = { accident: 'Accident', vehicle: 'Vehicle problem', site: 'Problem at the site', other: 'Other concern' }[kind];
     const ref = await fileTicket({ category: 'Others', title: what, description: note.trim(), priority },
-      (r) => `I reported: ${what} (ticket ${r}). The office will reply here.`);
+      (r) => `⚠️ ${what}: ${note.trim()} (ticket ${r})`);
     setSending(false);
     if (ref) { setSent(ref); techy.react('cheer'); } else { setFailed(true); haptic.error(); }
   };

@@ -68,7 +68,7 @@ export async function reportToolProblem(tool: MyTool, problem: string, note: str
     title: `Tool problem: ${tool.name}`,
     description: [`Tool: ${tool.name}${tool.tag ? ` (${tool.tag})` : tool.serial ? ` (SN ${tool.serial})` : ''}`, `Problem: ${problem}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-  }, (r) => `Your tool report is sent (ticket ${r}). The office will reply here.`);
+  }, (r) => `🛠️ Tool problem: ${tool.name}: ${problem}${note.trim() ? `. Note: ${note.trim()}` : ''} (ticket ${r})`);
   return ref !== null;
 }
 
@@ -88,7 +88,7 @@ export async function requestTool(tool: CatalogTool, howMany: number, neededOn: 
     title: `Tool request: ${tool.name}`,
     description: [`Tool: ${tool.name}`, `How many: ${howMany}`, `Needed on: ${neededOn}`, `Delivery: ${delivery}`, why.trim() ? `Why: ${why.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-  }, (r) => `I asked for a tool: ${howMany} × ${tool.name} (ticket ${r}). The Coordinator will reply here.`);
+  }, (r) => `🧰 Tool request: ${howMany} × ${tool.name}, needed on ${neededOn}${why.trim() ? `. Why: ${why.trim()}` : ''} (ticket ${r})`);
 }
 
 /** Several tools at once (C5): one request per kind of tool, so the Coordinator lends each as usual. Ticket numbers, or null if none went. */

@@ -40,7 +40,7 @@ export default function ChatForm({ kind, date }: Props) {
     const ref = dtr && date
       ? await askHrAboutDay(date, dayLabel(date), t(`dtrAsk.${pick}`), note)
       : await fileTicket({ category: 'Others', title: OTHER_TITLE[pick as keyof typeof OTHER_TITLE], description: note.trim(), priority: pick === 'accident' ? 'high' : 'medium' },
-        (r) => `I reported: ${OTHER_TITLE[pick as keyof typeof OTHER_TITLE]} (ticket ${r}). The office will reply here.`);
+        (r) => `⚠️ ${OTHER_TITLE[pick as keyof typeof OTHER_TITLE]}: ${note.trim()} (ticket ${r})`);
     setSending(false);
     if (ref) { setSent(ref); techy.react('cheer'); haptic.success(); } else { setFailed(true); haptic.error(); }
   };

@@ -5,7 +5,8 @@ import React from 'react';
 import { View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useT } from '../../lib/i18n';
-import { readAction, type ChatMessage } from '../../lib/assistant';
+import type { ChatMessage } from '../../lib/assistant';
+import { readAction } from '../../lib/techyAction';
 import { Card, ListRow, Txt, useTokens } from '../../ui';
 import ChatForm, { formUsable } from './ChatForm';
 
