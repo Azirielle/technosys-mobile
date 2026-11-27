@@ -46,6 +46,7 @@ function openFromPush(response: { notification: Notification; actionIdentifier: 
   } else if (d.jobId) router.push(`/job/${d.jobId}` as Href);
   else if (d.kind === 'review' || d.kind === 'overtime' || d.kind === 'time_out') router.push('/dtr' as Href);
   else if (d.type === 'policy_acknowledgment') router.push('/handbook' as Href);
+  else if (d.type === 'tool_overdue') router.push('/tools' as Href); // Coordinator's "bring it back" reminder
   else router.navigate('/(tabs)/inbox' as Href);
 }
 
