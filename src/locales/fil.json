@@ -650,6 +650,10 @@
     "useAnother": "Ibang numero"
   },
   "offline": {
+    "whyForgot": "may naunang araw na hindi pa na-time out (buksan ang app at i-save muna iyon)",
+    "online": "Online",
+    "offline": "Offline",
+    "savedShort": "{n} naka-save",
     "banner": "Offline ka. Ang mga trabaho ay ang huling na-load; ang time-in at time-out ay naka-save sa phone at ipapadala pagbalik ng signal.",
     "bannerSaved": "{n} naka-save, naghihintay maipadala.",
     "inRefusedTitle": "Hindi tinanggap ang time-in",

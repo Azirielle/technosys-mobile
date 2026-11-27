@@ -21,7 +21,7 @@ export function dropSelfie(uri: string) {
 }
 
 const ACCEPTED = ['timed_in', 'already', 'timed_out'];
-const WHY: Record<string, string> = { no_job: 'offline.whyNoJob', too_early: 'offline.whyEarly', other_phone: 'offline.whyPhone' };
+const WHY: Record<string, string> = { no_job: 'offline.whyNoJob', too_early: 'offline.whyEarly', other_phone: 'offline.whyPhone', forgot_time_out: 'offline.whyForgot' };
 
 /** After a saved punch is sent: a notification when the database didn't accept it. */
 export async function tellIfRefused(kind: 'work_time_in' | 'work_time_out', answer: { status?: string } | null, queuedAt?: string) {

@@ -32,6 +32,7 @@ export type MyJob = {
 
 const isNetwork = (e: unknown) => /fetch|network|timeout/i.test(String((e as { message?: string })?.message ?? e));
 
+const FORGOTTEN_KEY = 'MY_OPEN_EARLIER_DAY';
 const JOBS_KEY = 'MY_WORK_JOBS'; // your jobs as last loaded, for the no-signal check before a time-in
 
 /** No signal: first the phone's own check (time-in), then kept on the phone and sent later with the time it was taken */
@@ -153,7 +154,13 @@ export async function getMyDays(): Promise<{ today: WorkDay | null; forgotten: W
   ]);
   const days = (daysData ?? []) as WorkDay[];
   const pending = await queuedToday(todayDate); // a time-in saved with no signal and not sent yet
-  if (daysErr) return { today: pending, forgotten: null, officeCheckIn: null };
+  // Offline: the open earlier day as last seen online, so a time-in can be stopped before the server refuses it (Round 6)
+  if (daysErr) {
+    const forgotten = JSON.parse((await AsyncStorage.getItem(FORGOTTEN_KEY).catch(() => null)) ?? 'null') as WorkDay | null;
+    return { today: pending, forgotten, officeCheckIn: null };
+  }
+  const openEarlier = days.find((d) => d.work_date < todayDate && !d.time_out) ?? null;
+  AsyncStorage.setItem(FORGOTTEN_KEY, JSON.stringify(openEarlier)).catch(() => {});
   return {
     today: days.find((d) => d.work_date === todayDate) ?? pending,
     forgotten: days.find((d) => d.work_date < todayDate && !d.time_out) ?? null,

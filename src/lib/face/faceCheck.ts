@@ -57,8 +57,15 @@ export async function sendFaceCheck(workDayId: string, r: FaceResult): Promise<s
 /** No signal: keep the face result with the saved time-in (by the time it was taken). */
 export async function keepForLater(queuedAt: string, r: FaceResult) {
   const all = JSON.parse((await AsyncStorage.getItem(PENDING_KEY)) ?? '{}');
-  all[queuedAt] = { ...r, uri: keepSelfie(r.uri) };
+  all[queuedAt] = { ...r, uri: r.uri ? keepSelfie(r.uri) : '' };
   await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(all));
+}
+
+/** No face found or no head turns (Round 6): the work day is flagged for the Coordinator instead. */
+export const NO_FACE: FaceResult = { uri: '', score: 0, live: false };
+export async function flagNoFace(workDayId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('flag_no_face_check', { p_work_day_id: workDayId });
+  return error ? null : ((data as { status?: string } | null)?.status ?? 'done');
 }
 
 /** The saved time-in was accepted: send its face result. A failure here is kept for the next try. */
@@ -66,8 +73,9 @@ export async function sendKeptFace(queuedAt: string, workDayId: string) {
   const all = JSON.parse((await AsyncStorage.getItem(PENDING_KEY).catch(() => null)) ?? '{}');
   const r: FaceResult | undefined = all[queuedAt];
   if (!r) return;
-  if ((await sendFaceCheck(workDayId, r).catch(() => null)) === null) return;
-  dropSelfie(r.uri);
+  const sent = r.uri ? await sendFaceCheck(workDayId, r).catch(() => null) : await flagNoFace(workDayId).catch(() => null);
+  if (sent === null) return;
+  if (r.uri) dropSelfie(r.uri);
   delete all[queuedAt];
   await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(all));
 }

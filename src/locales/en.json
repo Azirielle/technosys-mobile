@@ -650,6 +650,10 @@
     "useAnother": "Use another number"
   },
   "offline": {
+    "whyForgot": "an earlier day was never timed out (open the app and save that time-out first)",
+    "online": "Online",
+    "offline": "Offline",
+    "savedShort": "{n} saved",
     "banner": "You're offline. Your jobs are the last ones loaded; time-ins and time-outs are saved on the phone and sent when the signal is back.",
     "bannerSaved": "{n} saved, waiting to send.",
     "inRefusedTitle": "Time-in not accepted",

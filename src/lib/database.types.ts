@@ -2346,6 +2346,7 @@ export type Database = {
         Args: { p_delivery?: string; p_notes?: string; p_technician_id: string; p_unit_ids: string[] }
         Returns: Json
       }
+      flag_no_face_check: { Args: { p_work_day_id: string }; Returns: Json }
       decide_tool_unit: { Args: { p_back_in_service: boolean; p_unit_id: string }; Returns: Json }
       check_in_tool: {
         Args: {

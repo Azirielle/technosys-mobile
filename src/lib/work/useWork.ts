@@ -16,7 +16,7 @@ import { locateMe, tellHrCouldntTimeIn, type Spot } from '../timeIn';
 import { getMyDays, myUserId, reportLeftAt, uploadWorkSelfie, workTimeIn, workTimeOut, workOfficeCheckIn, type WorkDay, type WorkResult, type OfficeCheckIn } from './workApi';
 import type { Problem } from '../useTimeIn';
 import { keepSelfie } from './offlineResult';
-import { enroll, keepForLater, myFace, sendFaceCheck, sendOfficeFaceCheck, type FaceResult } from '../face/faceCheck';
+import { enroll, flagNoFace, keepForLater, myFace, NO_FACE, sendFaceCheck, sendOfficeFaceCheck, type FaceResult } from '../face/faceCheck';
 import { techy, appAlert } from '../../ui';
 
 export type OutsideState = {
@@ -51,7 +51,12 @@ export function useWork() {
     const target = face;
     setFace(null);
     remindRules();
-    if (!r || !target) return;
+    if (!target) return;
+    if (!r) { // no face found or no head turns: never silent, the Coordinator checks it (Round 6)
+      if (target.workDayId) await flagNoFace(target.workDayId).catch(() => null);
+      else if (target.queuedAt) await keepForLater(target.queuedAt, NO_FACE).catch(() => {});
+      return;
+    }
     if (target.workDayId) await sendFaceCheck(target.workDayId, r).catch(() => null);
     else if (target.checkInId) await sendOfficeFaceCheck(target.checkInId, r).catch(() => null);
     else if (target.queuedAt) await keepForLater(target.queuedAt, r).catch(() => {});
@@ -113,6 +118,8 @@ export function useWork() {
 
   async function startTimeIn(officeDuty = false) {
     if (!me) return;
+    // An earlier day is still open: the server would refuse (also a saved offline one), so ask for that time-out first
+    if (days.forgotten) { setForgotNudge((n) => n + 1); return; }
     setSheet({ ...closed, open: true, officeDuty });
     const found = await locateMe().catch(() => 'no_gps' as const);
     if (found === 'no_permission') {
