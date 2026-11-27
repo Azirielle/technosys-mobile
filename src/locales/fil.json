@@ -155,7 +155,11 @@
     "laterToday": "Mamaya",
     "showEarlier": "Ipakita ang naunang trabaho ({n})",
     "hideEarlier": "Itago ang naunang trabaho",
-    "priority": {"low": "Mababang priyoridad", "medium": "Katamtamang priyoridad", "high": "Mataas na priyoridad"},
+    "priority": {
+      "low": "Mababang priyoridad",
+      "medium": "Katamtamang priyoridad",
+      "high": "Mataas na priyoridad"
+    },
     "vip": "Apurahang trabaho",
     "moved": "Inilipat",
     "movedFrom": "Inilipat mula {date}",
@@ -280,7 +284,7 @@
     "notePlaceholder": "Halimbawa: Nag-time in ako ng 7:55 pero walang signal ang app.",
     "send": "Ipadala sa HR",
     "sentTitle": "Naipadala sa HR",
-    "sentTicket": "Ticket {ref} ang concern mo. Sasagot ang HR sa chat mo kay Techy at sa Inbox.",
+    "sentTicket": "Ticket {ref} ang concern mo. Sasagot ang HR sa Inbox mo.",
     "linkedChat": "Kasama ito sa chat mo kay Techy (ticket {ref}). Doon babalik ang sagot ng HR.",
     "sentText": "Titingnan ng HR ang araw na ito. Lalabas ang sagot nila sa Inbox mo.",
     "done": "Tapos"
@@ -433,7 +437,13 @@
     "away": "Mga {km} km mula sa iyo",
     "project": "Project: {name}",
     "scope": "Gagawin: {name}",
-    "scopes": {"repair": "Pag-aayos (repair)", "cleaning": "Paglilinis (cleaning)", "installation": "Pagkakabit (installation)", "troubleshooting": "Pag-troubleshoot", "inspection": "Inspeksyon"},
+    "scopes": {
+      "repair": "Pag-aayos (repair)",
+      "cleaning": "Paglilinis (cleaning)",
+      "installation": "Pagkakabit (installation)",
+      "troubleshooting": "Pag-troubleshoot",
+      "inspection": "Inspeksyon"
+    },
     "circle": "Gumagana ang time in sa loob ng asul na bilog ({m} m).",
     "team": "Team",
     "you": "ikaw",
@@ -593,11 +603,12 @@
     "thinking": "Nag-iisip si Techy…",
     "failed": "Hindi nakasagot si Techy ngayon. Subukan ulit pagkalipas ng isang minuto.",
     "loadFailed": "Hindi ma-load ang chat mo. Tingnan ang signal mo.",
-    "shortcut": {
-      "dtr": "Magtanong sa HR tungkol sa isang araw sa DTR",
+    "go": {
       "leave": "Mag-file ng leave",
-      "tool": "Mag-report ng problema sa gamit",
-      "other": "Mag-report ng problema (aksidente, sasakyan…)"
+      "tools": "Buksan ang My tools",
+      "timein": "Pumunta sa Time in",
+      "dtr": "Buksan ang DTR ko",
+      "jobs": "Buksan ang mga trabaho ko"
     }
   },
   "hrChat": {
@@ -709,7 +720,7 @@
     "placeholder": "Halimbawa: na-flat ang gulong ng van papuntang Alabang.",
     "send": "Ipadala sa opisina",
     "sentTitle": "Naipadala sa opisina",
-    "sentText": "Ticket {ref} ang report mo. Sasagot ang opisina sa chat mo kay Techy at sa Inbox. Kung emergency, tawagan din ang opisina."
+    "sentText": "Ticket {ref} ang report mo. Sasagot ang opisina sa Inbox mo. Kung emergency, tawagan din ang opisina."
   },
   "toolRequest": {
     "partSent": "Naipadala na: {refs}. Hindi pa naipadala ang mga naka-tsek pa (walang signal). Pindutin ulit ang Send para sa mga iyon.",
@@ -729,7 +740,7 @@
     "whyPlaceholder": "Halimbawa: para sa chiller job sa Insular sa Huwebes.",
     "send": "Ipadala sa Coordinator",
     "sentTitle": "Naipadala ang hiling",
-    "sentText": "Ticket {ref} ang hiling mo. Sasagot ang Coordinator sa chat mo kay Techy. Kapag naipahiram na, makikita ito sa My tools."
+    "sentText": "Ticket {ref} ang hiling mo. Sasagot ang Coordinator sa Inbox mo. Kapag naipahiram na, makikita ito sa My tools."
   },
   "records": {
     "title": "Mga record ko",
@@ -751,5 +762,11 @@
       "approved": "Aprubado",
       "rejected": "Tinanggihan"
     }
+  },
+  "chatForm": {
+    "dtrTitle": "Concern sa DTR para sa {date}",
+    "otherTitle": "Iba pa",
+    "sentDtr": "Naipadala sa HR bilang ticket {ref}. Dito mismo sa chat sasagot ang HR.",
+    "sentOther": "Naipadala sa opisina bilang ticket {ref}. Dito mismo sa chat sila sasagot. Kung emergency, tawagan din ang opisina."
   }
 }

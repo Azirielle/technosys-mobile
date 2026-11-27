@@ -5,7 +5,6 @@ import { View } from 'react-native';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { getLoadedTool, reportToolProblem } from '../lib/tools';
-import { openTechyChat } from '../components/assistant/TechyChatLayer';
 import { Button, ChoiceCard, Notice, PushedScreen, SentScreen, TextBox, haptic, techy } from '../ui';
 
 const PROBLEMS = [
@@ -36,7 +35,6 @@ export default function ToolReportScreen() {
         doneLabel={t('dtrAsk.done')}
         onDone={() => {
           router.replace('/(tabs)/tools' as Href);
-          setTimeout(() => openTechyChat(), 60);
         }}
       />
     );

@@ -6,7 +6,6 @@ import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { askHrAboutDay, dayLabel } from '../lib/dtr';
 import { openChat } from '../lib/fileTicket';
-import { openTechyChat } from '../components/assistant/TechyChatLayer';
 import { Button, ChoiceCard, Notice, PushedScreen, SentScreen, TextBox, haptic, techy } from '../ui';
 
 const REASONS = [
@@ -41,7 +40,6 @@ export default function DtrAskScreen() {
         doneLabel={t('dtrAsk.done')}
         onDone={() => {
           router.replace('/(tabs)/dtr' as Href);
-          setTimeout(() => openTechyChat(), 60);
         }}
       />
     );

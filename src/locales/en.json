@@ -155,7 +155,11 @@
     "laterToday": "Later today",
     "showEarlier": "Show earlier jobs ({n})",
     "hideEarlier": "Hide earlier jobs",
-    "priority": {"low": "Low priority", "medium": "Medium priority", "high": "High priority"},
+    "priority": {
+      "low": "Low priority",
+      "medium": "Medium priority",
+      "high": "High priority"
+    },
     "vip": "Urgent job",
     "moved": "Moved",
     "movedFrom": "Moved from {date}",
@@ -280,7 +284,7 @@
     "notePlaceholder": "Example: I timed in at 7:55 but the app had no signal.",
     "send": "Send to HR",
     "sentTitle": "Sent to HR",
-    "sentTicket": "Your concern is ticket {ref}. HR will reply in your chat with Techy and in your Inbox.",
+    "sentTicket": "Your concern is ticket {ref}. HR will reply in your Inbox.",
     "linkedChat": "Part of your chat with Techy (ticket {ref}). HR's answer comes back there.",
     "sentText": "HR will check this day. Their reply will show in your Inbox.",
     "done": "Done"
@@ -433,7 +437,13 @@
     "away": "About {km} km from you",
     "project": "Project: {name}",
     "scope": "Scope: {name}",
-    "scopes": {"repair": "Repair", "cleaning": "Cleaning", "installation": "Installation", "troubleshooting": "Troubleshooting", "inspection": "Inspection"},
+    "scopes": {
+      "repair": "Repair",
+      "cleaning": "Cleaning",
+      "installation": "Installation",
+      "troubleshooting": "Troubleshooting",
+      "inspection": "Inspection"
+    },
     "circle": "Time in works inside the blue circle ({m} m).",
     "team": "Team",
     "you": "you",
@@ -593,11 +603,12 @@
     "thinking": "Techy is thinking…",
     "failed": "Techy couldn't answer just now. Try again in a minute.",
     "loadFailed": "Couldn't load your chat. Check your signal.",
-    "shortcut": {
-      "dtr": "Ask HR about a DTR day",
+    "go": {
       "leave": "File a leave",
-      "tool": "Report a tool problem",
-      "other": "Report a problem (accident, vehicle…)"
+      "tools": "Open My tools",
+      "timein": "Go to Time in",
+      "dtr": "Open my DTR",
+      "jobs": "Open my jobs"
     }
   },
   "hrChat": {
@@ -709,7 +720,7 @@
     "placeholder": "Example: the van's tire is flat on the way to Alabang.",
     "send": "Send to the office",
     "sentTitle": "Sent to the office",
-    "sentText": "Your report is ticket {ref}. The office will reply in your chat with Techy and in your Inbox. If it's an emergency, also call the office."
+    "sentText": "Your report is ticket {ref}. The office will reply in your Inbox. If it's an emergency, also call the office."
   },
   "toolRequest": {
     "partSent": "Sent so far: {refs}. The tools still ticked weren't sent (no signal). Press Send again for them.",
@@ -729,7 +740,7 @@
     "whyPlaceholder": "Example: for the chiller job at Insular on Thursday.",
     "send": "Send to the Coordinator",
     "sentTitle": "Request sent",
-    "sentText": "Your request is ticket {ref}. The Coordinator will reply in your chat with Techy. Once it's lent, it shows under My tools."
+    "sentText": "Your request is ticket {ref}. The Coordinator will reply in your Inbox. Once it's lent, it shows under My tools."
   },
   "records": {
     "title": "My records",
@@ -751,5 +762,11 @@
       "approved": "Approved",
       "rejected": "Declined"
     }
+  },
+  "chatForm": {
+    "dtrTitle": "DTR concern for {date}",
+    "otherTitle": "Others",
+    "sentDtr": "Sent to HR as ticket {ref}. HR will answer right here in this chat.",
+    "sentOther": "Sent to the office as ticket {ref}. They will answer right here in this chat. If it's an emergency, also call the office."
   }
 }

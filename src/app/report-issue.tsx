@@ -6,7 +6,6 @@ import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { fileTicket, type NewTicket } from '../lib/fileTicket';
-import { openTechyChat } from '../components/assistant/TechyChatLayer';
 import { Button, ChoiceCard, Notice, PushedScreen, SectionLabel, Segmented, SentScreen, TextBox, haptic, techy } from '../ui';
 
 const KINDS = [
@@ -31,7 +30,7 @@ export default function ReportIssueScreen() {
 
   if (sent) {
     return <SentScreen title={t('issue.sentTitle')} text={t('issue.sentText', { ref: sent })} doneLabel={t('dtrAsk.done')}
-      onDone={() => { router.back(); setTimeout(() => openTechyChat(), 60); }} />;
+      onDone={() => { router.back(); }} />;
   }
 
   const send = async () => {

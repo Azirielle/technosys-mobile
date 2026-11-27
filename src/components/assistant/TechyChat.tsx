@@ -131,7 +131,7 @@ export default function TechyChat({ onEnd, dimStyle }: Props) {
               ref={list}
               data={shown}
               keyExtractor={(m) => m.id}
-              renderItem={({ item }) => (item.id === STREAM_ID && !item.text ? null : <ChatBubble message={item} onLeave={onEnd} />)}
+              renderItem={({ item }) => (item.id === STREAM_ID && !item.text ? null : <ChatBubble message={item} onLeave={onEnd} canFile={techyAnswers(ticket)} />)}
               contentContainerStyle={{ padding: 14, paddingBottom: 8 }}
               onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
               keyboardShouldPersistTaps="handled"

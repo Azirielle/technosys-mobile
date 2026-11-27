@@ -1,19 +1,18 @@
 // ChatBubble: one message in Techy's chat. Yours on the right; Techy's and HR's on the left (Techy's with simple
-// formatting: **bold** and "- " lists); notes like "HR has joined" in the middle. When Techy suggests a form, the
-// answer ends with shortcuts to the right screens instead of the hidden code.
+// formatting: **bold** and "- " lists); notes like "HR has joined" in the middle. When Techy offers something, the
+// answer ends with only that one thing (Andrew 27 Nov): the DTR or Others form right here, or one button to a screen.
 import React from 'react';
 import { View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useT } from '../../lib/i18n';
-import { FORM_TOKEN, type ChatMessage } from '../../lib/assistant';
+import { readAction, type ChatMessage } from '../../lib/assistant';
 import { Card, ListRow, Txt, useTokens } from '../../ui';
+import ChatForm, { formUsable } from './ChatForm';
 
-const SHORTCUTS = [
-  { key: 'dtr', icon: 'calendar', to: '/dtr' },
-  { key: 'leave', icon: 'sun', to: '/leave-new' },
-  { key: 'tool', icon: 'tool', to: '/tools' },
-  { key: 'other', icon: 'alert-circle', to: '/report-issue' },
-] as const;
+const GO = {
+  leave: { icon: 'sun', to: '/leave-new' }, tools: { icon: 'tool', to: '/tools' }, timein: { icon: 'log-in', to: '/(tabs)' },
+  dtr: { icon: 'calendar', to: '/dtr' }, jobs: { icon: 'briefcase', to: '/(tabs)/jobs' },
+} as const;
 
 /** "**bold** text" → pieces of plain and bold text. */
 function Inline({ text, color }: { text: string; color: 'ink' | 'onBrand' }) {
@@ -42,8 +41,9 @@ function Formatted({ text, color }: { text: string; color: 'ink' | 'onBrand' }) 
   );
 }
 
-/** onLeave: in Techy's chat, a shortcut first closes the chat, so Back from the form returns to your screen. */
-export default function ChatBubble({ message, onLeave }: { message: ChatMessage; onLeave?: () => void }) {
+/** onLeave: in Techy's chat, a button first closes the chat, so Back from the screen returns to yours.
+ *  canFile: the chat is still Techy's, so a form can be sent from it (once sent, HR has it and forms stop showing). */
+export default function ChatBubble({ message, onLeave, canFile }: { message: ChatMessage; onLeave?: () => void; canFile?: boolean }) {
   const t = useT();
   const router = useRouter();
   const { c, radius } = useTokens();
@@ -53,8 +53,11 @@ export default function ChatBubble({ message, onLeave }: { message: ChatMessage;
   }
 
   const mine = message.from === 'me';
-  const wantsForm = message.from === 'techy' && message.text.includes(FORM_TOKEN);
-  const text = message.text.replace(FORM_TOKEN, '').trim();
+  const { text, action: found } = message.from === 'techy' ? readAction(message.text) : { text: message.text, action: null };
+  const action = message.pending ? null : found;
+  // A DTR form with no usable day falls back to the DTR screen button
+  const form = action && 'form' in action && canFile && formUsable({ kind: action.form, date: action.form === 'dtr' ? action.date : null }) ? action : null;
+  const go = action && 'go' in action ? action.go : canFile && action && 'form' in action && action.form === 'dtr' && !form ? 'dtr' : null; // once sent, no button in its place
   return (
     <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', marginVertical: 4 }}>
       <View style={{
@@ -65,12 +68,10 @@ export default function ChatBubble({ message, onLeave }: { message: ChatMessage;
         {message.from === 'hr' && <Txt variant="caption" color="brand" style={{ marginBottom: 2 }}>{t('assistant.hr')}</Txt>}
         {mine ? <Txt variant="body" color="onBrand">{text}</Txt> : <Formatted text={text} color="ink" />}
       </View>
-      {wantsForm && !message.pending && (
+      {form && <View style={{ marginTop: 8, width: '86%' }}><ChatForm kind={form.form} date={form.form === 'dtr' ? form.date : null} /></View>}
+      {go && (
         <Card padded={false} style={{ marginTop: 8, width: '86%' }}>
-          {SHORTCUTS.map((s, i) => (
-            <ListRow key={s.key} icon={s.icon} title={t(`assistant.shortcut.${s.key}`)} onPress={() => { onLeave?.(); router.push(s.to as Href); }}
-              last={i === SHORTCUTS.length - 1} />
-          ))}
+          <ListRow icon={GO[go].icon} title={t(`assistant.go.${go}`)} onPress={() => { onLeave?.(); router.push(GO[go].to as Href); }} last />
         </Card>
       )}
     </View>

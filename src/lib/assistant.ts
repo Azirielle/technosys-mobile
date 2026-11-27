@@ -5,8 +5,21 @@ import * as Crypto from 'expo-crypto';
 import { supabase, supabaseUrl } from './supabase';
 
 export const AI_CHAT_TITLE = 'Support Conversation';
-/** Techy adds this when a form would help; the chat shows ticket shortcuts instead of the code. */
-export const FORM_TOKEN = '[ACTION:OPEN_TICKET_FORM]';
+/** What Techy offers at the end of an answer (Andrew 27 Nov: only the one thing asked for):
+ *  [FORM:DTR:2026-11-23] → the DTR form for that day, in the chat · [FORM:OTHER] → the "Others" form, in the chat ·
+ *  [GO:LEAVE|TOOLS|TIMEIN|DTR|JOBS] → one button to that screen. Old answers' [ACTION:…] codes are hidden. */
+export type TechyAction = { form: 'dtr'; date: string | null } | { form: 'other' } | { go: 'leave' | 'tools' | 'timein' | 'dtr' | 'jobs' };
+const ACTION_RE = /\[(?:FORM|GO|ACTION):[^\]]*\]/g;
+export function readAction(text: string): { text: string; action: TechyAction | null } {
+  const code = text.match(/\[(FORM|GO):([A-Z_]+)(?::([0-9-]+))?\]/);
+  const clean = text.replace(ACTION_RE, '').trim();
+  if (!code) return { text: clean, action: null };
+  const [, kind, what, date] = code;
+  if (kind === 'FORM' && what === 'DTR') return { text: clean, action: { form: 'dtr', date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null } };
+  if (kind === 'FORM' && what === 'OTHER') return { text: clean, action: { form: 'other' } };
+  const go = ({ LEAVE: 'leave', TOOLS: 'tools', TIMEIN: 'timein', DTR: 'dtr', JOBS: 'jobs' } as const)[what as 'LEAVE'];
+  return { text: clean, action: go ? { go } : null };
+}
 const AI_URL = `${supabaseUrl}/functions/v1/chat-support`;
 
 export type Ticket = {

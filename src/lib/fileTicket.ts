@@ -1,10 +1,11 @@
-// fileTicket: files a concern for the office (tool problem, accident, vehicle problem…). If you have an open chat
-// with Techy, the new ticket is linked to it and the chat says "sent (ticket #…)", so it's one conversation (M2).
+// fileTicket: files a concern for the office (DTR day, tool problem, accident, vehicle problem…). One concern, one
+// ticket (Andrew 27 Nov): if you have an open chat with Techy, THAT chat becomes the concern (its title, kind and
+// details change, the chat says "sent", HR answers right there); with no open chat a new ticket is made.
 import { supabase } from './supabase';
 
 const refOf = (id: string) => `#${id.slice(0, 8).toUpperCase()}`;
 
-/** Your open chat with Techy (a new ticket joins it), or null. Forms show its number (prof, 20 Nov). */
+/** Your open chat with Techy (a concern you file becomes it), or null. Forms show its number (prof, 20 Nov). */
 export async function openChat(): Promise<{ id: string; ref: string } | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -21,15 +22,17 @@ export async function fileTicket(t: NewTicket, sentLine: (ref: string) => string
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const parentId = (await openChat())?.id ?? null;
+  const chatId = (await openChat())?.id ?? null;
+  if (chatId) {
+    // The chat becomes the concern: no second ticket. Its title is no longer Techy's, so HR answers from here on.
+    const { error } = await supabase.from('tickets').update({ ...t, status: 'open' }).eq('id', chatId);
+    if (error) return null;
+    await supabase.from('ticket_comments').insert({ ticket_id: chatId, author_id: user.id, content: sentLine(refOf(chatId)), sender_role: 'technician' });
+    return refOf(chatId);
+  }
 
   const { data: created, error } = await supabase.from('tickets')
-    .insert({ employee_id: user.id, ...t, status: 'open', from_ticket_id: parentId }).select('id').single();
+    .insert({ employee_id: user.id, ...t, status: 'open' }).select('id').single();
   if (error || !created) return null;
-
-  const ref = refOf(created.id);
-  if (parentId) {
-    await supabase.from('ticket_comments').insert({ ticket_id: parentId, author_id: user.id, content: sentLine(ref), sender_role: 'technician' });
-  }
-  return ref;
+  return refOf(created.id);
 }

@@ -7,7 +7,6 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useT } from '../lib/i18n';
 import { getToolCatalog, requestTools, type CatalogTool } from '../lib/tools';
-import { openTechyChat } from '../components/assistant/TechyChatLayer';
 import { Button, ChoiceCard, DateField, Notice, PushedScreen, SectionLabel, Segmented, SentScreen, SkeletonRow, TextBox, Txt, haptic, techy, useTokens } from '../ui';
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
@@ -47,7 +46,7 @@ export default function ToolRequestScreen() {
 
   if (sent) {
     return <SentScreen title={t('toolRequest.sentTitle')} text={t('toolRequest.sentText', { ref: sent.join(', ') })} doneLabel={t('dtrAsk.done')}
-      onDone={() => { router.back(); setTimeout(() => openTechyChat(), 60); }} />;
+      onDone={() => { router.back(); }} />;
   }
 
   const chosen = (tools ?? []).filter((x) => picks[x.id]);
