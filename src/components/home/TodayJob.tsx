@@ -1,6 +1,6 @@
 // "Today's job" on Home: the client, time and work type, the address, and two buttons: Details (the full
-// dispatch sheet) and Navigate, plus your time-in status on it (working since / done for today). With no job today
-// it says so plainly and points to the Jobs tab.
+// dispatch sheet) and Navigate, plus your time-in status on it (working since / done for today).
+// With no job at all Home shows no card here: the time-in card says "No schedule today".
 import React from 'react';
 import { View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -12,23 +12,11 @@ import WorkTag from '../jobs/WorkTag';
 import { timeRange } from '../jobs/jobWords';
 import { Button, Card, IconChip, StatusText, Txt, useTokens } from '../../ui';
 
-type Props = { job: Job | null; shift?: ShiftState; onDetails: () => void; onAllJobs: () => void };
+type Props = { job: Job; shift?: ShiftState; onDetails: () => void };
 
-export default function TodayJob({ job, shift, onDetails, onAllJobs }: Props) {
+export default function TodayJob({ job, shift, onDetails }: Props) {
   const t = useT();
   const { c } = useTokens();
-  if (!job) {
-    return (
-      <Card onPress={onAllJobs} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }} accessibilityLabel={t('home.noJob')}>
-        <IconChip icon="briefcase" />
-        <View style={{ flex: 1 }}>
-          <Txt variant="body">{t('home.noJob')}</Txt>
-          <Txt variant="caption" color="ink2">{t('home.seeJobs')}</Txt>
-        </View>
-        <Feather name="chevron-right" size={18} color={c.ink3} />
-      </Card>
-    );
-  }
   return (
     <Card style={{ gap: 10 }}>
       <View style={{ flexDirection: 'row', gap: 12 }}>

@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useT } from '../../lib/i18n';
-import { Button, Glass, StatusPill, SuccessCheck, Txt, useReducedMotion, useTokens } from '../../ui';
+import { Button, Card, Glass, IconChip, StatusPill, SuccessCheck, Txt, useReducedMotion, useTokens } from '../../ui';
 import { openTechyChat } from '../assistant/TechyChatLayer';
 
 export type ShiftState =
@@ -50,6 +50,20 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
   const noJob = shift.kind === 'off' && !shift.shiftStart;
   const late = shift.kind === 'off' && !noJob && now > start;
 
+  // No schedule or on leave (Andrew 27 Nov): nothing to time in for, so a small calm card, no clock or empty button space
+  if (noJob || shift.kind === 'leave') {
+    const leave = shift.kind === 'leave' ? shift : null;
+    return (
+      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <IconChip icon={leave ? 'sun' : 'calendar'} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt variant="heading">{t(leave ? 'home.onLeavePill' : 'home.noJobPill')}</Txt>
+          <Txt variant="caption" color="ink2">{leave ? t('home.onLeaveSub', { type: t(`home.leaveTypes.${leave.leaveType}`) }) : t('home.noJobSub')}</Txt>
+        </View>
+      </Card>
+    );
+  }
+
   const view = shift.kind === 'working'
     ? { tone: 'ok' as const, pill: t('home.working', { time: clock(new Date(shift.startedAt)) }), big: t('home.elapsed', { h, m }),
         sub: shift.verified ? t('home.verified') : t('home.photoOverride') }
@@ -62,10 +76,6 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
     : shift.kind === 'in_house'
     ? { tone: 'pending' as const, pill: t('home.inHousePill'), big: clock(now),
         sub: shift.clientName ? `${shift.clientName} · ${t('home.inHouseSub')}` : t('home.inHouseSub') }
-    : shift.kind === 'leave'
-    ? { tone: 'ok' as const, pill: t('home.onLeavePill'), big: clock(now), sub: t('home.onLeaveSub', { type: t(`home.leaveTypes.${shift.leaveType}`) }) }
-    : noJob
-    ? { tone: 'pending' as const, pill: t('home.noJobPill'), big: clock(now), sub: t('home.noJobSub') }
     : { tone: late ? 'error' as const : 'pending' as const, pill: t(late ? 'home.notYetLate' : 'home.notYet'), big: clock(now),
         sub: t('home.shiftStarts', { time: clock(start) }) };
   // Not timed in: amber before the start, red once it has started, so it never looks like a switched-off card
@@ -93,8 +103,6 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
           <View style={{ gap: 8 }}>
             <Button icon="log-in" label={t('home.timeInManual')} onPress={onTimeIn} loading={busy} />
           </View>
-        ) : noJob || shift.kind === 'leave' ? (
-          null // no schedule or on leave: nothing to time in for (task 2)
         ) : shift.kind === 'off' ? (
           <View style={{ gap: 8 }}>
             {shift.canCheckInOffice && onOfficeCheckIn && (

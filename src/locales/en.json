@@ -323,8 +323,6 @@
     "alreadyOfficeMsg": "You have already checked in at the office today.",
     "todaysJob": "Today's job",
     "nextJob": "Next job · {date}",
-    "noJob": "No job scheduled",
-    "seeJobs": "See all your jobs",
     "details": "Details",
     "shortcuts": "Shortcuts",
     "myTools": "My tools",
