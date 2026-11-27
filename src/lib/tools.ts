@@ -62,13 +62,13 @@ export async function getMyTools(): Promise<MyToolLists> {
 export const daysWithYou = (tool: MyTool) =>
   tool.handedOverAt ? Math.max(0, Math.floor((Date.now() - Date.parse(tool.handedOverAt)) / 86400000)) : 0;
 
-export async function reportToolProblem(tool: MyTool, problem: string, note: string): Promise<boolean> {
+export async function reportToolProblem(tool: MyTool, problem: string, note: string, photo?: string | null): Promise<boolean> {
   const ref = await fileTicket({
     category: 'Equipment / Tools',
     title: `Tool problem: ${tool.name}`,
     description: [`Tool: ${tool.name}${tool.tag ? ` (${tool.tag})` : tool.serial ? ` (SN ${tool.serial})` : ''}`, `Problem: ${problem}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-  }, (r) => `🛠️ Tool problem: ${tool.name}: ${problem}${note.trim() ? `. Note: ${note.trim()}` : ''} (ticket ${r})`);
+  }, (r) => `✅ Sent to the office (ticket ${r}). Tool problem with your **${tool.name}**: ${problem}${note.trim() ? `. Note: "${note.trim()}"` : ''}.\nPlease wait while the office checks it. They'll reply right here 🛠️`, photo);
   return ref !== null;
 }
 
@@ -88,7 +88,7 @@ export async function requestTool(tool: CatalogTool, howMany: number, neededOn: 
     title: `Tool request: ${tool.name}`,
     description: [`Tool: ${tool.name}`, `How many: ${howMany}`, `Needed on: ${neededOn}`, `Delivery: ${delivery}`, why.trim() ? `Why: ${why.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-  }, (r) => `🧰 Tool request: ${howMany} × ${tool.name}, needed on ${neededOn}${why.trim() ? `. Why: ${why.trim()}` : ''} (ticket ${r})`);
+  }, (r) => `✅ Sent to the Coordinator (ticket ${r}). Tool request: **${howMany} × ${tool.name}**, needed on ${neededOn}${why.trim() ? `. Why: "${why.trim()}"` : ''}.\nPlease wait for the Coordinator's answer. It comes right here 🧰`);
 }
 
 /** Several tools at once (C5): one request per kind of tool, so the Coordinator lends each as usual. Ticket numbers, or null if none went. */

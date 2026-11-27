@@ -1,71 +1,26 @@
-// "Ask HR about this day": pick what looks wrong, add a note, send. It becomes a DTR concern in the admin's
-// Tickets, and HR's answer comes back in Techy's chat or your Inbox. Scope has no payroll, so this is about the DTR only.
-import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+// "Ask HR about this day" (from a DTR day): the same DTR concern form as in Techy's chat (components/assistant/ChatForm):
+// what's wrong, the right times, a note, a photo. It becomes a DTR concern in the admin's Tickets with HR's concern card;
+// HR's answer comes back in your Inbox. Scope has no payroll, so this is about the DTR only.
+import React, { useState } from 'react';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
-import { askHrAboutDay, dayLabel } from '../lib/dtr';
-import { openChat } from '../lib/fileTicket';
-import { Button, ChoiceCard, Notice, PushedScreen, SentScreen, TextBox, haptic, techy } from '../ui';
-
-const REASONS = [
-  { key: 'times', icon: 'clock' },
-  { key: 'late', icon: 'alert-circle' },
-  { key: 'absent', icon: 'user-x' },
-  { key: 'overtime', icon: 'trending-up' },
-  { key: 'other', icon: 'help-circle' },
-] as const;
-type Reason = (typeof REASONS)[number]['key'];
+import { dayLabel } from '../lib/dtr';
+import ChatForm from '../components/assistant/ChatForm';
+import { PushedScreen, SentScreen } from '../ui';
 
 export default function DtrAskScreen() {
   const t = useT();
   const router = useRouter();
   const { date } = useLocalSearchParams<{ date: string }>();
-  const [reason, setReason] = useState<Reason | null>(null);
-  const [note, setNote] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState<string | null>(null); // the new ticket's number
-  const [failed, setFailed] = useState(false);
-  // Filed from a chat with Techy: show which conversation it joins (prof, 20 Nov: the form carries the ticket number)
-  const [chat, setChat] = useState<string | null>(null);
-  useEffect(() => { openChat().then((c) => setChat(c?.ref ?? null)).catch(() => {}); }, []);
-  const label = date ? dayLabel(date) : '';
-  const needsNote = reason === 'other' && note.trim().length < 5;
+  const [sent, setSent] = useState<string | null>(null); // the ticket's number
 
   if (sent) {
-    return (
-      <SentScreen
-        title={t('dtrAsk.sentTitle')}
-        text={t('dtrAsk.sentTicket', { ref: sent })}
-        doneLabel={t('dtrAsk.done')}
-        onDone={() => {
-          router.replace('/(tabs)/dtr' as Href);
-        }}
-      />
-    );
+    return <SentScreen title={t('dtrAsk.sentTitle')} text={t('dtrAsk.sentTicket', { ref: sent })} doneLabel={t('dtrAsk.done')}
+      onDone={() => router.replace('/(tabs)/dtr' as Href)} />;
   }
-
-  const send = async () => {
-    if (!date || !reason || needsNote) return;
-    setSending(true); setFailed(false);
-    const ref = await askHrAboutDay(date, label, t(`dtrAsk.${reason}`), note);
-    setSending(false);
-    if (ref) { setSent(ref); techy.react('cheer'); } else { setFailed(true); haptic.error(); }
-  };
-
   return (
-    <PushedScreen title={t('dtrAsk.title', { date: label })} subtitle={t('dtrAsk.subtitle')} backLabel={t('common.back')}
-      footer={<Button label={t('dtrAsk.send')} icon="send" onPress={send} loading={sending} disabled={!reason || needsNote || sending} />}>
-      <View style={{ gap: 10, marginTop: 8 }}>
-        {chat && <Notice tone="info" text={t('dtrAsk.linkedChat', { ref: chat })} />}
-        {REASONS.map((r) => (
-          <ChoiceCard key={r.key} icon={r.icon} title={t(`dtrAsk.${r.key}`)} selected={reason === r.key} onPress={() => setReason(r.key)} />
-        ))}
-        <View style={{ marginTop: 6 }}>
-          <TextBox label={reason === 'other' ? t('dtrAsk.noteRequired') : t('dtrAsk.note')} value={note} onChangeText={setNote} placeholder={t('dtrAsk.notePlaceholder')} />
-        </View>
-        {failed && <Notice tone="error" text={t('common.noSignal')} />}
-      </View>
+    <PushedScreen title={t('dtrAsk.title', { date: date ? dayLabel(date) : '' })} subtitle={t('dtrAsk.subtitle')} backLabel={t('common.back')}>
+      {date ? <ChatForm kind="dtr" date={date} onSent={setSent} /> : null}
     </PushedScreen>
   );
 }

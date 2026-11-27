@@ -767,6 +767,15 @@
     "dtrTitle": "Concern sa DTR para sa {date}",
     "otherTitle": "Iba pa",
     "sentDtr": "Naipadala sa HR bilang ticket {ref}. Dito mismo sa chat sasagot ang HR.",
-    "sentOther": "Naipadala sa opisina bilang ticket {ref}. Dito mismo sa chat sila sasagot. Kung emergency, tawagan din ang opisina."
+    "sentOther": "Naipadala sa opisina bilang ticket {ref}. Dito mismo sa chat sila sasagot. Kung emergency, tawagan din ang opisina.",
+    "timesHint": "Ano ang tamang oras? (opsyonal, ihahambing ito ng HR sa record mo)",
+    "timeIn": "Tamang time in",
+    "timeOut": "Tamang time out",
+    "pickTime": "Pumili ng oras",
+    "badTimes": "Dapat mas huli ang time out kaysa time in."
+  },
+  "photoPick": {
+    "title": "Litrato (opsyonal)",
+    "remove": "Alisin ang litrato"
   }
 }

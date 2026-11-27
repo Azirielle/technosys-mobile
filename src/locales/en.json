@@ -767,6 +767,15 @@
     "dtrTitle": "DTR concern for {date}",
     "otherTitle": "Others",
     "sentDtr": "Sent to HR as ticket {ref}. HR will answer right here in this chat.",
-    "sentOther": "Sent to the office as ticket {ref}. They will answer right here in this chat. If it's an emergency, also call the office."
+    "sentOther": "Sent to the office as ticket {ref}. They will answer right here in this chat. If it's an emergency, also call the office.",
+    "timesHint": "What were the right times? (optional, HR checks them against your record)",
+    "timeIn": "Right time in",
+    "timeOut": "Right time out",
+    "pickTime": "Pick a time",
+    "badTimes": "The time out must be after the time in."
+  },
+  "photoPick": {
+    "title": "Photo (optional)",
+    "remove": "Remove photo"
   }
 }

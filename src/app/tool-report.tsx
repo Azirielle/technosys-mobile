@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { getLoadedTool, reportToolProblem } from '../lib/tools';
+import PhotoPicker from '../components/PhotoPicker';
 import { Button, ChoiceCard, Notice, PushedScreen, SentScreen, TextBox, haptic, techy } from '../ui';
 
 const PROBLEMS = [
@@ -22,6 +23,7 @@ export default function ToolReportScreen() {
   const tool = id ? getLoadedTool(id) : null;
   const [problem, setProblem] = useState<Problem | null>(null);
   const [note, setNote] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -43,7 +45,7 @@ export default function ToolReportScreen() {
   const send = async () => {
     if (!tool || !problem || needsNote) return;
     setSending(true); setFailed(false);
-    const ok = await reportToolProblem(tool, t(`toolReport.${problem}`), note);
+    const ok = await reportToolProblem(tool, t(`toolReport.${problem}`), note, photo);
     setSending(false);
     if (ok) { setSent(true); techy.react('cheer'); } else { setFailed(true); haptic.error(); }
   };
@@ -57,6 +59,7 @@ export default function ToolReportScreen() {
           <View style={{ marginTop: 6 }}>
             <TextBox label={problem === 'other' ? t('dtrAsk.noteRequired') : t('dtrAsk.note')} value={note} onChangeText={setNote} placeholder={t('toolReport.notePlaceholder')} />
           </View>
+          <PhotoPicker uri={photo} onChange={setPhoto} />
           {failed && <Notice tone="error" text={t('common.noSignal')} />}
         </View>
       )}

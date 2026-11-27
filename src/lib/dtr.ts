@@ -221,13 +221,18 @@ export async function getDayDetails(date: string): Promise<DayDetails> {
   };
 }
 
-/** "Ask HR about this day": files a DTR concern ticket HR answers in Tickets, joined to your Techy chat if one is open.
+/** "Ask HR about this day": files a DTR concern HR answers in Tickets (your Techy chat becomes it if one is open).
+ *  timeIn / timeOut ("HH:MM") are the times they say are right; HR's concern card shows them next to the record and can
+ *  fix the day with them. The admin's concern card reads these description lines back, so keep the labels.
  *  Returns the ticket number, or null when it couldn't be sent. */
-export async function askHrAboutDay(date: string, dateLabel: string, reason: string, note: string): Promise<string | null> {
+export async function askHrAboutDay(date: string, dateLabel: string, reason: string, note: string,
+  extra: { timeIn?: string; timeOut?: string; photo?: string | null } = {}): Promise<string | null> {
+  const times = [extra.timeIn ? `time in ${extra.timeIn}` : null, extra.timeOut ? `time out ${extra.timeOut}` : null].filter(Boolean).join(', ');
   return fileTicket({
     category: 'DTR Issue',
     title: `DTR check: ${dateLabel}`,
-    description: [`Day: ${dateLabel} (${date})`, `What's wrong: ${reason}`, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
+    description: [`Day: ${dateLabel} (${date})`, `What's wrong: ${reason}`, extra.timeIn ? `Correct time in: ${extra.timeIn}` : null,
+      extra.timeOut ? `Correct time out: ${extra.timeOut}` : null, note.trim() ? `Details: ${note.trim()}` : null].filter(Boolean).join('\n'),
     priority: 'medium',
-  }, (r) => `📅 DTR concern for ${dateLabel}: ${reason}${note.trim() ? `. Note: ${note.trim()}` : ''} (ticket ${r})`);
+  }, (r) => `✅ Sent to HR (ticket ${r}). Your DTR concern for **${dateLabel}**: ${reason}${times ? ` (right ${times})` : ''}${note.trim() ? `. Note: "${note.trim()}"` : ''}.\nPlease wait while HR reviews it. They'll reply right here 🙂`, extra.photo);
 }

@@ -19,6 +19,7 @@ export { default as BackHeader } from './BackHeader';
 export { default as PushedScreen } from './PushedScreen';
 export { default as SentScreen } from './SentScreen';
 export { default as DateField } from './DateField';
+export { default as TimeField } from './TimeField';
 export { default as Toggle } from './Toggle';
 export { default as ConfirmDialog } from './ConfirmDialog';
 export { appAlert, AlertHost } from './appAlert';
