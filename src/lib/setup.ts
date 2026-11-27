@@ -1,6 +1,6 @@
 // First-time setup on a phone: which steps are still left, and saving the app-rules agreement.
 // Steps, in order: language → app rules (Terms + Privacy) → this phone (field staff) → your own PIN (field staff,
-// while the PIN is still HR's temporary one) → permissions.
+// while the PIN is still HR's temporary one) → permissions → your face (technicians with no saved face).
 // After setup, Techy's tour plays once on Home for field staff (isTourDue, components/tour/TechyTour.tsx).
 // It shows once per person per phone; later only the part that changed comes back
 // (a new version of the app rules, a new phone after HR approval or a reinstall).
@@ -11,10 +11,11 @@ import * as Device from 'expo-device';
 import { supabase } from './supabase';
 import { checkThisPhone } from './signIn';
 import { myPinIsOwn } from './quickSignIn';
+import { myFace } from './face/faceCheck';
 import type { CompanyPolicy } from '../components/PolicyReaderModal';
 
-export type SetupStep = 'language' | 'rules' | 'phone' | 'pin' | 'permissions';
-const ORDER: SetupStep[] = ['language', 'rules', 'phone', 'pin', 'permissions'];
+export type SetupStep = 'language' | 'rules' | 'phone' | 'pin' | 'permissions' | 'face';
+const ORDER: SetupStep[] = ['language', 'rules', 'phone', 'pin', 'permissions', 'face'];
 
 const LANGUAGE_DONE = 'setup_language_done';
 const permissionsKey = (userId: string) => `setup_permissions_done_${userId}`;
@@ -116,6 +117,7 @@ export async function loadPendingSteps(): Promise<SetupStep[]> {
   if (isFieldStaff && (await checkThisPhone()) === 'unregistered') steps.push('phone');
   if (isFieldStaff && !(await myPinIsOwn().catch(() => true))) steps.push('pin'); // no signal: ask next time
   if (!permissionsDone) steps.push('permissions');
+  if (isFieldStaff && (await myFace(user.id).catch(() => 'skip')) === null) steps.push('face'); // no signal: the save fails and Later appears
 
   pending = steps;
   total = steps.length;

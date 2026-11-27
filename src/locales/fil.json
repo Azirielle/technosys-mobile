@@ -70,6 +70,17 @@
     "pin": {
       "title": "Gumawa ng sariling PIN",
       "subtitle": "Pang-unang sign-in lang ang PIN mula sa HR. Pumili ng 4 na numero na ikaw lang ang nakakaalam."
+    },
+    "face": {
+      "title": "I-save ang mukha mo",
+      "subtitle": "Isang beses lang. Ihahambing dito ang bawat time-in.",
+      "start": "I-save ang mukha ko",
+      "later": "Mamaya na",
+      "howTitle": "Paano ito gumagana",
+      "howText": "Tumingin sa camera para sa 3 litrato, tapos ibaling nang kaunti ang ulo pakaliwa at pakanan kapag sinabi.",
+      "whyTitle": "Bakit",
+      "whyText": "Para walang ibang makapag-time in para sa iyo. Sa kompanya lang ang mukha mo at para lang sa attendance.",
+      "failed": "Hindi na-save ang mukha mo. Humanap ng maliwanag na lugar, ilagay ang mukha sa bilog at ibaling ang ulo kapag sinabi. Kung walang signal, pindutin ang Mamaya na: ise-save ito sa unang time-in mo."
     }
   },
   "tabs": {

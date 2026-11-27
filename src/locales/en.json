@@ -70,6 +70,17 @@
     "pin": {
       "title": "Make your own PIN",
       "subtitle": "HR's PIN was only for your first sign-in. Pick 4 numbers only you know."
+    },
+    "face": {
+      "title": "Save your face",
+      "subtitle": "Once only. Every time-in is checked against this face.",
+      "start": "Save my face",
+      "later": "Later",
+      "howTitle": "How it works",
+      "howText": "Look at the camera for 3 photos, then turn your head a little to the left and to the right when asked.",
+      "whyTitle": "Why",
+      "whyText": "So nobody else can time in for you. Your face stays with the company and is used only for attendance.",
+      "failed": "Your face was not saved. Find good light, keep your face in the oval and turn your head when asked. With no signal, tap Later: your first time-in will save it."
     }
   },
   "tabs": {
