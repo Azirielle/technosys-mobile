@@ -57,11 +57,12 @@ export const type = {
 export type TypeName = keyof typeof type;
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 } as const;
-export const radius = { chip: 10, control: 14, card: 20, sheet: 28, round: 999 } as const;
+// Same corners as the admin (Admin-side components/ui/tokens.css, task 8 "one look"): chip 8, control 12, card 20, sheet 28, pills.
+export const radius = { chip: 8, control: 12, card: 20, sheet: 28, round: 999 } as const;
 
 /** Soft card shadow (light mode only; dark mode uses the lighter card surface instead). */
 export const shadow = {
-  card: { shadowColor: '#101116', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  card: { shadowColor: '#101116', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 2 }, // ≈ the admin's shadow-card
   raised: { shadowColor: '#101116', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
 };
 

@@ -40,7 +40,7 @@ export default function Button({ label, onPress, kind = 'primary', size = 'lg', 
         {
           minHeight: size === 'lg' ? 54 : 44, // min, so a two-line label (side-by-side buttons) still fits
           paddingVertical: 8,
-          borderRadius: radius.control,
+          borderRadius: radius.round, // pill buttons, like the admin (task 8)
           backgroundColor: looks.bg,
           borderWidth: kind === 'secondary' ? 1 : 0,
           borderColor: looks.border,

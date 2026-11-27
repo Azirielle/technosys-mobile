@@ -22,8 +22,8 @@ export default function Segmented<T extends string>({ options, value, onChange, 
 
   return (
     <View accessibilityRole="radiogroup" accessibilityLabel={label} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      style={{ flexDirection: 'row', backgroundColor: c.cardSoft, borderRadius: 14, padding: 4 }}>
-      {slot > 0 && <Animated.View style={[{ position: 'absolute', top: 4, bottom: 4, left: 4, width: slot, borderRadius: 11, backgroundColor: isDark ? c.line : c.card }, shadow.card, thumb]} />}
+      style={{ flexDirection: 'row', backgroundColor: c.cardSoft, borderRadius: 999, padding: 4 }}>
+      {slot > 0 && <Animated.View style={[{ position: 'absolute', top: 4, bottom: 4, left: 4, width: slot, borderRadius: 999, backgroundColor: isDark ? c.line : c.card }, shadow.card, thumb]} />}
       {options.map((o) => (
         <Pressable key={o.value} onPress={() => { if (o.value !== value) { haptic.tap(); onChange(o.value); } }}
           accessibilityRole="radio" accessibilityState={{ selected: o.value === value }}
