@@ -16,14 +16,12 @@ import HomeHeader from './HomeHeader';
 import OfflineBanner from '../OfflineBanner';
 import { useOnline } from '../../lib/online';
 import TimeInCard, { ShiftState } from './TimeInCard';
-import TodayJob from './TodayJob';
+import TodayJob, { type Trip } from './TodayJob';
 import QuickActions from './QuickActions';
 import AttentionList from './AttentionList';
 
 type Props = {
   shift: ShiftState;
-  /** Shown on the job card only when today's time-in is on that job */
-  jobShift?: ShiftState;
   busy: boolean;
   job: Job | null;
   onTimeIn: () => void;
@@ -32,6 +30,8 @@ type Props = {
   onRefresh: () => Promise<void>;
   /** Shown under today's job (Work v2: Arrived / Done / Ask for overtime) */
   jobExtra?: React.ReactNode;
+  /** Out-of-town job: which day of the trip today is */
+  trip?: Trip | null;
 };
 
 export default function HomeBody(p: Props) {
@@ -65,14 +65,16 @@ export default function HomeBody(p: Props) {
         <HomeHeader />
         <OfflineBanner online={online} />
         <View ref={tourTarget('timeIn')} collapsable={false}>{/* Techy's tour points here */}
-          <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} onOfficeCheckIn={p.onOfficeCheckIn} />
+          {/* Task 3: today's job is part of the time-in card (what you are timing in for) */}
+          <TimeInCard shift={p.shift} busy={p.busy} onTimeIn={p.onTimeIn} onTimeOut={p.onTimeOut} onOfficeCheckIn={p.onOfficeCheckIn}
+            job={p.job && isToday ? <TodayJob inside job={p.job} trip={p.trip} onDetails={() => p.job && go(`/job/${p.job.id}`)} /> : undefined} />
         </View>
+        {isToday && p.jobExtra && <View style={{ marginTop: 10 }}>{p.jobExtra}</View>}
 
-        {/* No job at all: the card above already says "No schedule today", so no second "No job scheduled" (27 Nov) */}
-        {p.job && <>
-          <SectionLabel>{isToday ? t('home.todaysJob') : t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>
-          <TodayJob job={p.job} shift={p.jobShift} onDetails={() => p.job && go(`/job/${p.job.id}`)} />
-          {p.jobExtra}
+        {/* A later job only (none today): its own card. No job at all: nothing, the card above says so */}
+        {p.job && !isToday && <>
+          <SectionLabel>{t('home.nextJob', { date: dateOf(p.job.start_time) })}</SectionLabel>
+          <TodayJob job={p.job} onDetails={() => p.job && go(`/job/${p.job.id}`)} />
         </>}
 
         <SectionLabel>{t('home.shortcuts')}</SectionLabel>

@@ -16,12 +16,16 @@ export type ShiftState =
   | { kind: 'in_house'; clientName?: string }
   | { kind: 'leave'; leaveType: string };
 
-type Props = { shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void; onOfficeCheckIn?: () => void };
+type Props = {
+  shift: ShiftState; busy?: boolean; onTimeIn: () => void; onTimeOut: () => void; onOfficeCheckIn?: () => void;
+  /** Today's job, shown inside the card above the button (task 3) */
+  job?: React.ReactNode;
+};
 
 const SHIFT_MS = 9 * 3600000; // 8 hours of work plus the 1-hour meal break
 const clock = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeCheckIn }: Props) {
+export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeCheckIn, job }: Props) {
   const t = useT();
   const { c, radius } = useTokens();
   const reduced = useReducedMotion();
@@ -91,6 +95,7 @@ export default function TimeInCard({ shift, busy, onTimeIn, onTimeOut, onOfficeC
           <Animated.View style={[{ height: 6, borderRadius: 3, backgroundColor: c.accent }, bar]} />
         </View>
       )}
+      {job}
       <View style={{ marginTop: 12, minHeight: 56, justifyContent: 'center' }}>
         {celebrate > 0 ? (
           <View style={{ alignItems: 'center' }}><SuccessCheck size={52} playKey={celebrate} /></View>

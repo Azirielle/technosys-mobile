@@ -46,6 +46,12 @@ function pickJob(jobs: MyJob[], timedInJobId?: string | null): { card: Job | nul
   };
 }
 
+/** Out-of-town: day n of the trip (dates are Manila days, 'YYYY-MM-DD'), for the progress bar on Home */
+const tripDay = (start: string, end: string, today: string) => {
+  const d = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1;
+  return { day: d(start, today), days: d(start, end) };
+};
+
 export default function WorkHome() {
   const work = useWork();
   // "Time in" / "Time out" on a reminder push: run it here once Home has loaded today's day
@@ -162,7 +168,6 @@ export default function WorkHome() {
     <>
       <HomeBody
         shift={shift}
-        jobShift={today && job && today.job_id === job.id ? shift : undefined}
         busy={work.busy}
         onTimeIn={() => work.startTimeIn()}
         onTimeOut={work.timeOut}
@@ -170,6 +175,7 @@ export default function WorkHome() {
         job={card}
         onRefresh={async () => { loadJobs(); await work.reload(); }}
         jobExtra={working && job && today?.job_id === job.id ? <JobProgressCard jobId={job.id} reportTo={job.report_to} /> : null}
+        trip={jobToday && job.work_type === 'out_of_town' ? tripDay(job.start_date, job.end_date, todayStr) : null}
       />
 
       <WorkCheckSheet key={work.sheet.open ? 'open' : 'closed'} sheet={work.sheet} sending={work.sending === 'selfie'}
